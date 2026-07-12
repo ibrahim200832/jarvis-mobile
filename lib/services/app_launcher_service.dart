@@ -1,17 +1,19 @@
-import 'dart:io';
+import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:installed_apps/installed_apps.dart';
 import 'package:installed_apps/app_info.dart';
 
 /// Lists and opens installed apps by voice, replacing the desktop
 /// `os.startfile` / `subprocess` app-opening commands (Android only —
-/// iOS does not allow third-party apps to enumerate or launch each other).
+/// iOS and the web don't allow third-party apps to enumerate or launch
+/// each other).
 class AppLauncherService {
   List<AppInfo>? _cache;
 
   Future<List<AppInfo>> installedApps({bool refresh = false}) async {
-    if (!Platform.isAndroid) {
-      throw Exception('Apps öffnen wird von iOS aus Sicherheitsgründen nicht unterstützt.');
+    if (kIsWeb || !Platform.isAndroid) {
+      throw Exception('Apps öffnen wird auf dieser Plattform aus Sicherheitsgründen nicht unterstützt.');
     }
     if (_cache != null && !refresh) return _cache!;
     _cache = await InstalledApps.getInstalledApps(excludeSystemApps: true, withIcon: true);

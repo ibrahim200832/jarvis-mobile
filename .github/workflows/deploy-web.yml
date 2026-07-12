@@ -1,0 +1,54 @@
+name: Deploy Web
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Generate web icons and favicon
+        run: |
+          sudo apt-get update && sudo apt-get install -y imagemagick
+          mkdir -p web/icons
+          convert -size 192x192 xc:"#0891B2" web/icons/Icon-192.png
+          convert -size 512x512 xc:"#0891B2" web/icons/Icon-512.png
+          convert -size 192x192 xc:"#0891B2" web/icons/Icon-maskable-192.png
+          convert -size 512x512 xc:"#0891B2" web/icons/Icon-maskable-512.png
+          convert -size 16x16 xc:"#0891B2" web/favicon.png
+
+      - run: flutter pub get
+      - run: flutter build web --release --base-href "/${{ github.event.repository.name }}/"
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
