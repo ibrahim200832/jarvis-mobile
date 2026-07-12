@@ -1,5 +1,6 @@
 import 'package:intl/intl.dart';
 
+import '../services/ai_chat_service.dart';
 import '../services/app_launcher_service.dart';
 import '../services/call_service.dart';
 import '../services/contacts_service.dart';
@@ -27,7 +28,9 @@ class CommandResult {
 
 /// Parses a single line of recognized speech or typed text and dispatches it
 /// to the matching feature service. This is the mobile equivalent of the big
-/// if/elif command ladder in the original JARVIS.py.
+/// if/elif command ladder in the original JARVIS.py. Anything that doesn't
+/// match a known command falls through to a real AI (see AiChatService) so
+/// JARVIS can hold a free-form conversation instead of just failing.
 class CommandRouter {
   CommandRouter({
     required this.wikipedia,
@@ -44,6 +47,7 @@ class CommandRouter {
     required this.contacts,
     required this.settings,
     required this.ip,
+    required this.aiChat,
   });
 
   final WikipediaService wikipedia;
@@ -60,6 +64,7 @@ class CommandRouter {
   final ContactsService contacts;
   final SettingsService settings;
   final IpService ip;
+  final AiChatService aiChat;
 
   static const helpText = '''
 Das kann ich für dich tun:
@@ -77,6 +82,7 @@ Das kann ich für dich tun:
 • "youtube <Suchbegriff>"
 • "qr code <Text>"
 • "meine ip" / "ip adresse"
+• alles andere: frag mich einfach frei, ich antworte mit echter KI
 ''';
 
   Future<CommandResult> handle(String rawInput) async {
@@ -204,7 +210,9 @@ Das kann ich für dich tun:
         return CommandResult('Deine öffentliche IP-Adresse lautet $address.');
       }
 
-      return CommandResult('Das habe ich nicht verstanden. Sag "Hilfe" für eine Liste der Befehle.');
+      final backendUrl = await settings.getAiBackendUrl();
+      final aiReply = await aiChat.ask(backendUrl ?? '', text);
+      return CommandResult(aiReply);
     } catch (e) {
       return CommandResult('Fehler: ${e.toString().replaceFirst('Exception: ', '')}');
     }
