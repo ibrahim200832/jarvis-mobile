@@ -8,6 +8,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../core/command_router.dart';
+import '../services/ai_chat_service.dart';
 import '../services/app_launcher_service.dart';
 import '../services/call_service.dart';
 import '../services/contacts_service.dart';
@@ -74,6 +75,7 @@ class _HomeScreenState extends State<HomeScreen> {
       contacts: _contacts,
       settings: _settings,
       ip: IpService(),
+      aiChat: AiChatService(),
     );
     _speech.init();
     unawaited(_checkForUpdate());
