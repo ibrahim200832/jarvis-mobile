@@ -9,6 +9,7 @@ import '../services/app_launcher_service.dart';
 import '../services/call_service.dart';
 import '../services/contacts_service.dart';
 import '../services/email_service.dart';
+import '../services/ip_service.dart';
 import '../services/joke_service.dart';
 import '../services/location_service.dart';
 import '../services/news_service.dart';
@@ -63,6 +64,7 @@ class _HomeScreenState extends State<HomeScreen> {
       location: LocationService(),
       contacts: _contacts,
       settings: _settings,
+      ip: IpService(),
     );
     _speech.init();
   }
@@ -167,9 +169,35 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('J.A.R.V.I.S.'),
+        flexibleSpace: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [colorScheme.primary.withValues(alpha: 0.25), colorScheme.surface],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+        ),
+        title: Row(
+          children: [
+            CircleAvatar(
+              backgroundColor: colorScheme.primary,
+              child: Icon(Icons.graphic_eq, color: colorScheme.onPrimary),
+            ),
+            const SizedBox(width: 12),
+            const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('J.A.R.V.I.S.', style: TextStyle(fontWeight: FontWeight.bold)),
+                Text('Dein persönlicher Assistent', style: TextStyle(fontSize: 12)),
+              ],
+            ),
+          ],
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.settings),
@@ -181,55 +209,63 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: ListView.builder(
-              controller: _scrollCtrl,
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              itemCount: _messages.length,
-              itemBuilder: (context, index) => ChatBubble(message: _messages[index]),
-            ),
-          ),
-          if (_listening)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text(
-                _partialText.isEmpty ? 'Ich höre zu…' : _partialText,
-                style: TextStyle(color: Theme.of(context).colorScheme.primary),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 720),
+          child: Column(
+            children: [
+              Expanded(
+                child: ListView.builder(
+                  controller: _scrollCtrl,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  itemCount: _messages.length,
+                  itemBuilder: (context, index) => ChatBubble(message: _messages[index]),
+                ),
               ),
-            ),
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(8),
-              child: Row(
-                children: [
-                  IconButton(
-                    iconSize: 32,
-                    icon: Icon(_listening ? Icons.mic : Icons.mic_none),
-                    color: _listening ? Colors.red : null,
-                    onPressed: _toggleListening,
+              if (_listening)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Text(
+                    _partialText.isEmpty ? 'Ich höre zu…' : _partialText,
+                    style: TextStyle(color: colorScheme.primary),
                   ),
-                  Expanded(
-                    child: TextField(
-                      controller: _textCtrl,
-                      decoration: const InputDecoration(
-                        hintText: 'Nachricht an JARVIS…',
-                        border: OutlineInputBorder(),
-                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+              SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        iconSize: 32,
+                        icon: Icon(_listening ? Icons.mic : Icons.mic_none),
+                        color: _listening ? Colors.red : null,
+                        onPressed: _toggleListening,
                       ),
-                      onSubmitted: _submit,
-                    ),
+                      Expanded(
+                        child: TextField(
+                          controller: _textCtrl,
+                          decoration: InputDecoration(
+                            hintText: 'Nachricht an JARVIS…',
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(24)),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            filled: true,
+                            fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                          ),
+                          onSubmitted: _submit,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      IconButton.filled(
+                        icon: const Icon(Icons.send),
+                        onPressed: () => _submit(_textCtrl.text),
+                      ),
+                    ],
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.send),
-                    onPressed: () => _submit(_textCtrl.text),
-                  ),
-                ],
+                ),
               ),
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
@@ -46,7 +44,7 @@ class _CameraScreenState extends State<CameraScreen> {
       final file = await controller.takePicture();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Foto gespeichert: ${File(file.path).uri.pathSegments.last}')),
+        SnackBar(content: Text('Foto aufgenommen: ${file.name}')),
       );
     } catch (e) {
       if (!mounted) return;

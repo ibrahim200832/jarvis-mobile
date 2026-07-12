@@ -4,6 +4,7 @@ import '../services/app_launcher_service.dart';
 import '../services/call_service.dart';
 import '../services/contacts_service.dart';
 import '../services/email_service.dart';
+import '../services/ip_service.dart';
 import '../services/joke_service.dart';
 import '../services/location_service.dart';
 import '../services/news_service.dart';
@@ -42,6 +43,7 @@ class CommandRouter {
     required this.location,
     required this.contacts,
     required this.settings,
+    required this.ip,
   });
 
   final WikipediaService wikipedia;
@@ -57,6 +59,7 @@ class CommandRouter {
   final LocationService location;
   final ContactsService contacts;
   final SettingsService settings;
+  final IpService ip;
 
   static const helpText = '''
 Das kann ich für dich tun:
@@ -73,6 +76,7 @@ Das kann ich für dich tun:
 • "email an <Adresse>: <Nachricht>"
 • "youtube <Suchbegriff>"
 • "qr code <Text>"
+• "meine ip" / "ip adresse"
 ''';
 
   Future<CommandResult> handle(String rawInput) async {
@@ -193,6 +197,11 @@ Das kann ich für dich tun:
       if (qrText != null) {
         final data = qr.normalize(qrText);
         return CommandResult('Hier ist dein QR-Code.', qrData: data);
+      }
+
+      if (_matchesAny(lower, ['meine ip', 'ip adresse', 'ip-adresse', 'my ip'])) {
+        final address = await ip.publicIp();
+        return CommandResult('Deine öffentliche IP-Adresse lautet $address.');
       }
 
       return CommandResult('Das habe ich nicht verstanden. Sag "Hilfe" für eine Liste der Befehle.');
