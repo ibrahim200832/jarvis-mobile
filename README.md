@@ -52,6 +52,10 @@ Jeder Push auf `main` baut die App automatisch als Website und veröffentlicht s
 
 Kontakte werden unter **Einstellungen → Kontakte** angelegt, damit „rufe X an" und „whatsapp an X" funktionieren.
 
+## Automatische Update-Benachrichtigung (Android)
+
+Da die App nicht über den Play Store läuft, prüft sie beim Start selbst, ob eine neuere Version auf der Website liegt (`downloads/version.json`, wird bei jedem `Deploy Web`-Lauf automatisch mit hochgezählt). Ist eine neuere Version verfügbar, erscheint ein Dialog mit „Jetzt herunterladen“ — das lädt die neue APK über den Browser, danach einmal antippen zum Installieren (wie beim ersten Sideload). Web und iOS zeigen den Dialog nicht, da dort Updates automatisch beim Neuladen der Seite bzw. über TestFlight/App Store passieren würden.
+
 ## API-Schlüssel
 
 - News: https://newsapi.org (kostenloser Free-Plan)
@@ -70,7 +74,7 @@ flutter build ipa --release       # iOS (nur auf macOS, braucht Signing s.u.)
 Drei GitHub Actions laufen automatisch bei jedem Push auf `main`:
 
 - `.github/workflows/build-apk.yml` baut eine Android-Release-APK (Download über Reiter „Actions“ → Lauf auswählen → „Artifacts“).
-- `.github/workflows/deploy-web.yml` baut die Web-Version und veröffentlicht sie über GitHub Pages.
+- `.github/workflows/deploy-web.yml` baut die Web-Version **und** die Android-APK, veröffentlicht beides über GitHub Pages (inkl. `downloads/version.json` für die Update-Prüfung).
 - `.github/workflows/build-ios.yml` baut eine signierte Ad-Hoc-`.ipa` für iOS (braucht einmalige Einrichtung, siehe unten).
 
 **Damit GitHub Pages funktioniert**, muss einmalig in den Repo-Einstellungen aktiviert werden: **Settings → Pages → Build and deployment → Source: „GitHub Actions“** (die Action versucht das automatisch zu setzen, ein manueller Check schadet aber nicht).
