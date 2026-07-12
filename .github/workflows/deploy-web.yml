@@ -25,7 +25,7 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Generate web icons and favicon
+      - name: Generate icons and favicon
         run: |
           sudo apt-get update && sudo apt-get install -y imagemagick
           mkdir -p web/icons
@@ -34,9 +34,22 @@ jobs:
           convert -size 192x192 xc:"#0891B2" web/icons/Icon-maskable-192.png
           convert -size 512x512 xc:"#0891B2" web/icons/Icon-maskable-512.png
           convert -size 16x16 xc:"#0891B2" web/favicon.png
+          declare -A sizes=( [mdpi]=48 [hdpi]=72 [xhdpi]=96 [xxhdpi]=144 [xxxhdpi]=192 )
+          for density in "${!sizes[@]}"; do
+            size="${sizes[$density]}"
+            dir="android/app/src/main/res/mipmap-$density"
+            mkdir -p "$dir"
+            convert -size "${size}x${size}" xc:"#0891B2" "$dir/ic_launcher.png"
+          done
 
       - run: flutter pub get
       - run: flutter build web --release --base-href "/${{ github.event.repository.name }}/"
+      - run: flutter build apk --release
+
+      - name: Bundle the Android APK into the website for public download
+        run: |
+          mkdir -p build/web/downloads
+          cp build/app/outputs/flutter-apk/app-release.apk build/web/downloads/jarvis-mobile.apk
 
       - uses: actions/configure-pages@v5
         with:
