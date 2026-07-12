@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../services/contacts_service.dart';
 import '../services/settings_service.dart';
@@ -18,11 +19,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _weatherKeyCtrl = TextEditingController();
   final _nameCtrl = TextEditingController();
   List<Contact> _contacts = [];
+  String _appVersion = '';
 
   @override
   void initState() {
     super.initState();
     _load();
+    _loadVersion();
   }
 
   Future<void> _load() async {
@@ -31,6 +34,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _nameCtrl.text = await widget.settings.getUserName();
     _contacts = await widget.contacts.all();
     if (mounted) setState(() {});
+  }
+
+  Future<void> _loadVersion() async {
+    final info = await PackageInfo.fromPlatform();
+    if (mounted) setState(() => _appVersion = info.version);
   }
 
   Future<void> _save() async {
@@ -123,6 +131,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   await _load();
                 },
               ),
+            ),
+          ),
+          const Divider(height: 40),
+          Center(
+            child: Text(
+              _appVersion.isEmpty ? '' : 'J.A.R.V.I.S. Version $_appVersion',
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12),
             ),
           ),
         ],
