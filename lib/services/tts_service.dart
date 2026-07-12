@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_tts/flutter_tts.dart';
 
 /// Wraps text-to-speech playback so JARVIS can talk back, mirroring the
@@ -18,6 +20,26 @@ class TtsService {
     await _ensureInit();
     await _tts.stop();
     await _tts.speak(text);
+  }
+
+  /// Speaks and resolves once playback has actually finished (or was
+  /// stopped/errored), so callers can chain an action — like reopening the
+  /// microphone for the next turn of a call — right after JARVIS stops talking.
+  Future<void> speakAndWait(String text) async {
+    await _ensureInit();
+    await _tts.stop();
+    final completer = Completer<void>();
+    _tts.setCompletionHandler(() {
+      if (!completer.isCompleted) completer.complete();
+    });
+    _tts.setCancelHandler(() {
+      if (!completer.isCompleted) completer.complete();
+    });
+    _tts.setErrorHandler((_) {
+      if (!completer.isCompleted) completer.complete();
+    });
+    await _tts.speak(text);
+    await completer.future;
   }
 
   Future<void> stop() => _tts.stop();
