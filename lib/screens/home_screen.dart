@@ -19,6 +19,7 @@ import '../services/qr_service.dart';
 import '../services/settings_service.dart';
 import '../services/speech_service.dart';
 import '../services/tts_service.dart';
+import '../services/update_service.dart';
 import '../services/weather_service.dart';
 import '../services/whatsapp_service.dart';
 import '../services/wikipedia_service.dart';
@@ -74,6 +75,29 @@ class _HomeScreenState extends State<HomeScreen> {
       ip: IpService(),
     );
     _speech.init();
+    unawaited(_checkForUpdate());
+  }
+
+  Future<void> _checkForUpdate() async {
+    final update = await UpdateService().checkForUpdate();
+    if (update == null || !mounted) return;
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Update verfügbar'),
+        content: Text('Eine neue Version (${update.version}) von JARVIS ist verfügbar.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Später')),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(context);
+              launchUrl(Uri.parse(update.apkUrl), mode: LaunchMode.externalApplication);
+            },
+            child: const Text('Jetzt herunterladen'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override

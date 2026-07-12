@@ -44,12 +44,18 @@ jobs:
 
       - run: flutter pub get
       - run: flutter build web --release --base-href "/${{ github.event.repository.name }}/"
-      - run: flutter build apk --release
+      - run: flutter build apk --release --build-name=1.0.${{ github.run_number }} --build-number=${{ github.run_number }}
 
-      - name: Bundle the Android APK into the website for public download
+      - name: Bundle the Android APK and version manifest into the website
         run: |
           mkdir -p build/web/downloads
           cp build/app/outputs/flutter-apk/app-release.apk build/web/downloads/jarvis-mobile.apk
+          cat > build/web/downloads/version.json <<EOF
+          {
+            "version": "1.0.${{ github.run_number }}",
+            "apkUrl": "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/downloads/jarvis-mobile.apk"
+          }
+          EOF
 
       - uses: actions/configure-pages@v5
         with:
