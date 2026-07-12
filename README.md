@@ -31,6 +31,7 @@ Jeder Push auf `main` baut die App automatisch als Website und veröffentlicht s
 | YouTube abspielen | Öffnet YouTube-Suchergebnisse |
 | QR-Code erzeugen | `qr_flutter`, direkt in der App |
 | IP-Adresse anzeigen | Öffentliche IP via ipify.org |
+| — | Freies KI-Gespräch für alles, was kein fester Befehl ist (siehe unten) |
 
 ## Sprachbefehle (Beispiele)
 
@@ -49,6 +50,7 @@ Jeder Push auf `main` baut die App automatisch als Website und veröffentlicht s
 - „qr code https://example.com"
 - „meine ip"
 - „hilfe" — zeigt die vollständige Befehlsliste
+- alles andere — wird an eine echte KI weitergegeben (siehe „Freies KI-Gespräch einrichten")
 
 Kontakte werden unter **Einstellungen → Kontakte** angelegt, damit „rufe X an" und „whatsapp an X" funktionieren.
 
@@ -60,6 +62,21 @@ Da die App nicht über den Play Store läuft, prüft sie beim Start selbst, ob e
 
 - News: https://newsapi.org (kostenloser Free-Plan)
 - Wetter: https://openweathermap.org/api (kostenloser Free-Plan)
+
+## Freies KI-Gespräch einrichten
+
+Alles, was JARVIS nicht als festen Befehl erkennt (z. B. „wikipedia …“, „wetter …“), wird an eine echte KI weitergegeben, statt einfach „nicht verstanden“ zu antworten. Der API-Schlüssel darf dafür **nicht** in der App selbst liegen (sonst könnte ihn jeder aus der APK/Website extrahieren) — deshalb läuft ein kleiner, kostenloser Proxy-Server dazwischen (`worker/ai-proxy.js`, für [Cloudflare Workers](https://workers.cloudflare.com)).
+
+**Einmalige Einrichtung (kein Terminal nötig, alles über den Browser):**
+
+1. **Anthropic-API-Schlüssel besorgen**: [console.anthropic.com](https://console.anthropic.com) → Account erstellen → **API Keys** → neuen Schlüssel erzeugen (beginnt mit `sk-ant-...`). Dafür ist ein aufgeladenes Guthaben nötig (Kreditkarte hinterlegen, schon wenige Euro reichen für sehr viele Anfragen).
+2. **Cloudflare-Account erstellen**: [dash.cloudflare.com/sign-up](https://dash.cloudflare.com/sign-up) (kostenlos, keine Kreditkarte nötig).
+3. Im Cloudflare-Dashboard: **Workers & Pages → Create → Create Worker** → einen Namen vergeben (z. B. `jarvis-ai`) → **Deploy**.
+4. Auf **Edit code** klicken, den kompletten Inhalt der Datei [`worker/ai-proxy.js`](worker/ai-proxy.js) aus diesem Repo hineinkopieren (vorhandenen Beispielcode überschreiben) → **Deploy**.
+5. Zurück auf der Worker-Übersichtsseite: **Settings → Variables and Secrets → Add** → Name `ANTHROPIC_API_KEY`, Typ **Secret**, Wert = der Schlüssel aus Schritt 1 → **Save**.
+6. Die Worker-URL steht oben auf der Seite (z. B. `https://jarvis-ai.<dein-name>.workers.dev`) — die in der JARVIS-App unter **Einstellungen → „KI-Server-Adresse"** eintragen und speichern.
+
+Danach beantwortet JARVIS beliebige Fragen mit einer echten KI (Claude Haiku), zusätzlich zu den festen Befehlen.
 
 ## Projekt bauen
 
