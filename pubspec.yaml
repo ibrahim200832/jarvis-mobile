@@ -1,0 +1,34 @@
+name: jarvis_mobile
+description: "J.A.R.V.I.S. Sprachassistent für Android und iOS."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.9.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  speech_to_text: ^7.4.0
+  flutter_tts: ^4.2.5
+  http: ^1.6.0
+  url_launcher: ^6.3.2
+  shared_preferences: ^2.5.5
+  geolocator: ^14.0.3
+  geocoding: ^5.0.0
+  qr_flutter: ^4.1.0
+  installed_apps: ^2.1.1
+  permission_handler: ^12.0.3
+  intl: ^0.20.3
+  camera: ^0.12.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
