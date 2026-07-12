@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -214,9 +215,8 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         title: Row(
           children: [
-            CircleAvatar(
-              backgroundColor: colorScheme.primary,
-              child: Icon(Icons.graphic_eq, color: colorScheme.onPrimary),
+            ClipOval(
+              child: SvgPicture.asset('assets/icon/logo.svg', width: 36, height: 36),
             ),
             const SizedBox(width: 12),
             const Column(
