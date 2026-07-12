@@ -2,6 +2,46 @@
 // Keeps the real Anthropic API key on the server, never inside the app.
 // Deployment steps are documented in README.md under "Freies KI-Gespräch".
 
+const TOOLS = [
+  {
+    name: 'call_contact',
+    description:
+      'Ruft einen gespeicherten Kontakt auf dem Handy des Nutzers an. Nur verwenden, wenn der Nutzer klar darum bittet, jemanden anzurufen.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Name des Kontakts, wie er im Adressbuch gespeichert ist' },
+      },
+      required: ['name'],
+    },
+  },
+  {
+    name: 'send_whatsapp',
+    description:
+      'Öffnet WhatsApp mit einer vorausgefüllten Nachricht an einen gespeicherten Kontakt. Nur verwenden, wenn der Nutzer klar darum bittet, eine WhatsApp-Nachricht zu senden.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Name des Kontakts' },
+        message: { type: 'string', description: 'Der Nachrichtentext' },
+      },
+      required: ['name', 'message'],
+    },
+  },
+  {
+    name: 'open_app',
+    description:
+      'Öffnet eine auf dem Handy installierte App. Nur verwenden, wenn der Nutzer klar darum bittet, eine App zu öffnen.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        app_name: { type: 'string', description: 'Name der zu öffnenden App' },
+      },
+      required: ['app_name'],
+    },
+  },
+];
+
 export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') {
@@ -34,7 +74,11 @@ export default {
         max_tokens: 500,
         system:
           'Du bist JARVIS, ein hilfreicher deutschsprachiger Sprachassistent auf dem Handy. ' +
-          'Antworte kurz, natürlich und im Gesprächston, wie ein echtes Gespräch, nicht wie ein Roman.',
+          'Antworte kurz, natürlich und im Gesprächston, wie ein echtes Gespräch, nicht wie ein Roman. ' +
+          'Wenn der Nutzer klar darum bittet, jemanden anzurufen, eine WhatsApp-Nachricht zu senden oder eine ' +
+          'App zu öffnen, nutze das passende Werkzeug dafür, statt es nur zu beschreiben. Nutze Werkzeuge nur ' +
+          'bei einer eindeutigen Bitte, nicht bei vagen Erwähnungen.',
+        tools: TOOLS,
         messages: [{ role: 'user', content: message }],
       }),
     });
@@ -45,8 +89,13 @@ export default {
     }
 
     const data = await anthropicRes.json();
-    const reply = data.content?.[0]?.text ?? 'Ich habe keine Antwort erhalten.';
-    return json({ reply });
+    const textBlock = data.content?.find((b) => b.type === 'text');
+    const toolBlock = data.content?.find((b) => b.type === 'tool_use');
+
+    const reply = textBlock?.text ?? (toolBlock ? 'Mach ich.' : 'Ich habe keine Antwort erhalten.');
+    const action = toolBlock ? { type: toolBlock.name, params: toolBlock.input } : undefined;
+
+    return json({ reply, action });
   },
 };
 
