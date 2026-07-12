@@ -5,6 +5,9 @@ on:
     branches: [main]
   workflow_dispatch: {}
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: macos-latest
@@ -74,3 +77,20 @@ jobs:
         with:
           name: jarvis-mobile-ipa
           path: build/ios/ipa/*.ipa
+
+      - name: Rename IPA to a stable filename
+        run: |
+          mkdir -p build/ios/release
+          cp build/ios/ipa/*.ipa build/ios/release/jarvis-mobile.ipa
+
+      - name: Publish IPA to a stable GitHub Release for OTA install
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ios-latest
+          name: iOS Ad Hoc Build
+          body: >
+            Automatisch aktualisierter Ad-Hoc-Build. Installierbar nur auf Geräten,
+            deren UDID im Provisioning-Profil registriert ist.
+          files: build/ios/release/jarvis-mobile.ipa
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
