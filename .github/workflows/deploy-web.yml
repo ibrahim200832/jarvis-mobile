@@ -25,21 +25,21 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Generate icons and favicon
+      - name: Generate icons and favicon from logo
         run: |
-          sudo apt-get update && sudo apt-get install -y imagemagick
+          sudo apt-get update && sudo apt-get install -y librsvg2-bin
           mkdir -p web/icons
-          convert -size 192x192 xc:"#0891B2" web/icons/Icon-192.png
-          convert -size 512x512 xc:"#0891B2" web/icons/Icon-512.png
-          convert -size 192x192 xc:"#0891B2" web/icons/Icon-maskable-192.png
-          convert -size 512x512 xc:"#0891B2" web/icons/Icon-maskable-512.png
-          convert -size 16x16 xc:"#0891B2" web/favicon.png
+          rsvg-convert -w 192 -h 192 assets/icon/logo.svg -o web/icons/Icon-192.png
+          rsvg-convert -w 512 -h 512 assets/icon/logo.svg -o web/icons/Icon-512.png
+          rsvg-convert -w 192 -h 192 assets/icon/logo_maskable.svg -o web/icons/Icon-maskable-192.png
+          rsvg-convert -w 512 -h 512 assets/icon/logo_maskable.svg -o web/icons/Icon-maskable-512.png
+          rsvg-convert -w 48 -h 48 assets/icon/logo.svg -o web/favicon.png
           declare -A sizes=( [mdpi]=48 [hdpi]=72 [xhdpi]=96 [xxhdpi]=144 [xxxhdpi]=192 )
           for density in "${!sizes[@]}"; do
             size="${sizes[$density]}"
             dir="android/app/src/main/res/mipmap-$density"
             mkdir -p "$dir"
-            convert -size "${size}x${size}" xc:"#0891B2" "$dir/ic_launcher.png"
+            rsvg-convert -w "$size" -h "$size" assets/icon/logo.svg -o "$dir/ic_launcher.png"
           done
 
       - run: flutter pub get

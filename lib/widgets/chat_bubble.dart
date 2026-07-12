@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 class ChatMessage {
   final String text;
@@ -36,15 +37,15 @@ class ChatBubble extends StatelessWidget {
       ),
     );
 
-    final avatar = CircleAvatar(
-      radius: 14,
-      backgroundColor: isUser ? colorScheme.secondaryContainer : colorScheme.primary,
-      child: Icon(
-        isUser ? Icons.person : Icons.graphic_eq,
-        size: 16,
-        color: isUser ? colorScheme.onSecondaryContainer : colorScheme.onPrimary,
-      ),
-    );
+    final avatar = isUser
+        ? CircleAvatar(
+            radius: 14,
+            backgroundColor: colorScheme.secondaryContainer,
+            child: Icon(Icons.person, size: 16, color: colorScheme.onSecondaryContainer),
+          )
+        : ClipOval(
+            child: SvgPicture.asset('assets/icon/logo.svg', width: 28, height: 28),
+          );
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),

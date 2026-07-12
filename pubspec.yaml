@@ -25,6 +25,7 @@ dependencies:
   intl: ^0.20.3
   camera: ^0.12.0
   package_info_plus: ^10.2.0
+  flutter_svg: ^2.3.0
 
 dev_dependencies:
   flutter_test:
@@ -33,3 +34,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/icon/logo.svg
