@@ -29,8 +29,9 @@ class CommandResult {
 /// Parses a single line of recognized speech or typed text and dispatches it
 /// to the matching feature service. This is the mobile equivalent of the big
 /// if/elif command ladder in the original JARVIS.py. Anything that doesn't
-/// match a known command falls through to a real AI (see AiChatService) so
-/// JARVIS can hold a free-form conversation instead of just failing.
+/// match a known command falls through to a real AI (see AiChatService), which
+/// can either reply in free text or trigger a phone action (call, WhatsApp,
+/// open app) itself via tool use.
 class CommandRouter {
   CommandRouter({
     required this.wikipedia,
@@ -82,7 +83,8 @@ Das kann ich für dich tun:
 • "youtube <Suchbegriff>"
 • "qr code <Text>"
 • "meine ip" / "ip adresse"
-• alles andere: frag mich einfach frei, ich antworte mit echter KI
+• alles andere: frag mich einfach frei, ich antworte mit echter KI und kann
+  dabei auch direkt anrufen, WhatsApp schreiben oder Apps öffnen
 ''';
 
   Future<CommandResult> handle(String rawInput) async {
@@ -211,10 +213,48 @@ Das kann ich für dich tun:
       }
 
       final backendUrl = await settings.getAiBackendUrl();
-      final aiReply = await aiChat.ask(backendUrl ?? '', text);
-      return CommandResult(aiReply);
+      final aiResult = await aiChat.ask(backendUrl ?? '', text);
+      return await _handleAiResult(aiResult);
     } catch (e) {
       return CommandResult('Fehler: ${e.toString().replaceFirst('Exception: ', '')}');
+    }
+  }
+
+  Future<CommandResult> _handleAiResult(AiChatResult aiResult) async {
+    final action = aiResult.action;
+    if (action == null) {
+      return CommandResult(aiResult.reply);
+    }
+
+    switch (action.type) {
+      case 'call_contact':
+        final name = (action.params['name'] as String?)?.trim() ?? '';
+        final contact = await contacts.find(name);
+        if (contact == null) {
+          return CommandResult('Ich habe keinen Kontakt namens "$name" gefunden. Füge ihn in den Einstellungen hinzu.');
+        }
+        await call.call(contact.phone);
+        return CommandResult('Rufe ${contact.name} an.');
+
+      case 'send_whatsapp':
+        final name = (action.params['name'] as String?)?.trim() ?? '';
+        final message = (action.params['message'] as String?)?.trim() ?? '';
+        final contact = await contacts.find(name);
+        if (contact == null) {
+          return CommandResult('Ich habe keinen Kontakt namens "$name" gefunden. Füge ihn in den Einstellungen hinzu.');
+        }
+        await whatsapp.sendMessage(phone: contact.phone, message: message);
+        return CommandResult('Öffne WhatsApp für ${contact.name}.');
+
+      case 'open_app':
+        final appName = (action.params['app_name'] as String?)?.trim() ?? '';
+        final app = await appLauncher.findByName(appName);
+        if (app == null) return CommandResult('Ich konnte die App "$appName" nicht finden.');
+        await appLauncher.open(app.packageName);
+        return CommandResult('Öffne ${app.name}.');
+
+      default:
+        return CommandResult(aiResult.reply);
     }
   }
 
