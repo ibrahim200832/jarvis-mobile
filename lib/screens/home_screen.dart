@@ -1,8 +1,10 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../core/command_router.dart';
 import '../services/app_launcher_service.dart';
@@ -42,7 +44,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   late final CommandRouter _router;
   final List<ChatMessage> _messages = [
-    ChatMessage('Hallo! Ich bin JARVIS. Sag "Hilfe" für eine Liste meiner Befehle.', fromUser: false),
+    ChatMessage(
+      kIsWeb
+          ? 'Hallo! Ich bin JARVIS. Sag "Hilfe" für eine Liste meiner Befehle. Tipp: Über das Android-Symbol oben rechts kannst du die App als APK herunterladen.'
+          : 'Hallo! Ich bin JARVIS. Sag "Hilfe" für eine Liste meiner Befehle.',
+      fromUser: false,
+    ),
   ];
   bool _listening = false;
   String _partialText = '';
@@ -199,6 +206,12 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
         actions: [
+          if (kIsWeb)
+            IconButton(
+              icon: const Icon(Icons.android),
+              tooltip: 'Für Android herunterladen',
+              onPressed: () => launchUrl(Uri.base.resolve('downloads/jarvis-mobile.apk')),
+            ),
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () => Navigator.of(context).push(
