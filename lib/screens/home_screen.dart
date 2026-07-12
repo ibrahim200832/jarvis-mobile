@@ -103,11 +103,24 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _downloadForIOS() {
-    final manifestUrl = Uri.base.resolve('downloads/manifest.plist').toString();
-    final installUrl =
-        'itms-services://?action=download-manifest&url=${Uri.encodeComponent(manifestUrl)}';
-    launchUrl(Uri.parse(installUrl), mode: LaunchMode.externalApplication);
+  void _showIOSInstallDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Auf dem iPhone installieren'),
+        content: const Text(
+          'JARVIS lässt sich als App auf deinem Home-Bildschirm installieren:\n\n'
+          '1. Öffne diese Seite in Safari\n'
+          '2. Tippe unten auf das Teilen-Symbol (Quadrat mit Pfeil nach oben)\n'
+          '3. Wähle „Zum Home-Bildschirm"\n'
+          '4. Bestätige mit „Hinzufügen"\n\n'
+          'Danach startet JARVIS wie eine normale App, mit eigenem Symbol.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Verstanden')),
+        ],
+      ),
+    );
   }
 
   @override
@@ -247,8 +260,8 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             IconButton(
               icon: const Icon(Icons.apple),
-              tooltip: 'Für iOS installieren (nur freigegebene Testgeräte)',
-              onPressed: _downloadForIOS,
+              tooltip: 'Für iPhone installieren',
+              onPressed: _showIOSInstallDialog,
             ),
           ],
           IconButton(
