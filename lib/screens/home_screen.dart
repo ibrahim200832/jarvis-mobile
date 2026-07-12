@@ -55,6 +55,7 @@ class _HomeScreenState extends State<HomeScreen> {
     ),
   ];
   bool _listening = false;
+  bool _callActive = false;
   String _partialText = '';
 
   @override
@@ -167,6 +168,23 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Future<void> _toggleCall() async {
+    if (_callActive) {
+      setState(() => _callActive = false);
+      await _speech.stop();
+      await _tts.stop();
+      if (_listening) setState(() => _listening = false);
+      return;
+    }
+    final micStatus = await Permission.microphone.request();
+    if (!micStatus.isGranted) {
+      _showSnack('Mikrofon-Berechtigung wird benötigt.');
+      return;
+    }
+    setState(() => _callActive = true);
+    await _toggleListening();
+  }
+
   Future<void> _submit(String text) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
@@ -184,7 +202,15 @@ class _HomeScreenState extends State<HomeScreen> {
       _messages.add(ChatMessage(result.reply, fromUser: false));
     });
     _scrollToBottom();
-    unawaited(_tts.speak(result.reply));
+
+    if (_callActive) {
+      await _tts.speakAndWait(result.reply);
+      if (_callActive && mounted) {
+        await _toggleListening();
+      }
+    } else {
+      unawaited(_tts.speak(result.reply));
+    }
 
     if (result.openCamera) {
       final status = await Permission.camera.request();
@@ -241,12 +267,15 @@ class _HomeScreenState extends State<HomeScreen> {
               child: SvgPicture.asset('assets/icon/logo.svg', width: 36, height: 36),
             ),
             const SizedBox(width: 12),
-            const Column(
+            Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text('J.A.R.V.I.S.', style: TextStyle(fontWeight: FontWeight.bold)),
-                Text('Dein persönlicher Assistent', style: TextStyle(fontSize: 12)),
+                const Text('J.A.R.V.I.S.', style: TextStyle(fontWeight: FontWeight.bold)),
+                Text(
+                  _callActive ? 'Gespräch läuft…' : 'Dein persönlicher Assistent',
+                  style: TextStyle(fontSize: 12, color: _callActive ? colorScheme.primary : null),
+                ),
               ],
             ),
           ],
@@ -300,6 +329,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   padding: const EdgeInsets.all(8),
                   child: Row(
                     children: [
+                      IconButton(
+                        iconSize: 30,
+                        icon: Icon(_callActive ? Icons.call_end : Icons.call),
+                        color: _callActive ? Colors.red : null,
+                        tooltip: _callActive ? 'Gespräch beenden' : 'Gespräch mit JARVIS starten',
+                        onPressed: _toggleCall,
+                      ),
                       IconButton(
                         iconSize: 32,
                         icon: Icon(_listening ? Icons.mic : Icons.mic_none),
