@@ -14,6 +14,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Debug secret lengths (values are never printed, only character counts)
+        env:
+          CERT_BASE64: ${{ secrets.IOS_DIST_CERT_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
+          PROFILE_BASE64: ${{ secrets.IOS_PROVISION_PROFILE_BASE64 }}
+          TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+        run: |
+          echo "IOS_DIST_CERT_BASE64 length: ${#CERT_BASE64}"
+          echo "IOS_DIST_CERT_PASSWORD length: ${#CERT_PASSWORD}"
+          echo "IOS_PROVISION_PROFILE_BASE64 length: ${#PROFILE_BASE64}"
+          echo "IOS_TEAM_ID length: ${#TEAM_ID}"
+          if [ -z "$CERT_BASE64" ]; then
+            echo "::error::IOS_DIST_CERT_BASE64 is empty or not set in this repository's Actions secrets."
+          fi
+          if [ -z "$PROFILE_BASE64" ]; then
+            echo "::error::IOS_PROVISION_PROFILE_BASE64 is empty or not set in this repository's Actions secrets."
+          fi
+
       - uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
