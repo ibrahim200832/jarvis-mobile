@@ -18,6 +18,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _newsKeyCtrl = TextEditingController();
   final _weatherKeyCtrl = TextEditingController();
   final _nameCtrl = TextEditingController();
+  final _aiBackendCtrl = TextEditingController();
   List<Contact> _contacts = [];
   String _appVersion = '';
 
@@ -32,6 +33,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _newsKeyCtrl.text = await widget.settings.getNewsApiKey() ?? '';
     _weatherKeyCtrl.text = await widget.settings.getWeatherApiKey() ?? '';
     _nameCtrl.text = await widget.settings.getUserName();
+    _aiBackendCtrl.text = await widget.settings.getAiBackendUrl() ?? '';
     _contacts = await widget.contacts.all();
     if (mounted) setState(() {});
   }
@@ -45,6 +47,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await widget.settings.setNewsApiKey(_newsKeyCtrl.text.trim());
     await widget.settings.setWeatherApiKey(_weatherKeyCtrl.text.trim());
     await widget.settings.setUserName(_nameCtrl.text.trim());
+    await widget.settings.setAiBackendUrl(_aiBackendCtrl.text.trim());
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gespeichert.')));
   }
@@ -107,6 +110,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
             decoration: const InputDecoration(
               labelText: 'OpenWeatherMap-Schlüssel',
               helperText: 'Kostenlos unter openweathermap.org',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _aiBackendCtrl,
+            decoration: const InputDecoration(
+              labelText: 'KI-Server-Adresse (für freie Gespräche)',
+              helperText: 'Die Worker-URL aus der Cloudflare-Bereitstellung, siehe README',
               border: OutlineInputBorder(),
             ),
           ),
