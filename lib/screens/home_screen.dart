@@ -48,7 +48,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final List<ChatMessage> _messages = [
     ChatMessage(
       kIsWeb
-          ? 'Hallo! Ich bin JARVIS. Sag "Hilfe" für eine Liste meiner Befehle. Tipp: Über das Android-Symbol oben rechts kannst du die App als APK herunterladen.'
+          ? 'Hallo! Ich bin JARVIS. Sag "Hilfe" für eine Liste meiner Befehle. Tipp: Über die Symbole oben rechts kannst du die App für Android (APK) oder iOS herunterladen.'
           : 'Hallo! Ich bin JARVIS. Sag "Hilfe" für eine Liste meiner Befehle.',
       fromUser: false,
     ),
@@ -99,6 +99,13 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
     );
+  }
+
+  void _downloadForIOS() {
+    final manifestUrl = Uri.base.resolve('downloads/manifest.plist').toString();
+    final installUrl =
+        'itms-services://?action=download-manifest&url=${Uri.encodeComponent(manifestUrl)}';
+    launchUrl(Uri.parse(installUrl), mode: LaunchMode.externalApplication);
   }
 
   @override
@@ -230,12 +237,18 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
         actions: [
-          if (kIsWeb)
+          if (kIsWeb) ...[
             IconButton(
               icon: const Icon(Icons.android),
-              tooltip: 'Für Android herunterladen',
+              tooltip: 'Für Android herunterladen (APK)',
               onPressed: () => launchUrl(Uri.base.resolve('downloads/jarvis-mobile.apk')),
             ),
+            IconButton(
+              icon: const Icon(Icons.apple),
+              tooltip: 'Für iOS installieren (nur freigegebene Testgeräte)',
+              onPressed: _downloadForIOS,
+            ),
+          ],
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () => Navigator.of(context).push(
