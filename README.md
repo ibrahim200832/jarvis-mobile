@@ -32,6 +32,8 @@ Jeder Push auf `main` baut die App automatisch als Website und veröffentlicht s
 | QR-Code erzeugen | `qr_flutter`, direkt in der App |
 | IP-Adresse anzeigen | Öffentliche IP via ipify.org |
 | — | Freies KI-Gespräch für alles, was kein fester Befehl ist (siehe unten) |
+| — | Anruf-Modus: durchgehendes Sprachgespräch statt Einzelbefehle (siehe unten) |
+| — | Die KI kann im Gespräch selbst Anrufe/WhatsApp/Apps auslösen (Tool-Use, siehe unten) |
 
 ## Sprachbefehle (Beispiele)
 
@@ -54,6 +56,10 @@ Jeder Push auf `main` baut die App automatisch als Website und veröffentlicht s
 
 Kontakte werden unter **Einstellungen → Kontakte** angelegt, damit „rufe X an" und „whatsapp an X" funktionieren.
 
+## Anruf-Modus
+
+Statt jede Nachricht einzeln per Mikrofon-Knopf aufzunehmen, startet das Telefonhörer-Symbol neben dem Mikrofon ein durchgehendes Gespräch: JARVIS hört zu, antwortet per Sprache, und hört danach automatisch wieder zu — wie ein Telefonat. Auf „Auflegen" tippen beendet das Gespräch wieder.
+
 ## Automatische Update-Benachrichtigung (Android)
 
 Da die App nicht über den Play Store läuft, prüft sie beim Start selbst, ob eine neuere Version auf der Website liegt (`downloads/version.json`, wird bei jedem `Deploy Web`-Lauf automatisch mit hochgezählt). Ist eine neuere Version verfügbar, erscheint ein Dialog mit „Jetzt herunterladen“ — das lädt die neue APK über den Browser, danach einmal antippen zum Installieren (wie beim ersten Sideload). Web und iOS zeigen den Dialog nicht, da dort Updates automatisch beim Neuladen der Seite bzw. über TestFlight/App Store passieren würden.
@@ -65,7 +71,9 @@ Da die App nicht über den Play Store läuft, prüft sie beim Start selbst, ob e
 
 ## Freies KI-Gespräch einrichten
 
-Alles, was JARVIS nicht als festen Befehl erkennt (z. B. „wikipedia …“, „wetter …“), wird an eine echte KI weitergegeben, statt einfach „nicht verstanden“ zu antworten. Der API-Schlüssel darf dafür **nicht** in der App selbst liegen (sonst könnte ihn jeder aus der APK/Website extrahieren) — deshalb läuft ein kleiner, kostenloser Proxy-Server dazwischen (`worker/ai-proxy.js`, für [Cloudflare Workers](https://workers.cloudflare.com)).
+Alles, was JARVIS nicht als festen Befehl erkennt (z. B. „wikipedia …“, „wetter …“), wird an eine echte KI weitergegeben, statt einfach „nicht verstanden“ zu antworten. Die KI kann dabei auch direkt handeln: bittet man sie im Gespräch klar darum, jemanden anzurufen, eine WhatsApp-Nachricht zu senden oder eine App zu öffnen, löst sie das selbst aus (Anthropic Tool-Use), statt es nur zu beschreiben.
+
+Der API-Schlüssel darf dafür **nicht** in der App selbst liegen (sonst könnte ihn jeder aus der APK/Website extrahieren) — deshalb läuft ein kleiner, kostenloser Proxy-Server dazwischen (`worker/ai-proxy.js`, für [Cloudflare Workers](https://workers.cloudflare.com)).
 
 **Einmalige Einrichtung (kein Terminal nötig, alles über den Browser):**
 
@@ -75,6 +83,8 @@ Alles, was JARVIS nicht als festen Befehl erkennt (z. B. „wikipedia …“, �
 4. Auf **Edit code** klicken, den kompletten Inhalt der Datei [`worker/ai-proxy.js`](worker/ai-proxy.js) aus diesem Repo hineinkopieren (vorhandenen Beispielcode überschreiben) → **Deploy**.
 5. Zurück auf der Worker-Übersichtsseite: **Settings → Variables and Secrets → Add** → Name `ANTHROPIC_API_KEY`, Typ **Secret**, Wert = der Schlüssel aus Schritt 1 → **Save**.
 6. Die Worker-URL steht oben auf der Seite (z. B. `https://jarvis-ai.<dein-name>.workers.dev`) — die in der JARVIS-App unter **Einstellungen → „KI-Server-Adresse"** eintragen und speichern.
+
+Wird `worker/ai-proxy.js` später im Repo geändert (z. B. um neue Tools), muss der aktualisierte Code auch im bestehenden Worker per **Edit code** eingefügt und neu deployt werden — das passiert nicht automatisch.
 
 Danach beantwortet JARVIS beliebige Fragen mit einer echten KI (Claude Haiku), zusätzlich zu den festen Befehlen.
 
@@ -96,9 +106,13 @@ Drei GitHub Actions laufen automatisch bei jedem Push auf `main`:
 
 **Damit GitHub Pages funktioniert**, muss einmalig in den Repo-Einstellungen aktiviert werden: **Settings → Pages → Build and deployment → Source: „GitHub Actions“** (die Action versucht das automatisch zu setzen, ein manueller Check schadet aber nicht).
 
-## iOS Ad-Hoc-Signing einrichten
+## iPhone-Installation ohne Zertifikat (empfohlen)
 
-Ein iPhone installiert grundsätzlich keine Apps ohne Apple-Signatur — dafür braucht es einmalig vier Geheimnisse als **GitHub Actions Secrets** (Repo → Settings → Secrets and variables → Actions → New repository secret). Diese Zertifikate/Schlüssel niemals im Chat oder Code teilen, nur direkt auf GitHub eintragen:
+Der einfachste Weg für iPhone-Nutzer: Auf der Website den Apple-Button antippen — er zeigt eine Anleitung, JARVIS über Safari (Teilen → „Zum Home-Bildschirm") als Web-App zu installieren. Das funktioniert sofort, ganz ohne Apple-Entwicklerkonto, Zertifikat oder Warten auf einen Build.
+
+## iOS Ad-Hoc-Signing einrichten (optional, native App)
+
+Wer stattdessen eine echte native iOS-App (`.ipa`) bauen will, braucht einmalig vier Geheimnisse als **GitHub Actions Secrets** (Repo → Settings → Secrets and variables → Actions → New repository secret). Diese Zertifikate/Schlüssel niemals im Chat oder Code teilen, nur direkt auf GitHub eintragen:
 
 1. **App ID registrieren** (falls noch nicht geschehen): [developer.apple.com/account/resources/identifiers](https://developer.apple.com/account/resources/identifiers) → „+“ → App IDs → Bundle ID exakt `com.jarvis.mobile.jarvisMobile` eintragen.
 2. **Geräte registrieren**: Devices → „+“ → UDID jedes iPhones eintragen, auf dem die App laufen soll (Ad Hoc erlaubt max. 100 Geräte/Jahr). UDID findet man z. B. über Xcode → Window → Devices and Simulators, wenn das iPhone angeschlossen ist.
@@ -125,8 +139,9 @@ Mikrofon, Kamera, Standort werden zur Laufzeit angefragt. `QUERY_ALL_PACKAGES` e
 
 ```
 lib/
-  core/command_router.dart   Erkennt Befehle aus Text/Sprache und ruft die passenden Services
-  services/                  Ein Service pro Fähigkeit
+  core/command_router.dart   Erkennt Befehle aus Text/Sprache, ruft Services auf oder leitet an die KI weiter
+  services/                  Ein Service pro Fähigkeit (inkl. ai_chat_service.dart für das KI-Gespräch)
   screens/                   Home-Chat-Screen, Kamera-Screen, Einstellungen
   widgets/chat_bubble.dart   Chat-Bubble-Widget
+worker/ai-proxy.js           Cloudflare-Worker-Proxy für das freie KI-Gespräch (siehe oben)
 ```
