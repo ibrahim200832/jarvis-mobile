@@ -64,14 +64,37 @@ flutter pub get
 flutter run                       # lokal starten (Android/iOS/Web)
 flutter build apk --release       # Android-APK
 flutter build web --release       # Browser-Version
+flutter build ipa --release       # iOS (nur auf macOS, braucht Signing s.u.)
 ```
 
-Zwei GitHub Actions laufen automatisch bei jedem Push auf `main`:
+Drei GitHub Actions laufen automatisch bei jedem Push auf `main`:
 
-- `.github/workflows/build-apk.yml` baut eine Release-APK (Download über Reiter „Actions“ → Lauf auswählen → „Artifacts“).
+- `.github/workflows/build-apk.yml` baut eine Android-Release-APK (Download über Reiter „Actions“ → Lauf auswählen → „Artifacts“).
 - `.github/workflows/deploy-web.yml` baut die Web-Version und veröffentlicht sie über GitHub Pages.
+- `.github/workflows/build-ios.yml` baut eine signierte Ad-Hoc-`.ipa` für iOS (braucht einmalige Einrichtung, siehe unten).
 
 **Damit GitHub Pages funktioniert**, muss einmalig in den Repo-Einstellungen aktiviert werden: **Settings → Pages → Build and deployment → Source: „GitHub Actions“** (die Action versucht das automatisch zu setzen, ein manueller Check schadet aber nicht).
+
+## iOS Ad-Hoc-Signing einrichten
+
+Ein iPhone installiert grundsätzlich keine Apps ohne Apple-Signatur — dafür braucht es einmalig vier Geheimnisse als **GitHub Actions Secrets** (Repo → Settings → Secrets and variables → Actions → New repository secret). Diese Zertifikate/Schlüssel niemals im Chat oder Code teilen, nur direkt auf GitHub eintragen:
+
+1. **App ID registrieren** (falls noch nicht geschehen): [developer.apple.com/account/resources/identifiers](https://developer.apple.com/account/resources/identifiers) → „+“ → App IDs → Bundle ID exakt `com.jarvis.mobile.jarvisMobile` eintragen.
+2. **Geräte registrieren**: Devices → „+“ → UDID jedes iPhones eintragen, auf dem die App laufen soll (Ad Hoc erlaubt max. 100 Geräte/Jahr). UDID findet man z. B. über Xcode → Window → Devices and Simulators, wenn das iPhone angeschlossen ist.
+3. **Distribution-Zertifikat erstellen**: In Xcode (Settings → Accounts → Manage Certificates → „+“ → Apple Distribution) oder über das Developer-Portal. Danach in Keychain Access das Zertifikat **inkl. privatem Schlüssel** als `.p12`-Datei exportieren (mit einem selbstgewählten Passwort).
+4. **Ad-Hoc-Provisioning-Profil erstellen**: Profiles → „+“ → „Ad Hoc“ → die App ID, das Zertifikat aus Schritt 3 und die Geräte aus Schritt 2 auswählen → herunterladen (`.mobileprovision`).
+5. **Base64-kodieren** (im Terminal):
+   ```bash
+   base64 -i DistCert.p12 | pbcopy        # → Secret IOS_DIST_CERT_BASE64
+   base64 -i AdHocProfile.mobileprovision | pbcopy   # → Secret IOS_PROVISION_PROFILE_BASE64
+   ```
+6. **Vier Secrets im Repo anlegen**:
+   - `IOS_DIST_CERT_BASE64` — Inhalt aus Schritt 5 (Zertifikat)
+   - `IOS_DIST_CERT_PASSWORD` — das Passwort aus Schritt 3
+   - `IOS_PROVISION_PROFILE_BASE64` — Inhalt aus Schritt 5 (Profil)
+   - `IOS_TEAM_ID` — deine 10-stellige Team-ID (developer.apple.com/account → Membership)
+7. Push auf `main` (oder „Run workflow“ im Actions-Tab) startet den Build. Die fertige `.ipa` liegt danach als Artifact `jarvis-mobile-ipa` bereit.
+8. **Installation aufs iPhone**: Eine `.ipa` lässt sich nicht wie eine APK antippen. Nutze z. B. [AltStore](https://altstore.io), [Sideloadly](https://sideloadly.io) oder Apple Configurator, um sie auf ein registriertes Gerät zu übertragen.
 
 ## Berechtigungen
 
