@@ -190,6 +190,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     setState(() => _callActive = true);
+    _showSnack('Gespräch gestartet — rede einfach ganz normal mit JARVIS.');
     await _startListening();
   }
 
