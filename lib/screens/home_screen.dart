@@ -56,6 +56,7 @@ class _HomeScreenState extends State<HomeScreen> {
   ];
   bool _listening = false;
   bool _callActive = false;
+  bool _processing = false;
   String _partialText = '';
 
   @override
@@ -143,17 +144,10 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  Future<void> _toggleListening() async {
-    if (_listening) {
-      await _speech.stop();
-      setState(() => _listening = false);
-      return;
-    }
-    final micStatus = await Permission.microphone.request();
-    if (!micStatus.isGranted) {
-      _showSnack('Mikrofon-Berechtigung wird benötigt.');
-      return;
-    }
+  /// Starts the recognizer directly, without re-checking the microphone
+  /// permission — used when we already know it's granted (mid-call), so
+  /// each turn doesn't pay for an extra platform-channel round trip.
+  Future<void> _startListening() async {
     setState(() {
       _listening = true;
       _partialText = '';
@@ -166,6 +160,20 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       },
     );
+  }
+
+  Future<void> _toggleListening() async {
+    if (_listening) {
+      await _speech.stop();
+      setState(() => _listening = false);
+      return;
+    }
+    final micStatus = await Permission.microphone.request();
+    if (!micStatus.isGranted) {
+      _showSnack('Mikrofon-Berechtigung wird benötigt.');
+      return;
+    }
+    await _startListening();
   }
 
   Future<void> _toggleCall() async {
@@ -182,7 +190,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     setState(() => _callActive = true);
-    await _toggleListening();
+    await _startListening();
   }
 
   Future<void> _submit(String text) async {
@@ -193,12 +201,14 @@ class _HomeScreenState extends State<HomeScreen> {
       _listening = false;
       _partialText = '';
       _textCtrl.clear();
+      _processing = true;
     });
     _scrollToBottom();
 
     final result = await _router.handle(trimmed);
 
     setState(() {
+      _processing = false;
       _messages.add(ChatMessage(result.reply, fromUser: false));
     });
     _scrollToBottom();
@@ -206,7 +216,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_callActive) {
       await _tts.speakAndWait(result.reply);
       if (_callActive && mounted) {
-        await _toggleListening();
+        await _startListening();
       }
     } else {
       unawaited(_tts.speak(result.reply));
@@ -321,6 +331,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Text(
                     _partialText.isEmpty ? 'Ich höre zu…' : _partialText,
+                    style: TextStyle(color: colorScheme.primary),
+                  ),
+                )
+              else if (_processing)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Text(
+                    'JARVIS denkt nach…',
                     style: TextStyle(color: colorScheme.primary),
                   ),
                 ),
