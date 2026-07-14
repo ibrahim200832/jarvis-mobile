@@ -267,17 +267,31 @@ Das kann ich für dich tun:
     return keywords.any((k) => lower.contains(k));
   }
 
-  /// Finds the first matching prefix keyword and returns the remaining text
-  /// after it (trimmed), or null if none of the prefixes match.
+  static final _wordCharPattern = RegExp(r'[a-zA-ZäöüÄÖÜß0-9]');
+
+  bool _isWordChar(String ch) => _wordCharPattern.hasMatch(ch);
+
+  /// Finds the first *word-boundary* match of any prefix keyword and returns
+  /// the remaining text after it (trimmed), or null if none match. Plain
+  /// substring search would let e.g. "ruf" misfire inside "anrufen" and chop
+  /// the target text at the wrong point, so a match only counts if it isn't
+  /// glued to another letter/digit on its left side.
   String? _extractAfter(String lower, String original, List<String> prefixes) {
     for (final prefix in prefixes) {
-      final idx = lower.indexOf(prefix);
-      if (idx == -1) continue;
-      final start = idx + prefix.length;
-      if (start > original.length) continue;
-      final rest = original.substring(start).trim();
-      if (rest.isEmpty) continue;
-      return rest;
+      var searchStart = 0;
+      while (true) {
+        final idx = lower.indexOf(prefix, searchStart);
+        if (idx == -1) break;
+        final boundaryOk = idx == 0 || !_isWordChar(lower[idx - 1]);
+        if (boundaryOk) {
+          final start = idx + prefix.length;
+          if (start <= original.length) {
+            final rest = original.substring(start).trim();
+            if (rest.isNotEmpty) return rest;
+          }
+        }
+        searchStart = idx + 1;
+      }
     }
     return null;
   }
