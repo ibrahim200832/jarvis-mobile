@@ -4,6 +4,7 @@ import '../services/ai_chat_service.dart';
 import '../services/app_launcher_service.dart';
 import '../services/call_service.dart';
 import '../services/contacts_service.dart';
+import '../services/device_info_service.dart';
 import '../services/email_service.dart';
 import '../services/ip_service.dart';
 import '../services/joke_service.dart';
@@ -49,6 +50,7 @@ class CommandRouter {
     required this.settings,
     required this.ip,
     required this.aiChat,
+    required this.deviceInfo,
   });
 
   final WikipediaService wikipedia;
@@ -66,6 +68,7 @@ class CommandRouter {
   final SettingsService settings;
   final IpService ip;
   final AiChatService aiChat;
+  final DeviceInfoService deviceInfo;
 
   static const helpText = '''
 Das kann ich für dich tun:
@@ -83,6 +86,7 @@ Das kann ich für dich tun:
 • "youtube <Suchbegriff>"
 • "qr code <Text>"
 • "meine ip" / "ip adresse"
+• "akkustand" / "wie ist der akku"
 • alles andere: frag mich einfach frei, ich antworte mit echter KI und kann
   dabei auch direkt anrufen, WhatsApp schreiben oder Apps öffnen
 ''';
@@ -210,6 +214,15 @@ Das kann ich für dich tun:
       if (_matchesAny(lower, ['meine ip', 'ip adresse', 'ip-adresse', 'my ip'])) {
         final address = await ip.publicIp();
         return CommandResult('Deine öffentliche IP-Adresse lautet $address.');
+      }
+
+      if (_matchesAny(lower, ['akkustand', 'akku', 'batterie', 'battery'])) {
+        final level = await deviceInfo.batteryLevel();
+        return CommandResult(
+          level == null
+              ? 'Ich konnte den Akkustand gerade nicht auslesen.'
+              : 'Dein Akku ist bei $level Prozent.',
+        );
       }
 
       final backendUrl = await settings.getAiBackendUrl();
