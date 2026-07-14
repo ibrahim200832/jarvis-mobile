@@ -12,6 +12,7 @@ import '../services/ai_chat_service.dart';
 import '../services/app_launcher_service.dart';
 import '../services/call_service.dart';
 import '../services/contacts_service.dart';
+import '../services/device_info_service.dart';
 import '../services/email_service.dart';
 import '../services/ip_service.dart';
 import '../services/joke_service.dart';
@@ -78,6 +79,7 @@ class _HomeScreenState extends State<HomeScreen> {
       settings: _settings,
       ip: IpService(),
       aiChat: AiChatService(),
+      deviceInfo: DeviceInfoService(),
     );
     _speech.init();
     unawaited(_checkForUpdate());
