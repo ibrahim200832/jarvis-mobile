@@ -31,6 +31,7 @@ Jeder Push auf `main` baut die App automatisch als Website und veröffentlicht s
 | YouTube abspielen | Öffnet YouTube-Suchergebnisse |
 | QR-Code erzeugen | `qr_flutter`, direkt in der App |
 | IP-Adresse anzeigen | Öffentliche IP via ipify.org |
+| Akkustand | „akkustand" fragt den aktuellen Akku-Prozentwert ab (`battery_plus`) |
 | — | Freies KI-Gespräch für alles, was kein fester Befehl ist (siehe unten) |
 | — | Anruf-Modus: durchgehendes Sprachgespräch statt Einzelbefehle (siehe unten) |
 | — | Die KI kann im Gespräch selbst Anrufe/WhatsApp/Apps auslösen (Tool-Use, siehe unten) |
@@ -51,6 +52,7 @@ Jeder Push auf `main` baut die App automatisch als Website und veröffentlicht s
 - „youtube lofi hip hop"
 - „qr code https://example.com"
 - „meine ip"
+- „akkustand" / „wie ist der akku"
 - „hilfe" — zeigt die vollständige Befehlsliste
 - alles andere — wird an eine echte KI weitergegeben (siehe „Freies KI-Gespräch einrichten")
 
@@ -71,22 +73,24 @@ Da die App nicht über den Play Store läuft, prüft sie beim Start selbst, ob e
 
 ## Freies KI-Gespräch einrichten
 
-Alles, was JARVIS nicht als festen Befehl erkennt (z. B. „wikipedia …“, „wetter …“), wird an eine echte KI weitergegeben, statt einfach „nicht verstanden“ zu antworten. Die KI kann dabei auch direkt handeln: bittet man sie im Gespräch klar darum, jemanden anzurufen, eine WhatsApp-Nachricht zu senden oder eine App zu öffnen, löst sie das selbst aus (Anthropic Tool-Use), statt es nur zu beschreiben.
+Alles, was JARVIS nicht als festen Befehl erkennt (z. B. „wikipedia …“, „wetter …“), wird an eine echte KI weitergegeben, statt einfach „nicht verstanden“ zu antworten. Die KI kann dabei auch direkt handeln: bittet man sie im Gespräch klar darum, jemanden anzurufen, eine WhatsApp-Nachricht zu senden oder eine App zu öffnen, löst sie das selbst aus (Function-Calling), statt es nur zu beschreiben.
 
 Der API-Schlüssel darf dafür **nicht** in der App selbst liegen (sonst könnte ihn jeder aus der APK/Website extrahieren) — deshalb läuft ein kleiner, kostenloser Proxy-Server dazwischen (`worker/ai-proxy.js`, für [Cloudflare Workers](https://workers.cloudflare.com)).
 
+Als KI kommt **Google Gemini** zum Einsatz, weil der kostenlose Plan ganz ohne Kreditkarte funktioniert (anders als bei den meisten anderen KI-Anbietern).
+
 **Einmalige Einrichtung (kein Terminal nötig, alles über den Browser):**
 
-1. **Anthropic-API-Schlüssel besorgen**: [console.anthropic.com](https://console.anthropic.com) → Account erstellen → **API Keys** → neuen Schlüssel erzeugen (beginnt mit `sk-ant-...`). Dafür ist ein aufgeladenes Guthaben nötig (Kreditkarte hinterlegen, schon wenige Euro reichen für sehr viele Anfragen).
+1. **Gemini-API-Schlüssel besorgen**: [aistudio.google.com/apikey](https://aistudio.google.com/apikey) → mit einem Google-Konto anmelden → **Create API key**. Kostenlos, es wird keine Kreditkarte verlangt.
 2. **Cloudflare-Account erstellen**: [dash.cloudflare.com/sign-up](https://dash.cloudflare.com/sign-up) (kostenlos, keine Kreditkarte nötig).
 3. Im Cloudflare-Dashboard: **Workers & Pages → Create → Create Worker** → einen Namen vergeben (z. B. `jarvis-ai`) → **Deploy**.
 4. Auf **Edit code** klicken, den kompletten Inhalt der Datei [`worker/ai-proxy.js`](worker/ai-proxy.js) aus diesem Repo hineinkopieren (vorhandenen Beispielcode überschreiben) → **Deploy**.
-5. Zurück auf der Worker-Übersichtsseite: **Settings → Variables and Secrets → Add** → Name `ANTHROPIC_API_KEY`, Typ **Secret**, Wert = der Schlüssel aus Schritt 1 → **Save**.
+5. Zurück auf der Worker-Übersichtsseite: **Settings → Variables and Secrets → Add** → Name `GEMINI_API_KEY`, Typ **Secret**, Wert = der Schlüssel aus Schritt 1 → **Save**.
 6. Die Worker-URL steht oben auf der Seite (z. B. `https://jarvis-ai.<dein-name>.workers.dev`) — die in der JARVIS-App unter **Einstellungen → „KI-Server-Adresse"** eintragen und speichern.
 
 Wird `worker/ai-proxy.js` später im Repo geändert (z. B. um neue Tools), muss der aktualisierte Code auch im bestehenden Worker per **Edit code** eingefügt und neu deployt werden — das passiert nicht automatisch.
 
-Danach beantwortet JARVIS beliebige Fragen mit einer echten KI (Claude Haiku), zusätzlich zu den festen Befehlen.
+Danach beantwortet JARVIS beliebige Fragen mit einer echten KI (Gemini), zusätzlich zu den festen Befehlen.
 
 ## Projekt bauen
 
