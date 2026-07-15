@@ -1,16 +1,17 @@
 // JARVIS AI proxy — runs on Cloudflare Workers.
-// Keeps the real Anthropic API key on the server, never inside the app.
-// Deployment steps are documented in README.md under "Freies KI-Gespräch".
+// Keeps the real Gemini API key on the server, never inside the app.
+// Google AI Studio gives a free API key without a credit card — see
+// README.md under "Freies KI-Gespräch einrichten".
 
 const TOOLS = [
   {
     name: 'call_contact',
     description:
       'Ruft einen gespeicherten Kontakt auf dem Handy des Nutzers an. Nur verwenden, wenn der Nutzer klar darum bittet, jemanden anzurufen.',
-    input_schema: {
-      type: 'object',
+    parameters: {
+      type: 'OBJECT',
       properties: {
-        name: { type: 'string', description: 'Name des Kontakts, wie er im Adressbuch gespeichert ist' },
+        name: { type: 'STRING', description: 'Name des Kontakts, wie er im Adressbuch gespeichert ist' },
       },
       required: ['name'],
     },
@@ -19,11 +20,11 @@ const TOOLS = [
     name: 'send_whatsapp',
     description:
       'Öffnet WhatsApp mit einer vorausgefüllten Nachricht an einen gespeicherten Kontakt. Nur verwenden, wenn der Nutzer klar darum bittet, eine WhatsApp-Nachricht zu senden.',
-    input_schema: {
-      type: 'object',
+    parameters: {
+      type: 'OBJECT',
       properties: {
-        name: { type: 'string', description: 'Name des Kontakts' },
-        message: { type: 'string', description: 'Der Nachrichtentext' },
+        name: { type: 'STRING', description: 'Name des Kontakts' },
+        message: { type: 'STRING', description: 'Der Nachrichtentext' },
       },
       required: ['name', 'message'],
     },
@@ -32,15 +33,25 @@ const TOOLS = [
     name: 'open_app',
     description:
       'Öffnet eine auf dem Handy installierte App. Nur verwenden, wenn der Nutzer klar darum bittet, eine App zu öffnen.',
-    input_schema: {
-      type: 'object',
+    parameters: {
+      type: 'OBJECT',
       properties: {
-        app_name: { type: 'string', description: 'Name der zu öffnenden App' },
+        app_name: { type: 'STRING', description: 'Name der zu öffnenden App' },
       },
       required: ['app_name'],
     },
   },
 ];
+
+const SYSTEM_PROMPT =
+  'Du bist JARVIS, ein hilfreicher deutschsprachiger Sprachassistent auf dem Handy, der oft in ' +
+  'einem gesprochenen Telefonat genutzt wird. Antworte immer kurz (meist 1-2 Sätze), natürlich und im ' +
+  'Gesprächston, nie wie ein Roman oder eine Liste. Wenn der Nutzer klar darum bittet, jemanden ' +
+  'anzurufen, eine WhatsApp-Nachricht zu senden oder eine App zu öffnen, nutze das passende Werkzeug ' +
+  'dafür, statt es nur zu beschreiben. Nutze Werkzeuge nur bei einer eindeutigen Bitte, nicht bei ' +
+  'vagen Erwähnungen.';
+
+const GEMINI_MODEL = 'gemini-2.0-flash';
 
 export default {
   async fetch(request, env) {
@@ -62,39 +73,37 @@ export default {
       return json({ error: 'message fehlt' }, 400);
     }
 
-    const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
+    const geminiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-goog-api-key': env.GEMINI_API_KEY,
+        },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+          contents: [{ role: 'user', parts: [{ text: message }] }],
+          tools: [{ functionDeclarations: TOOLS }],
+          generationConfig: { maxOutputTokens: 300 },
+        }),
       },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 300,
-        system:
-          'Du bist JARVIS, ein hilfreicher deutschsprachiger Sprachassistent auf dem Handy, der oft in ' +
-          'einem gesprochenen Telefonat genutzt wird. Antworte immer kurz (meist 1-2 Sätze), natürlich und im ' +
-          'Gesprächston, nie wie ein Roman oder eine Liste. Wenn der Nutzer klar darum bittet, jemanden ' +
-          'anzurufen, eine WhatsApp-Nachricht zu senden oder eine App zu öffnen, nutze das passende Werkzeug ' +
-          'dafür, statt es nur zu beschreiben. Nutze Werkzeuge nur bei einer eindeutigen Bitte, nicht bei ' +
-          'vagen Erwähnungen.',
-        tools: TOOLS,
-        messages: [{ role: 'user', content: message }],
-      }),
-    });
+    );
 
-    if (!anthropicRes.ok) {
-      const detail = await anthropicRes.text();
+    if (!geminiRes.ok) {
+      const detail = await geminiRes.text();
       return json({ error: 'AI-Anfrage fehlgeschlagen', detail }, 502);
     }
 
-    const data = await anthropicRes.json();
-    const textBlock = data.content?.find((b) => b.type === 'text');
-    const toolBlock = data.content?.find((b) => b.type === 'tool_use');
+    const data = await geminiRes.json();
+    const parts = data.candidates?.[0]?.content?.parts ?? [];
+    const textPart = parts.find((p) => typeof p.text === 'string');
+    const functionCallPart = parts.find((p) => p.functionCall);
 
-    const reply = textBlock?.text ?? (toolBlock ? 'Mach ich.' : 'Ich habe keine Antwort erhalten.');
-    const action = toolBlock ? { type: toolBlock.name, params: toolBlock.input } : undefined;
+    const reply = textPart?.text ?? (functionCallPart ? 'Mach ich.' : 'Ich habe keine Antwort erhalten.');
+    const action = functionCallPart
+      ? { type: functionCallPart.functionCall.name, params: functionCallPart.functionCall.args ?? {} }
+      : undefined;
 
     return json({ reply, action });
   },
