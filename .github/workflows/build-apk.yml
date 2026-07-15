@@ -33,18 +33,19 @@ jobs:
           done
 
       - name: Set up Android release signing
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
-          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/app/jarvis-release.jks
-          cat > android/key.properties <<EOF
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/app/jarvis-release.jks
+            cat > android/key.properties <<EOF
           storeFile=jarvis-release.jks
           storePassword=$ANDROID_KEYSTORE_PASSWORD
           keyPassword=$ANDROID_KEYSTORE_PASSWORD
           keyAlias=jarvis
           EOF
+          fi
 
       - run: flutter pub get
       - run: flutter analyze
