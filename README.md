@@ -66,6 +66,21 @@ Statt jede Nachricht einzeln per Mikrofon-Knopf aufzunehmen, startet das Telefon
 
 Da die App nicht über den Play Store läuft, prüft sie beim Start selbst, ob eine neuere Version auf der Website liegt (`downloads/version.json`, wird bei jedem `Deploy Web`-Lauf automatisch mit hochgezählt). Ist eine neuere Version verfügbar, erscheint ein Dialog mit „Jetzt herunterladen“ — das lädt die neue APK über den Browser, danach einmal antippen zum Installieren (wie beim ersten Sideload). Web und iOS zeigen den Dialog nicht, da dort Updates automatisch beim Neuladen der Seite bzw. über TestFlight/App Store passieren würden.
 
+## Android-Signierschlüssel einrichten (empfohlen, gegen Sicherheitswarnungen)
+
+Ohne diesen Schritt signiert die Build-Pipeline die Release-APK mit dem öffentlichen Debug-Schlüssel von Flutter — dem gleichen, den jedes Flutter-Projekt weltweit standardmäßig benutzt. Android/Play Protect stuft das automatisch als besonders verdächtig ein, deshalb die harten Warnhinweise beim Installieren.
+
+Mit einem echten, eigenen Signierschlüssel wird die App eindeutig identifizierbar und die Installation deutlich unauffälliger. **Ganz verschwinden** wird der „Unbekannte Quelle"-Hinweis von Android trotzdem nicht — der erscheint bei jeder App, die nicht aus dem Play Store kommt, das ist eine reine Android-Systemfunktion und lässt sich ohne Play-Store-Veröffentlichung nicht abschalten. Aber die zusätzliche „Diese App könnte schädlich sein"-Warnung von Play Protect wird dadurch seltener bzw. verschwindet oft ganz.
+
+**Einmalige Einrichtung** (Repo → Settings → Secrets and variables → Actions → New repository secret):
+
+- `ANDROID_KEYSTORE_BASE64`
+- `ANDROID_KEYSTORE_PASSWORD`
+
+Beide Werte wurden einmalig generiert und dem Repo-Besitzer direkt mitgeteilt (nicht im Code, damit niemand sonst zukünftige Updates signieren kann). **Gut aufbewahren** — geht der Schlüssel verloren, kann keine spätere Version mehr als Update installiert werden, nur noch als komplette Neuinstallation.
+
+Sobald beide Secrets gesetzt sind, signieren `build-apk.yml` und `deploy-web.yml` automatisch damit; ohne sie fällt der Build automatisch auf den alten Debug-Schlüssel zurück (Projekt bleibt also auch ohne diese Secrets baubar).
+
 ## API-Schlüssel
 
 - News: https://newsapi.org (kostenloser Free-Plan)
