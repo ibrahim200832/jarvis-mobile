@@ -28,6 +28,7 @@ import '../services/whatsapp_service.dart';
 import '../services/wikipedia_service.dart';
 import '../services/youtube_service.dart';
 import '../widgets/chat_bubble.dart';
+import '../widgets/voice_orb_overlay.dart';
 import 'camera_screen.dart';
 import 'settings_screen.dart';
 
@@ -58,6 +59,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _listening = false;
   bool _callActive = false;
   bool _processing = false;
+  bool _speaking = false;
+  bool _muted = false;
   String _partialText = '';
 
   @override
@@ -180,7 +183,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _toggleCall() async {
     if (_callActive) {
-      setState(() => _callActive = false);
+      setState(() {
+        _callActive = false;
+        _muted = false;
+        _speaking = false;
+      });
       await _speech.stop();
       await _tts.stop();
       if (_listening) setState(() => _listening = false);
@@ -192,8 +199,24 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     setState(() => _callActive = true);
-    _showSnack('Gespräch gestartet — rede einfach ganz normal mit JARVIS.');
     await _startListening();
+  }
+
+  /// Mutes/unmutes the mic during a call, without ending it — mirrors the
+  /// mic button in the full-screen call UI.
+  Future<void> _toggleMute() async {
+    if (_muted) {
+      setState(() => _muted = false);
+      if (_callActive && !_processing && !_speaking) {
+        await _startListening();
+      }
+      return;
+    }
+    setState(() => _muted = true);
+    if (_listening) {
+      await _speech.stop();
+      setState(() => _listening = false);
+    }
   }
 
   Future<void> _submit(String text) async {
@@ -217,8 +240,10 @@ class _HomeScreenState extends State<HomeScreen> {
     _scrollToBottom();
 
     if (_callActive) {
+      setState(() => _speaking = true);
       await _tts.speakAndWait(result.reply);
-      if (_callActive && mounted) {
+      if (mounted) setState(() => _speaking = false);
+      if (_callActive && mounted && !_muted) {
         await _startListening();
       }
     } else {
@@ -260,9 +285,36 @@ class _HomeScreenState extends State<HomeScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
 
+  VoiceOrbState get _orbState {
+    if (_processing) return VoiceOrbState.thinking;
+    if (_speaking) return VoiceOrbState.speaking;
+    return VoiceOrbState.listening;
+  }
+
+  String get _orbStatusText {
+    if (_processing) return 'JARVIS denkt nach…';
+    if (_speaking) return 'JARVIS spricht…';
+    if (_muted) return 'Mikrofon stumm';
+    return _partialText.isEmpty ? 'Ich höre zu…' : _partialText;
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+
+    if (_callActive) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: VoiceOrbOverlay(
+          state: _orbState,
+          statusText: _orbStatusText,
+          muted: _muted,
+          onToggleMute: _toggleMute,
+          onEndCall: _toggleCall,
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         flexibleSpace: Container(
@@ -285,10 +337,7 @@ class _HomeScreenState extends State<HomeScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 const Text('J.A.R.V.I.S.', style: TextStyle(fontWeight: FontWeight.bold)),
-                Text(
-                  _callActive ? 'Gespräch läuft…' : 'Dein persönlicher Assistent',
-                  style: TextStyle(fontSize: 12, color: _callActive ? colorScheme.primary : null),
-                ),
+                const Text('Dein persönlicher Assistent', style: TextStyle(fontSize: 12)),
               ],
             ),
           ],
@@ -352,9 +401,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     children: [
                       IconButton(
                         iconSize: 30,
-                        icon: Icon(_callActive ? Icons.call_end : Icons.call),
-                        color: _callActive ? Colors.red : null,
-                        tooltip: _callActive ? 'Gespräch beenden' : 'Gespräch mit JARVIS starten',
+                        icon: const Icon(Icons.call),
+                        tooltip: 'Gespräch mit JARVIS starten',
                         onPressed: _toggleCall,
                       ),
                       IconButton(
