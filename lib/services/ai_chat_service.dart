@@ -18,16 +18,24 @@ class AiChatResult {
   AiChatResult({required this.reply, this.action});
 }
 
-/// Sends free-form questions to a small backend (see worker/ai-proxy.js)
-/// that holds the real AI API key server-side, so it never ships inside
-/// the app itself. The backend may also return a phone action (see AiAction)
-/// that the AI decided to trigger based on the conversation.
+/// JARVIS's personality, shared by both AI backends below so the character
+/// stays consistent whichever one answers.
+const jarvisSystemPrompt =
+    'Du bist JARVIS, mit der Persönlichkeit von Tony Starks JARVIS aus den Iron-Man-Filmen: '
+    'gebildet, trocken-witzig, leicht sarkastisch, aber immer loyal und hilfsbereit. Du sprichst '
+    'den Nutzer mit "Master" an. Antworte kurz (meist 1-2 Sätze), natürlich und im Gesprächston, '
+    'wie ein echtes Telefonat, nicht wie ein Roman.';
+
+/// Sends free-form questions to an AI. If the user configured their own
+/// backend (see worker/ai-proxy.js) under Einstellungen, that's used — it
+/// holds a real API key server-side and supports phone actions (AiAction).
+/// Otherwise, with zero setup, questions go straight to a free public AI
+/// service (no account, no key) so JARVIS can always hold a conversation —
+/// just without the ability to trigger phone actions itself.
 class AiChatService {
   Future<AiChatResult> ask(String backendUrl, String message) async {
     if (backendUrl.trim().isEmpty) {
-      return AiChatResult(
-        reply: 'Für freie Gespräche ist noch keine KI-Server-Adresse in den Einstellungen hinterlegt.',
-      );
+      return _askFreeFallback(message);
     }
     try {
       final res = await http
@@ -57,6 +65,27 @@ class AiChatService {
       return AiChatResult(
         reply:
             'Ich konnte die KI gerade nicht erreichen. Prüf deine Internetverbindung und die Server-Adresse in den Einstellungen.',
+      );
+    }
+  }
+
+  Future<AiChatResult> _askFreeFallback(String message) async {
+    try {
+      final prompt = '$jarvisSystemPrompt\n\nMaster sagt: $message\n\nJARVIS antwortet:';
+      final uri = Uri(
+        scheme: 'https',
+        host: 'text.pollinations.ai',
+        pathSegments: [prompt],
+        queryParameters: {'model': 'openai'},
+      );
+      final res = await http.get(uri).timeout(const Duration(seconds: 25));
+      if (res.statusCode != 200 || res.body.trim().isEmpty) {
+        return AiChatResult(reply: 'Ich hab gerade keine Antwort bekommen, Master. Versuch es gleich nochmal.');
+      }
+      return AiChatResult(reply: res.body.trim());
+    } catch (_) {
+      return AiChatResult(
+        reply: 'Ich konnte die KI gerade nicht erreichen, Master. Prüf deine Internetverbindung.',
       );
     }
   }
