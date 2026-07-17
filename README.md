@@ -32,9 +32,9 @@ Jeder Push auf `main` baut die App automatisch als Website und veröffentlicht s
 | QR-Code erzeugen | `qr_flutter`, direkt in der App |
 | IP-Adresse anzeigen | Öffentliche IP via ipify.org |
 | Akkustand | „akkustand" fragt den aktuellen Akku-Prozentwert ab (`battery_plus`) |
-| — | Freies KI-Gespräch für alles, was kein fester Befehl ist (siehe unten) |
-| — | Anruf-Modus: durchgehendes Sprachgespräch statt Einzelbefehle (siehe unten) |
-| — | Die KI kann im Gespräch selbst Anrufe/WhatsApp/Apps auslösen (Tool-Use, siehe unten) |
+| — | Freies KI-Gespräch, funktioniert sofort ohne jede Einrichtung (siehe unten) |
+| — | Anruf-Modus: Vollbild-Gespräch mit animiertem Orb statt Einzelbefehle (siehe unten) |
+| — | Die KI kann im Gespräch selbst Anrufe/WhatsApp/Apps auslösen (optional, siehe unten) |
 
 ## Sprachbefehle (Beispiele)
 
@@ -54,13 +54,20 @@ Jeder Push auf `main` baut die App automatisch als Website und veröffentlicht s
 - „meine ip"
 - „akkustand" / „wie ist der akku"
 - „hilfe" — zeigt die vollständige Befehlsliste
-- alles andere — wird an eine echte KI weitergegeben (siehe „Freies KI-Gespräch einrichten")
+- alles andere — wird an eine echte KI weitergegeben (siehe „Freies KI-Gespräch")
 
 Kontakte werden unter **Einstellungen → Kontakte** angelegt, damit „rufe X an" und „whatsapp an X" funktionieren.
 
 ## Anruf-Modus
 
-Statt jede Nachricht einzeln per Mikrofon-Knopf aufzunehmen, startet das Telefonhörer-Symbol neben dem Mikrofon ein durchgehendes Gespräch: JARVIS hört zu, antwortet per Sprache, und hört danach automatisch wieder zu — wie ein Telefonat. Auf „Auflegen" tippen beendet das Gespräch wieder.
+Statt jede Nachricht einzeln per Mikrofon-Knopf aufzunehmen, startet das Telefonhörer-Symbol neben dem Mikrofon ein durchgehendes Gespräch im Vollbild: ein pulsierender Orb zeigt, ob JARVIS zuhört, nachdenkt oder spricht — ähnlich dem Sprachmodus bekannter KI-Apps. Zur Verfügung stehen außerdem:
+
+- **Mikrofon-Knopf** (unten) — Mikrofon stummschalten/wieder aktivieren, ohne das Gespräch zu beenden
+- **Auflegen-Knopf** (unten, rot) — beendet das Gespräch
+- **Reset-Symbol** (oben) — setzt das Gespräch zurück und fängt neu an
+- **Kamera-Symbol** (oben) — öffnet die Kamera, während der Anruf im Hintergrund weiterläuft
+
+JARVIS antwortet dabei mit einer eigenen Persönlichkeit angelehnt an Tony Starks JARVIS aus den Iron-Man-Filmen: trocken-witzig, leicht sarkastisch, spricht den Nutzer mit „Master" an.
 
 ## Automatische Update-Benachrichtigung (Android)
 
@@ -86,13 +93,17 @@ Sobald beide Secrets gesetzt sind, signieren `build-apk.yml` und `deploy-web.yml
 - News: https://newsapi.org (kostenloser Free-Plan)
 - Wetter: https://openweathermap.org/api (kostenloser Free-Plan)
 
-## Freies KI-Gespräch einrichten
+## Freies KI-Gespräch
 
-Alles, was JARVIS nicht als festen Befehl erkennt (z. B. „wikipedia …“, „wetter …“), wird an eine echte KI weitergegeben, statt einfach „nicht verstanden“ zu antworten. Die KI kann dabei auch direkt handeln: bittet man sie im Gespräch klar darum, jemanden anzurufen, eine WhatsApp-Nachricht zu senden oder eine App zu öffnen, löst sie das selbst aus (Function-Calling), statt es nur zu beschreiben.
+Alles, was JARVIS nicht als festen Befehl erkennt (z. B. „wikipedia …“, „wetter …“), wird an eine echte KI weitergegeben, statt einfach „nicht verstanden“ zu antworten.
 
-Der API-Schlüssel darf dafür **nicht** in der App selbst liegen (sonst könnte ihn jeder aus der APK/Website extrahieren) — deshalb läuft ein kleiner, kostenloser Proxy-Server dazwischen (`worker/ai-proxy.js`, für [Cloudflare Workers](https://workers.cloudflare.com)).
+**Standardmäßig braucht das keinerlei Einrichtung** — JARVIS fragt dafür automatisch einen kostenlosen, öffentlichen KI-Dienst (ohne Konto, ohne Schlüssel) direkt aus der App heraus. Das funktioniert sofort nach dem ersten Start. Als kostenloser Dienst ohne Garantie kann er gelegentlich langsamer oder mal kurz nicht erreichbar sein — dafür ist absolut kein Setup nötig.
 
-Als KI kommt **Google Gemini** zum Einsatz, weil der kostenlose Plan ganz ohne Kreditkarte funktioniert (anders als bei den meisten anderen KI-Anbietern).
+### Optionales Upgrade: eigener KI-Server
+
+Wer zuverlässigere Antworten möchte, oder will, dass die KI im Gespräch selbst Anrufe/WhatsApp-Nachrichten/Apps auslösen kann (Function-Calling) statt es nur zu beschreiben, kann optional einen eigenen KI-Server einrichten. Der API-Schlüssel darf dafür **nicht** in der App selbst liegen (sonst könnte ihn jeder aus der APK/Website extrahieren) — deshalb läuft ein kleiner, kostenloser Proxy-Server dazwischen (`worker/ai-proxy.js`, für [Cloudflare Workers](https://workers.cloudflare.com)).
+
+Als KI kommt dabei **Google Gemini** zum Einsatz, weil der kostenlose Plan ganz ohne Kreditkarte funktioniert (anders als bei den meisten anderen KI-Anbietern).
 
 **Einmalige Einrichtung (kein Terminal nötig, alles über den Browser):**
 
@@ -101,11 +112,9 @@ Als KI kommt **Google Gemini** zum Einsatz, weil der kostenlose Plan ganz ohne K
 3. Im Cloudflare-Dashboard: **Workers & Pages → Create → Create Worker** → einen Namen vergeben (z. B. `jarvis-ai`) → **Deploy**.
 4. Auf **Edit code** klicken, den kompletten Inhalt der Datei [`worker/ai-proxy.js`](worker/ai-proxy.js) aus diesem Repo hineinkopieren (vorhandenen Beispielcode überschreiben) → **Deploy**.
 5. Zurück auf der Worker-Übersichtsseite: **Settings → Variables and Secrets → Add** → Name `GEMINI_API_KEY`, Typ **Secret**, Wert = der Schlüssel aus Schritt 1 → **Save**.
-6. Die Worker-URL steht oben auf der Seite (z. B. `https://jarvis-ai.<dein-name>.workers.dev`) — die in der JARVIS-App unter **Einstellungen → „KI-Server-Adresse"** eintragen und speichern.
+6. Die Worker-URL steht oben auf der Seite (z. B. `https://jarvis-ai.<dein-name>.workers.dev`) — die in der JARVIS-App unter **Einstellungen → „KI-Server-Adresse"** eintragen und speichern. Ist das Feld leer, nutzt JARVIS automatisch den kostenlosen Standard-Dienst ohne Setup.
 
 Wird `worker/ai-proxy.js` später im Repo geändert (z. B. um neue Tools), muss der aktualisierte Code auch im bestehenden Worker per **Edit code** eingefügt und neu deployt werden — das passiert nicht automatisch.
-
-Danach beantwortet JARVIS beliebige Fragen mit einer echten KI (Gemini), zusätzlich zu den festen Befehlen.
 
 ## Projekt bauen
 
@@ -161,6 +170,6 @@ lib/
   core/command_router.dart   Erkennt Befehle aus Text/Sprache, ruft Services auf oder leitet an die KI weiter
   services/                  Ein Service pro Fähigkeit (inkl. ai_chat_service.dart für das KI-Gespräch)
   screens/                   Home-Chat-Screen, Kamera-Screen, Einstellungen
-  widgets/chat_bubble.dart   Chat-Bubble-Widget
-worker/ai-proxy.js           Cloudflare-Worker-Proxy für das freie KI-Gespräch (siehe oben)
+  widgets/                   Chat-Bubble und Anruf-Orb-Overlay
+worker/ai-proxy.js           Optionaler Cloudflare-Worker-Proxy für den eigenen KI-Server (siehe oben)
 ```
