@@ -219,6 +219,36 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  /// Clears the conversation and starts fresh, without ending the call —
+  /// the reset button in the full-screen call UI.
+  Future<void> _resetCall() async {
+    await _speech.stop();
+    await _tts.stop();
+    setState(() {
+      _messages
+        ..clear()
+        ..add(ChatMessage('Neues Gespräch, Master. Ich höre.', fromUser: false));
+      _processing = false;
+      _speaking = false;
+      _muted = false;
+      _partialText = '';
+    });
+    if (_callActive) {
+      await _startListening();
+    }
+  }
+
+  /// Opens the camera on top of the call screen — the call keeps running in
+  /// the background and resumes once the camera is closed.
+  Future<void> _openCameraDuringCall() async {
+    final status = await Permission.camera.request();
+    if (status.isGranted && mounted) {
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CameraScreen()));
+    } else {
+      _showSnack('Kamera-Berechtigung wird benötigt.');
+    }
+  }
+
   Future<void> _submit(String text) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return;
@@ -311,6 +341,8 @@ class _HomeScreenState extends State<HomeScreen> {
           muted: _muted,
           onToggleMute: _toggleMute,
           onEndCall: _toggleCall,
+          onReset: _resetCall,
+          onOpenCamera: _openCameraDuringCall,
         ),
       );
     }
