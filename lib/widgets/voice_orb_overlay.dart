@@ -15,6 +15,8 @@ class VoiceOrbOverlay extends StatefulWidget {
     required this.muted,
     required this.onToggleMute,
     required this.onEndCall,
+    required this.onReset,
+    required this.onOpenCamera,
   });
 
   final VoiceOrbState state;
@@ -22,6 +24,8 @@ class VoiceOrbOverlay extends StatefulWidget {
   final bool muted;
   final VoidCallback onToggleMute;
   final VoidCallback onEndCall;
+  final VoidCallback onReset;
+  final VoidCallback onOpenCamera;
 
   @override
   State<VoiceOrbOverlay> createState() => _VoiceOrbOverlayState();
@@ -48,15 +52,34 @@ class _VoiceOrbOverlayState extends State<VoiceOrbOverlay> with SingleTickerProv
         child: Column(
           children: [
             const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: const Text(
-                'JARVIS',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 2),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: const Text(
+                      'JARVIS',
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 2),
+                    ),
+                  ),
+                  const Spacer(),
+                  _SmallIconButton(
+                    icon: Icons.refresh,
+                    tooltip: 'Gespräch zurücksetzen',
+                    onTap: widget.onReset,
+                  ),
+                  const SizedBox(width: 10),
+                  _SmallIconButton(
+                    icon: Icons.camera_alt_outlined,
+                    tooltip: 'Kamera öffnen',
+                    onTap: widget.onOpenCamera,
+                  ),
+                ],
               ),
             ),
             Expanded(
@@ -172,6 +195,33 @@ class _RoundButton extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(18),
           child: Icon(icon, color: Colors.white, size: 28),
+        ),
+      ),
+    );
+  }
+}
+
+class _SmallIconButton extends StatelessWidget {
+  const _SmallIconButton({required this.icon, required this.onTap, required this.tooltip});
+
+  final IconData icon;
+  final VoidCallback onTap;
+  final String tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white.withValues(alpha: 0.1),
+      shape: const CircleBorder(),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: Tooltip(
+          message: tooltip,
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: Icon(icon, color: Colors.white, size: 20),
+          ),
         ),
       ),
     );
