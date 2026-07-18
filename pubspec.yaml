@@ -27,6 +27,7 @@ dependencies:
   package_info_plus: ^10.2.0
   flutter_svg: ^2.3.0
   battery_plus: ^6.2.1
+  web: ^1.1.0
 
 dev_dependencies:
   flutter_test:
