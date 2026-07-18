@@ -23,8 +23,9 @@ class CommandResult {
   final String reply;
   final String? qrData;
   final bool openCamera;
+  final bool openYoutubeUpload;
 
-  CommandResult(this.reply, {this.qrData, this.openCamera = false});
+  CommandResult(this.reply, {this.qrData, this.openCamera = false, this.openYoutubeUpload = false});
 }
 
 /// Parses a single line of recognized speech or typed text and dispatches it
@@ -84,6 +85,7 @@ Das kann ich für dich tun:
 • "whatsapp an <Kontakt>: <Nachricht>"
 • "email an <Adresse>: <Nachricht>"
 • "youtube <Suchbegriff>"
+• "video hochladen" (auf dein YouTube-Konto, siehe README)
 • "qr code <Text>"
 • "meine ip" / "ip adresse"
 • "akkustand" / "wie ist der akku"
@@ -164,6 +166,10 @@ Das kann ich für dich tun:
 
       if (_matchesAny(lower, ['kamera', 'camera'])) {
         return CommandResult('Öffne die Kamera.', openCamera: true);
+      }
+
+      if (_matchesAny(lower, ['hochladen', 'upload']) && _matchesAny(lower, ['video', 'youtube'])) {
+        return CommandResult('Öffne den YouTube-Upload.', openYoutubeUpload: true);
       }
 
       final callTarget = _extractAfter(lower, text, ['rufe', 'ruf', 'call']);
