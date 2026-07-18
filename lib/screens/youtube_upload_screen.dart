@@ -1,5 +1,5 @@
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/youtube_upload_service.dart';
@@ -18,7 +18,7 @@ class YoutubeUploadScreen extends StatefulWidget {
 
 class _YoutubeUploadScreenState extends State<YoutubeUploadScreen> {
   final _titleCtrl = TextEditingController(text: 'JARVIS Upload');
-  PlatformFile? _pickedFile;
+  XFile? _pickedFile;
   bool _busy = false;
   String? _resultUrl;
   String? _error;
@@ -44,10 +44,10 @@ class _YoutubeUploadScreenState extends State<YoutubeUploadScreen> {
   }
 
   Future<void> _pickVideo() async {
-    final result = await FilePicker.platform.pickFiles(type: FileType.video, withData: true);
-    if (result == null || result.files.isEmpty) return;
+    final picked = await ImagePicker().pickVideo(source: ImageSource.gallery);
+    if (picked == null) return;
     setState(() {
-      _pickedFile = result.files.single;
+      _pickedFile = picked;
       _resultUrl = null;
       _error = null;
     });
@@ -55,8 +55,7 @@ class _YoutubeUploadScreenState extends State<YoutubeUploadScreen> {
 
   Future<void> _upload() async {
     final file = _pickedFile;
-    final bytes = file?.bytes;
-    if (file == null || bytes == null) {
+    if (file == null) {
       setState(() => _error = 'Bitte zuerst ein Video auswählen.');
       return;
     }
@@ -66,6 +65,7 @@ class _YoutubeUploadScreenState extends State<YoutubeUploadScreen> {
       _resultUrl = null;
     });
     try {
+      final bytes = await file.readAsBytes();
       final url = await widget.uploadService.uploadVideo(
         videoBytes: bytes,
         title: _titleCtrl.text.trim().isEmpty ? file.name : _titleCtrl.text.trim(),
