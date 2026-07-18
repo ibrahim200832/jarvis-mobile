@@ -19,6 +19,10 @@
 
   <title>J.A.R.V.I.S.</title>
   <link rel="manifest" href="manifest.json">
+
+  <!-- Gesten-Modus: definiert nur window.jarvisGesture, lädt die
+       eigentlichen (großen) MediaPipe-Bibliotheken erst bei Bedarf nach. -->
+  <script src="gesture_mode.js"></script>
 </head>
 <body>
   <script src="flutter_bootstrap.js" async></script>
