@@ -30,6 +30,7 @@ import '../services/youtube_service.dart';
 import '../widgets/chat_bubble.dart';
 import '../widgets/voice_orb_overlay.dart';
 import 'camera_screen.dart';
+import 'gesture_screen.dart';
 import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -385,6 +386,13 @@ class _HomeScreenState extends State<HomeScreen> {
               icon: const Icon(Icons.apple),
               tooltip: 'Für iPhone installieren',
               onPressed: _showIOSInstallDialog,
+            ),
+            IconButton(
+              icon: const Icon(Icons.front_hand_outlined),
+              tooltip: 'Gesten-Modus (Handerkennung)',
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const GestureScreen()),
+              ),
             ),
           ],
           IconButton(
