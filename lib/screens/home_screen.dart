@@ -364,12 +364,12 @@ class _HomeScreenState extends State<HomeScreen> {
               child: SvgPicture.asset('assets/icon/logo.svg', width: 36, height: 36),
             ),
             const SizedBox(width: 12),
-            Column(
+            const Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text('J.A.R.V.I.S.', style: TextStyle(fontWeight: FontWeight.bold)),
-                const Text('Dein persönlicher Assistent', style: TextStyle(fontSize: 12)),
+                Text('J.A.R.V.I.S.', style: TextStyle(fontWeight: FontWeight.bold)),
+                Text('Dein persönlicher Assistent', style: TextStyle(fontSize: 12)),
               ],
             ),
           ],
