@@ -35,6 +35,7 @@ Jeder Push auf `main` baut die App automatisch als Website und veröffentlicht s
 | — | Freies KI-Gespräch, funktioniert sofort ohne jede Einrichtung (siehe unten) |
 | — | Anruf-Modus: Vollbild-Gespräch mit animiertem Orb statt Einzelbefehle (siehe unten) |
 | — | Die KI kann im Gespräch selbst Anrufe/WhatsApp/Apps auslösen (optional, siehe unten) |
+| — | Video vom Handy auf dein eigenes YouTube-Konto hochladen (optional, siehe unten) |
 
 ## Sprachbefehle (Beispiele)
 
@@ -50,6 +51,7 @@ Jeder Push auf `main` baut die App automatisch als Website und veröffentlicht s
 - „whatsapp an Mama: Bin gleich da"
 - „email an chef@firma.de: Bin heute im Homeoffice"
 - „youtube lofi hip hop"
+- „video hochladen" (auf dein YouTube-Konto, siehe unten)
 - „qr code https://example.com"
 - „meine ip"
 - „akkustand" / „wie ist der akku"
@@ -115,6 +117,20 @@ Als KI kommt dabei **Google Gemini** zum Einsatz, weil der kostenlose Plan ganz 
 6. Die Worker-URL steht oben auf der Seite (z. B. `https://jarvis-ai.<dein-name>.workers.dev`) — die in der JARVIS-App unter **Einstellungen → „KI-Server-Adresse"** eintragen und speichern. Ist das Feld leer, nutzt JARVIS automatisch den kostenlosen Standard-Dienst ohne Setup.
 
 Wird `worker/ai-proxy.js` später im Repo geändert (z. B. um neue Tools), muss der aktualisierte Code auch im bestehenden Worker per **Edit code** eingefügt und neu deployt werden — das passiert nicht automatisch.
+
+## YouTube-Video-Upload einrichten (optional)
+
+Der Befehl „video hochladen" lässt dich ein Video von deinem Handy/Computer auswählen und direkt auf dein eigenes YouTube-Konto hochladen — jeder Upload ist ein bewusster Tastendruck (Anmelden → Video wählen → Titel eintippen → Hochladen), nichts passiert automatisch im Hintergrund. Videos werden immer zuerst als **„privat"** hochgeladen; öffentlich machst du sie danach selbst in YouTube Studio, falls gewünscht.
+
+Weil das Schreibrechte auf einem echten Google-Konto braucht, ist einmalig ein eigenes (kostenloses) Google-Cloud-Projekt nötig:
+
+1. **Google-Cloud-Projekt erstellen**: [console.cloud.google.com](https://console.cloud.google.com) → neues Projekt anlegen (kostenlos, keine Kreditkarte für diesen Teil nötig).
+2. **YouTube Data API v3 aktivieren**: Im Projekt unter „APIs & Services → Library" nach „YouTube Data API v3" suchen → **Enable**.
+3. **OAuth-Zustimmungsbildschirm einrichten**: „APIs & Services → OAuth consent screen" → Typ **External** → App-Name/E-Mail eintragen → unter „Scopes" `.../auth/youtube.upload` hinzufügen → unter „Test users" deine eigene Google-Mail-Adresse eintragen → Status **Testing** belassen (reicht für den persönlichen Gebrauch, keine Google-Prüfung nötig, solange nur du selbst die App nutzt).
+4. **Web-Client-ID erstellen**: „APIs & Services → Credentials → Create Credentials → OAuth client ID" → Typ **Web application** → als „Authorized JavaScript origin" `https://ibrahim200832.github.io` eintragen → erstellen. Die angezeigte **Client-ID** in der JARVIS-App unter **Einstellungen → „YouTube-Client-ID"** eintragen und speichern.
+5. **Android-Client registrieren** (nur für die APK nötig, nicht für die Website): „Create Credentials → OAuth client ID" → Typ **Android** → Package-Name `com.jarvis.mobile.jarvis_mobile` → SHA-1-Fingerabdruck `44:E3:29:B6:3F:B2:DE:E3:59:C7:79:56:31:38:40:37:19:CE:5C:17` (das ist der Fingerabdruck des Release-Signierschlüssels aus dem Abschnitt oben) eintragen → erstellen. Hier ist keine Client-ID in der App nötig, Google erkennt die App automatisch anhand von Package-Name und Fingerabdruck.
+
+**Beim ersten Anmelden** zeigt Google eine Warnung „Diese App wurde nicht überprüft" — das ist normal und unbedenklich, weil es dein eigenes Projekt ist und nur du selbst als Test-Nutzer eingetragen bist. Auf „Erweitert" → „Weiter zu … (unsicher)" klicken, um fortzufahren.
 
 ## Projekt bauen
 
