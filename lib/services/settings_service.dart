@@ -6,6 +6,7 @@ class SettingsService {
   static const _keyWeatherApi = 'weather_api_key';
   static const _keyUserName = 'user_name';
   static const _keyAiBackendUrl = 'ai_backend_url';
+  static const _keyYoutubeClientId = 'youtube_client_id';
 
   Future<String?> getNewsApiKey() async {
     final prefs = await SharedPreferences.getInstance();
@@ -45,5 +46,15 @@ class SettingsService {
   Future<void> setAiBackendUrl(String value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyAiBackendUrl, value);
+  }
+
+  Future<String?> getYoutubeClientId() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyYoutubeClientId);
+  }
+
+  Future<void> setYoutubeClientId(String value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyYoutubeClientId, value);
   }
 }
