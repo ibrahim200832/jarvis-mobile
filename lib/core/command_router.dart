@@ -232,7 +232,8 @@ Das kann ich für dich tun:
       }
 
       final backendUrl = await settings.getAiBackendUrl();
-      final aiResult = await aiChat.ask(backendUrl ?? '', text);
+      final aiModel = await settings.getAiModel();
+      final aiResult = await aiChat.ask(backendUrl ?? '', text, model: aiModel);
       return await _handleAiResult(aiResult);
     } catch (e) {
       return CommandResult('Fehler: ${e.toString().replaceFirst('Exception: ', '')}');

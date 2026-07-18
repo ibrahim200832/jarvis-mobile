@@ -33,9 +33,9 @@ const jarvisSystemPrompt =
 /// service (no account, no key) so JARVIS can always hold a conversation —
 /// just without the ability to trigger phone actions itself.
 class AiChatService {
-  Future<AiChatResult> ask(String backendUrl, String message) async {
+  Future<AiChatResult> ask(String backendUrl, String message, {String model = 'openai'}) async {
     if (backendUrl.trim().isEmpty) {
-      return _askFreeFallback(message);
+      return _askFreeFallback(message, model);
     }
     try {
       final res = await http
@@ -69,14 +69,14 @@ class AiChatService {
     }
   }
 
-  Future<AiChatResult> _askFreeFallback(String message) async {
+  Future<AiChatResult> _askFreeFallback(String message, String model) async {
     try {
       final prompt = '$jarvisSystemPrompt\n\nMaster sagt: $message\n\nJARVIS antwortet:';
       final uri = Uri(
         scheme: 'https',
         host: 'text.pollinations.ai',
         pathSegments: [prompt],
-        queryParameters: {'model': 'openai'},
+        queryParameters: {'model': model},
       );
       final res = await http.get(uri).timeout(const Duration(seconds: 25));
       if (res.statusCode != 200 || res.body.trim().isEmpty) {

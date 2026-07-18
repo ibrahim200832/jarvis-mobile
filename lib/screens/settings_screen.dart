@@ -22,6 +22,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _youtubeClientIdCtrl = TextEditingController();
   List<Contact> _contacts = [];
   String _appVersion = '';
+  String _aiModel = 'openai';
+
+  static const _aiModels = {
+    'openai': 'ChatGPT (Standard)',
+    'mistral': 'Mistral',
+    'llama': 'Llama',
+  };
 
   @override
   void initState() {
@@ -36,6 +43,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _nameCtrl.text = await widget.settings.getUserName();
     _aiBackendCtrl.text = await widget.settings.getAiBackendUrl() ?? '';
     _youtubeClientIdCtrl.text = await widget.settings.getYoutubeClientId() ?? '';
+    _aiModel = await widget.settings.getAiModel();
     _contacts = await widget.contacts.all();
     if (mounted) setState(() {});
   }
@@ -51,6 +59,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await widget.settings.setUserName(_nameCtrl.text.trim());
     await widget.settings.setAiBackendUrl(_aiBackendCtrl.text.trim());
     await widget.settings.setYoutubeClientId(_youtubeClientIdCtrl.text.trim());
+    await widget.settings.setAiModel(_aiModel);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gespeichert.')));
   }
@@ -124,6 +133,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
               helperText: 'Die Worker-URL aus der Cloudflare-Bereitstellung, siehe README',
               border: OutlineInputBorder(),
             ),
+          ),
+          const SizedBox(height: 16),
+          DropdownButtonFormField<String>(
+            initialValue: _aiModel,
+            decoration: const InputDecoration(
+              labelText: 'KI-Modell (kostenlos, ohne Server-Adresse)',
+              helperText: 'Nur wenn oben keine eigene KI-Server-Adresse eingetragen ist',
+              border: OutlineInputBorder(),
+            ),
+            items: _aiModels.entries
+                .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
+                .toList(),
+            onChanged: (value) {
+              if (value != null) setState(() => _aiModel = value);
+            },
           ),
           const SizedBox(height: 16),
           TextField(

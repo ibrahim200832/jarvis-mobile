@@ -7,6 +7,7 @@ class SettingsService {
   static const _keyUserName = 'user_name';
   static const _keyAiBackendUrl = 'ai_backend_url';
   static const _keyYoutubeClientId = 'youtube_client_id';
+  static const _keyAiModel = 'ai_model';
 
   Future<String?> getNewsApiKey() async {
     final prefs = await SharedPreferences.getInstance();
@@ -61,5 +62,17 @@ class SettingsService {
   Future<void> setYoutubeClientId(String value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyYoutubeClientId, value);
+  }
+
+  /// Which free AI model powers JARVIS when no own backend is configured.
+  /// Only used by the zero-setup fallback (see AiChatService).
+  Future<String> getAiModel() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyAiModel) ?? 'openai';
+  }
+
+  Future<void> setAiModel(String value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyAiModel, value);
   }
 }
