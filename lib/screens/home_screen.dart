@@ -27,11 +27,13 @@ import '../services/weather_service.dart';
 import '../services/whatsapp_service.dart';
 import '../services/wikipedia_service.dart';
 import '../services/youtube_service.dart';
+import '../services/youtube_upload_service.dart';
 import '../widgets/chat_bubble.dart';
 import '../widgets/voice_orb_overlay.dart';
 import 'camera_screen.dart';
 import 'gesture_screen.dart';
 import 'settings_screen.dart';
+import 'youtube_upload_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -292,6 +294,21 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (result.qrData != null && mounted) {
       _showQrDialog(result.qrData!);
+    }
+
+    if (result.openYoutubeUpload && mounted) {
+      final clientId = await _settings.getYoutubeClientId();
+      if (mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => YoutubeUploadScreen(
+              uploadService: YoutubeUploadService(
+                webClientId: (clientId != null && clientId.isNotEmpty) ? clientId : null,
+              ),
+            ),
+          ),
+        );
+      }
     }
   }
 
