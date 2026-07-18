@@ -48,9 +48,14 @@ class SettingsService {
     await prefs.setString(_keyAiBackendUrl, value);
   }
 
+  /// Default OAuth web client ID so YouTube sign-in works without any
+  /// manual setup; users can still override it in Einstellungen.
+  static const _defaultYoutubeClientId =
+      '166736977513-1sma3tlh2jtqn29cragq10ei9ohrgrsj.apps.googleusercontent.com';
+
   Future<String?> getYoutubeClientId() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_keyYoutubeClientId);
+    return prefs.getString(_keyYoutubeClientId) ?? _defaultYoutubeClientId;
   }
 
   Future<void> setYoutubeClientId(String value) async {
