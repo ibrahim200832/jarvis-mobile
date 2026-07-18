@@ -55,6 +55,8 @@ jobs:
           keyPassword=$ANDROID_KEYSTORE_PASSWORD
           keyAlias=jarvis
           EOF
+            echo "=== Release keystore SHA-1 (for Google OAuth Android client) ==="
+            keytool -list -v -keystore android/app/jarvis-release.jks -alias jarvis -storepass "$ANDROID_KEYSTORE_PASSWORD" | grep "SHA1:"
           fi
 
       - run: flutter pub get
