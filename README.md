@@ -127,6 +127,8 @@ Als KI kommt dabei **Google Gemini** zum Einsatz, weil der kostenlose Plan ganz 
 
 Wird `worker/ai-proxy.js` später im Repo geändert (z. B. um neue Tools), muss der aktualisierte Code auch im bestehenden Worker per **Edit code** eingefügt und neu deployt werden — das passiert nicht automatisch.
 
+**Geteiltes Backend mit dem WhatsApp-Bot:** Derselbe Worker lässt sich auch vom [DARKZONE-MD](https://github.com/ibrahim200832/DARKZONE-MD) WhatsApp-Bot nutzen (`lib/aichat.js` dort, `AI_BACKEND_URL` in dessen `config.env`) — beide Apps antworten dann mit derselben JARVIS-Persönlichkeit über dieselbe KI.
+
 ## YouTube-Video-Upload einrichten (optional)
 
 Der Befehl „video hochladen" lässt dich ein Video von deinem Handy/Computer auswählen und direkt auf dein eigenes YouTube-Konto hochladen — jeder Upload ist ein bewusster Tastendruck (Anmelden → Video wählen → Titel eintippen → Hochladen), nichts passiert automatisch im Hintergrund. Videos werden immer zuerst als **„privat"** hochgeladen; öffentlich machst du sie danach selbst in YouTube Studio, falls gewünscht.
