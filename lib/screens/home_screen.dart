@@ -18,9 +18,12 @@ import '../services/ip_service.dart';
 import '../services/joke_service.dart';
 import '../services/location_service.dart';
 import '../services/news_service.dart';
+import '../services/notes_service.dart';
 import '../services/qr_service.dart';
+import '../services/random_fun_service.dart';
 import '../services/settings_service.dart';
 import '../services/speech_service.dart';
+import '../services/timer_service.dart';
 import '../services/tts_service.dart';
 import '../services/update_service.dart';
 import '../services/weather_service.dart';
@@ -47,6 +50,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _tts = TtsService();
   final _settings = SettingsService();
   final _contacts = ContactsService();
+  final _timer = TimerService();
   final _textCtrl = TextEditingController();
   final _scrollCtrl = ScrollController();
 
@@ -86,9 +90,22 @@ class _HomeScreenState extends State<HomeScreen> {
       ip: IpService(),
       aiChat: AiChatService(),
       deviceInfo: DeviceInfoService(),
+      timer: _timer,
+      notes: NotesService(),
+      fun: RandomFunService(),
     );
+    _timer.onFire = _onTimerFired;
     _speech.init();
     unawaited(_checkForUpdate());
+  }
+
+  /// Announces a fired timer the same way any other JARVIS reply is shown:
+  /// added to the chat, and spoken.
+  void _onTimerFired(String message) {
+    if (!mounted) return;
+    setState(() => _messages.add(ChatMessage(message, fromUser: false)));
+    _scrollToBottom();
+    unawaited(_tts.speak(message));
   }
 
   Future<void> _checkForUpdate() async {
@@ -135,6 +152,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _timer.cancelAll();
     _textCtrl.dispose();
     _scrollCtrl.dispose();
     super.dispose();

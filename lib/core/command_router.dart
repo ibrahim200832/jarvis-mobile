@@ -2,6 +2,7 @@ import 'package:intl/intl.dart';
 
 import '../services/ai_chat_service.dart';
 import '../services/app_launcher_service.dart';
+import '../services/calculator_service.dart';
 import '../services/call_service.dart';
 import '../services/contacts_service.dart';
 import '../services/device_info_service.dart';
@@ -10,8 +11,11 @@ import '../services/ip_service.dart';
 import '../services/joke_service.dart';
 import '../services/location_service.dart';
 import '../services/news_service.dart';
+import '../services/notes_service.dart';
 import '../services/qr_service.dart';
+import '../services/random_fun_service.dart';
 import '../services/settings_service.dart';
+import '../services/timer_service.dart';
 import '../services/weather_service.dart';
 import '../services/whatsapp_service.dart';
 import '../services/wikipedia_service.dart';
@@ -52,6 +56,9 @@ class CommandRouter {
     required this.ip,
     required this.aiChat,
     required this.deviceInfo,
+    required this.timer,
+    required this.notes,
+    required this.fun,
   });
 
   final WikipediaService wikipedia;
@@ -70,6 +77,9 @@ class CommandRouter {
   final IpService ip;
   final AiChatService aiChat;
   final DeviceInfoService deviceInfo;
+  final TimerService timer;
+  final NotesService notes;
+  final RandomFunService fun;
 
   static const helpText = '''
 Das kann ich für dich tun:
@@ -89,6 +99,11 @@ Das kann ich für dich tun:
 • "qr code <Text>"
 • "meine ip" / "ip adresse"
 • "akkustand" / "wie ist der akku"
+• "rechne <Aufgabe>" oder "was ist 12 mal 7"
+• "timer für <Zeit>" oder "erinnere mich in 10 minuten an <Sache>"
+• "meine timer" / "timer abbrechen"
+• "notiz <Text>" / "meine notizen" / "lösche notiz <Nummer>"
+• "wirf eine münze" / "würfle" / "zufallszahl zwischen 1 und 100"
 • alles andere: frag mich einfach frei, ich antworte mit echter KI und kann
   dabei auch direkt anrufen, WhatsApp schreiben oder Apps öffnen
 ''';
@@ -117,6 +132,13 @@ Das kann ich für dich tun:
 
       if (_matchesAny(lower, ['witz', 'joke'])) {
         return CommandResult(jokes.randomJoke());
+      }
+
+      final mathQuery = _extractAfter(lower, text, ['rechne', 'berechne', 'wie viel ist', 'wieviel ist', 'was ist']);
+      if (mathQuery != null && CalculatorService.looksLikeExpression(mathQuery)) {
+        final result = CalculatorService.evaluate(mathQuery);
+        if (result == null) return CommandResult('Das konnte ich nicht berechnen.');
+        return CommandResult('Das Ergebnis ist ${CalculatorService.format(result)}.');
       }
 
       final wikiQuery = _extractAfter(lower, text, ['wikipedia', 'was ist', 'wer ist']);
@@ -229,6 +251,83 @@ Das kann ich für dich tun:
               ? 'Ich konnte den Akkustand gerade nicht auslesen.'
               : 'Dein Akku ist bei $level Prozent.',
         );
+      }
+
+      if (_matchesAny(lower, ['timer abbrechen', 'alle timer stoppen', 'timer stoppen', 'timer löschen'])) {
+        final count = timer.cancelAll();
+        return CommandResult(count == 0 ? 'Es läuft gerade kein Timer.' : '$count Timer abgebrochen.');
+      }
+
+      if (_matchesAny(lower, ['meine timer', 'laufende timer', 'timer status'])) {
+        final active = timer.list();
+        if (active.isEmpty) return CommandResult('Es läuft gerade kein Timer.');
+        final lines = active.map((t) => '• ${t.label}: noch ${TimerService.describe(t.remaining)}');
+        return CommandResult('Laufende Timer:\n${lines.join('\n')}');
+      }
+
+      final timerQuery = _extractAfter(
+        lower,
+        text,
+        ['stelle einen timer für', 'starte einen timer für', 'timer für', 'wecker für', 'erinnere mich in'],
+      );
+      if (timerQuery != null) {
+        final parsed = TimerService.parse(timerQuery);
+        if (parsed == null) {
+          return CommandResult('Ich habe die Zeitangabe nicht verstanden. Sag z. B. "timer für 5 minuten".');
+        }
+        final active = timer.start(parsed.duration, label: parsed.label);
+        return CommandResult('Timer "${active.label}" gestellt: ${TimerService.describe(parsed.duration)}.');
+      }
+
+      if (_matchesAny(lower, ['lösche alle notizen', 'alle notizen löschen', 'notizen löschen'])) {
+        await notes.clear();
+        return CommandResult('Alle Notizen gelöscht.');
+      }
+
+      final deleteNoteQuery = _extractAfter(lower, text, ['lösche notiz']);
+      if (deleteNoteQuery != null) {
+        final index = int.tryParse(deleteNoteQuery.trim());
+        if (index == null) return CommandResult('Sag z. B. "lösche notiz 2".');
+        final removed = await notes.deleteAt(index);
+        return CommandResult(removed == null ? 'Notiz $index existiert nicht.' : 'Notiz gelöscht: $removed');
+      }
+
+      if (_matchesAny(lower, ['notizen'])) {
+        final all = await notes.list();
+        if (all.isEmpty) return CommandResult('Du hast noch keine Notizen.');
+        final lines = List.generate(all.length, (i) => '${i + 1}. ${all[i]}');
+        return CommandResult('Deine Notizen:\n${lines.join('\n')}');
+      }
+
+      // Trailing spaces/colon on these prefixes require a right-hand word
+      // boundary too, so e.g. "notizen" (plural) isn't misread as the
+      // "notiz " prefix with "en" left over as bogus note text.
+      final noteText = _extractAfter(lower, text, ['notiere dir', 'merke dir', 'notiz:', 'notiere ', 'neue notiz ', 'notiz ']);
+      if (noteText != null) {
+        await notes.add(noteText);
+        return CommandResult('Notiz gespeichert: $noteText');
+      }
+
+      if (_matchesAny(lower, ['wirf eine münze', 'münze werfen', 'kopf oder zahl', 'münze'])) {
+        return CommandResult('${fun.flipCoin()}!');
+      }
+
+      final diceSidesQuery = _extractAfter(lower, text, ['würfle mit', 'würfel mit']);
+      if (diceSidesQuery != null) {
+        final sides = int.tryParse(RegExp(r'\d+').stringMatch(diceSidesQuery) ?? '');
+        if (sides == null || sides < 2) return CommandResult('Sag z. B. "würfle mit 20 seiten".');
+        return CommandResult('Du hast eine ${fun.rollDice(sides: sides)} gewürfelt (W$sides).');
+      }
+
+      if (_matchesAny(lower, ['würfle', 'würfel'])) {
+        return CommandResult('Du hast eine ${fun.rollDice()} gewürfelt.');
+      }
+
+      final rangeQuery = _extractAfter(lower, text, ['zufallszahl zwischen', 'zufallszahl von']);
+      if (rangeQuery != null) {
+        final numbers = RegExp(r'\d+').allMatches(rangeQuery).map((m) => int.parse(m.group(0)!)).toList();
+        if (numbers.length < 2) return CommandResult('Sag z. B. "zufallszahl zwischen 1 und 100".');
+        return CommandResult('${fun.randomInRange(numbers[0], numbers[1])}');
       }
 
       final backendUrl = await settings.getAiBackendUrl();
