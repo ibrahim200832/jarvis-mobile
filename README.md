@@ -32,6 +32,10 @@ Jeder Push auf `main` baut die App automatisch als Website und veröffentlicht s
 | QR-Code erzeugen | `qr_flutter`, direkt in der App |
 | IP-Adresse anzeigen | Öffentliche IP via ipify.org |
 | Akkustand | „akkustand" fragt den aktuellen Akku-Prozentwert ab (`battery_plus`) |
+| — | Taschenrechner: versteht Symbole (`+ - * / ^ ()`) und gesprochene Wörter (plus, minus, mal, durch, hoch) |
+| — | Timer/Erinnerungen: "timer für 5 minuten", live im Gerät, mit Sprachansage bei Ablauf |
+| — | Notizen: kleine, dauerhaft gespeicherte Notizliste direkt im Chat |
+| — | Münzwurf, Würfel (auch mit anderer Seitenzahl), Zufallszahl in einem Bereich |
 | — | Freies KI-Gespräch, funktioniert sofort ohne jede Einrichtung (siehe unten) |
 | — | Anruf-Modus: Vollbild-Gespräch mit animiertem Orb statt Einzelbefehle (siehe unten) |
 | — | Die KI kann im Gespräch selbst Anrufe/WhatsApp/Apps auslösen (optional, siehe unten) |
@@ -55,6 +59,11 @@ Jeder Push auf `main` baut die App automatisch als Website und veröffentlicht s
 - „qr code https://example.com"
 - „meine ip"
 - „akkustand" / „wie ist der akku"
+- „rechne 12 mal 7" / „was ist 5 plus 3"
+- „timer für 5 minuten" / „erinnere mich in 10 minuten an die wäsche"
+- „meine timer" / „timer abbrechen"
+- „notiz kaufe milch" / „meine notizen" / „lösche notiz 2"
+- „wirf eine münze" / „würfle" / „würfle mit 20 seiten" / „zufallszahl zwischen 1 und 100"
 - „hilfe" — zeigt die vollständige Befehlsliste
 - alles andere — wird an eine echte KI weitergegeben (siehe „Freies KI-Gespräch")
 
