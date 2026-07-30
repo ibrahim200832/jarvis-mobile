@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-java@v4
         with:
@@ -20,6 +22,13 @@ jobs:
         with:
           channel: 'stable'
           cache: true
+
+      # Same commit-count based numbering as deploy-web.yml (not
+      # github.run_number, which is a separate per-workflow counter) so an
+      # APK built here reports a version UpdateService can correctly compare
+      # against the one in deploy-web.yml's version.json.
+      - name: Compute build number
+        run: echo "BUILD_NUMBER=$(git rev-list --count HEAD)" >> "$GITHUB_ENV"
 
       - name: Generate launcher icons from logo
         run: |
@@ -49,7 +58,7 @@ jobs:
 
       - run: flutter pub get
       - run: flutter analyze
-      - run: flutter build apk --release
+      - run: flutter build apk --release --build-name=1.0.${{ env.BUILD_NUMBER }} --build-number=${{ env.BUILD_NUMBER }}
 
       - uses: actions/upload-artifact@v4
         with:

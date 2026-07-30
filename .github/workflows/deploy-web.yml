@@ -19,11 +19,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
           cache: true
+
+      # Total commit count, not github.run_number: run_number is a separate
+      # per-workflow counter, so build-apk.yml and this workflow would
+      # otherwise produce independently-numbered (and non-comparable)
+      # versions for the same commit. Commit count is shared and always
+      # increases, so the update check in UpdateService stays correct
+      # regardless of which workflow built a given install.
+      - name: Compute build number
+        run: echo "BUILD_NUMBER=$(git rev-list --count HEAD)" >> "$GITHUB_ENV"
 
       - name: Generate icons and favicon from logo
         run: |
@@ -61,7 +72,7 @@ jobs:
 
       - run: flutter pub get
       - run: flutter build web --release --base-href "/${{ github.event.repository.name }}/"
-      - run: flutter build apk --release --build-name=1.0.${{ github.run_number }} --build-number=${{ github.run_number }}
+      - run: flutter build apk --release --build-name=1.0.${{ env.BUILD_NUMBER }} --build-number=${{ env.BUILD_NUMBER }}
 
       - name: Bundle the Android APK and version manifest into the website
         run: |
@@ -69,7 +80,7 @@ jobs:
           cp build/app/outputs/flutter-apk/app-release.apk build/web/downloads/jarvis-mobile.apk
           cat > build/web/downloads/version.json <<EOF
           {
-            "version": "1.0.${{ github.run_number }}",
+            "version": "1.0.${{ env.BUILD_NUMBER }}",
             "apkUrl": "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/downloads/jarvis-mobile.apk"
           }
           EOF
