@@ -1,0 +1,427 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:installed_apps/app_info.dart';
+import 'package:jarvis_mobile/core/command_router.dart';
+import 'package:jarvis_mobile/services/ai_chat_service.dart';
+import 'package:jarvis_mobile/services/app_launcher_service.dart';
+import 'package:jarvis_mobile/services/call_service.dart';
+import 'package:jarvis_mobile/services/contacts_service.dart';
+import 'package:jarvis_mobile/services/device_info_service.dart';
+import 'package:jarvis_mobile/services/email_service.dart';
+import 'package:jarvis_mobile/services/ip_service.dart';
+import 'package:jarvis_mobile/services/joke_service.dart';
+import 'package:jarvis_mobile/services/location_service.dart';
+import 'package:jarvis_mobile/services/news_service.dart';
+import 'package:jarvis_mobile/services/notes_service.dart';
+import 'package:jarvis_mobile/services/qr_service.dart';
+import 'package:jarvis_mobile/services/random_fun_service.dart';
+import 'package:jarvis_mobile/services/settings_service.dart';
+import 'package:jarvis_mobile/services/timer_service.dart';
+import 'package:jarvis_mobile/services/weather_service.dart';
+import 'package:jarvis_mobile/services/whatsapp_service.dart';
+import 'package:jarvis_mobile/services/wikipedia_service.dart';
+import 'package:jarvis_mobile/services/youtube_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+// --- Fakes: real network/platform calls are never touched by these tests. ---
+
+class FakeWikipediaService extends WikipediaService {
+  String? lastQuery;
+
+  @override
+  Future<String> summary(String query, {String lang = 'de'}) async {
+    lastQuery = query;
+    return 'WIKI:$query';
+  }
+}
+
+class FakeJokeService extends JokeService {
+  @override
+  String randomJoke() => 'Ein Testwitz.';
+}
+
+class FakeNewsService extends NewsService {
+  List<String> headlines = ['Erste Meldung', 'Zweite Meldung'];
+
+  @override
+  Future<List<String>> topHeadlines(String apiKey, {String country = 'de'}) async => headlines;
+}
+
+class FakeWeatherService extends WeatherService {
+  @override
+  Future<WeatherResult> byCity(String apiKey, String city) async =>
+      WeatherResult(description: 'sonnig', tempCelsius: 21.5, city: city);
+
+  @override
+  Future<WeatherResult> byCoordinates(String apiKey, double lat, double lon) async =>
+      WeatherResult(description: 'bewölkt', tempCelsius: 10.0, city: 'Irgendwo');
+}
+
+class FakeWhatsappService extends WhatsappService {
+  String? lastPhone;
+  String? lastMessage;
+
+  @override
+  Future<bool> sendMessage({required String phone, required String message}) async {
+    lastPhone = phone;
+    lastMessage = message;
+    return true;
+  }
+}
+
+class FakeEmailService extends EmailService {
+  String? lastTo;
+
+  @override
+  Future<bool> compose({required String to, required String subject, required String body}) async {
+    lastTo = to;
+    return true;
+  }
+}
+
+class FakeCallService extends CallService {
+  String? lastPhone;
+
+  @override
+  Future<bool> call(String phone) async {
+    lastPhone = phone;
+    return true;
+  }
+}
+
+class FakeAppLauncherService extends AppLauncherService {
+  @override
+  Future<AppInfo?> findByName(String name) async => null;
+
+  @override
+  Future<bool> open(String packageName) async => true;
+}
+
+class FakeYoutubeService extends YoutubeService {
+  String? lastQuery;
+
+  @override
+  Future<bool> search(String query) async {
+    lastQuery = query;
+    return true;
+  }
+}
+
+class FakeLocationService extends LocationService {
+  @override
+  Future<LocationResult> current() async =>
+      LocationResult(latitude: 52.5, longitude: 13.4, city: 'Berlin', country: 'Deutschland');
+}
+
+class FakeContactsService extends ContactsService {
+  Contact? contactToReturn;
+
+  @override
+  Future<Contact?> find(String name) async => contactToReturn;
+}
+
+class FakeSettingsService extends SettingsService {
+  String? weatherApiKey = 'test-key';
+  String? newsApiKey = 'test-key';
+  String? aiBackendUrl = '';
+  String aiModel = 'openai';
+
+  @override
+  Future<String?> getWeatherApiKey() async => weatherApiKey;
+
+  @override
+  Future<String?> getNewsApiKey() async => newsApiKey;
+
+  @override
+  Future<String?> getAiBackendUrl() async => aiBackendUrl;
+
+  @override
+  Future<String> getAiModel() async => aiModel;
+}
+
+class FakeIpService extends IpService {
+  @override
+  Future<String> publicIp() async => '1.2.3.4';
+}
+
+class FakeAiChatService extends AiChatService {
+  String? lastMessage;
+
+  @override
+  Future<AiChatResult> ask(String backendUrl, String message, {String model = 'openai'}) async {
+    lastMessage = message;
+    return AiChatResult(reply: 'FAKE_AI:$message');
+  }
+}
+
+class FakeDeviceInfoService extends DeviceInfoService {
+  @override
+  Future<int?> batteryLevel() async => 77;
+}
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  late FakeWikipediaService wikipedia;
+  late FakeContactsService contacts;
+  late FakeCallService call;
+  late FakeWhatsappService whatsapp;
+  late FakeAiChatService aiChat;
+  late CommandRouter router;
+
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+    wikipedia = FakeWikipediaService();
+    contacts = FakeContactsService();
+    call = FakeCallService();
+    whatsapp = FakeWhatsappService();
+    aiChat = FakeAiChatService();
+
+    router = CommandRouter(
+      wikipedia: wikipedia,
+      jokes: FakeJokeService(),
+      news: FakeNewsService(),
+      weather: FakeWeatherService(),
+      whatsapp: whatsapp,
+      email: FakeEmailService(),
+      call: call,
+      appLauncher: FakeAppLauncherService(),
+      youtube: FakeYoutubeService(),
+      qr: QrService(),
+      location: FakeLocationService(),
+      contacts: contacts,
+      settings: FakeSettingsService(),
+      ip: FakeIpService(),
+      aiChat: aiChat,
+      deviceInfo: FakeDeviceInfoService(),
+      timer: TimerService(),
+      notes: NotesService(),
+      fun: RandomFunService(),
+    );
+  });
+
+  test('empty input is rejected without touching any service', () async {
+    final result = await router.handle('   ');
+    expect(result.reply, 'Ich habe dich nicht verstanden.');
+  });
+
+  test('hilfe returns the help text', () async {
+    final result = await router.handle('hilfe');
+    expect(result.reply, contains('Das kann ich für dich tun'));
+  });
+
+  test('witz returns the joke', () async {
+    final result = await router.handle('erzähl mir einen witz');
+    expect(result.reply, 'Ein Testwitz.');
+  });
+
+  group('Rechner vs. Wikipedia priority', () {
+    test('"was ist <mathe>" goes to the calculator, not Wikipedia', () async {
+      final result = await router.handle('was ist 5 plus 3');
+      expect(result.reply, 'Das Ergebnis ist 8.');
+      expect(wikipedia.lastQuery, isNull);
+    });
+
+    test('"was ist <thema>" still goes to Wikipedia', () async {
+      final result = await router.handle('was ist Photosynthese');
+      expect(wikipedia.lastQuery, 'Photosynthese');
+      expect(result.reply, 'WIKI:Photosynthese');
+    });
+
+    test('invalid math falls back to "kann nicht berechnen"', () async {
+      final result = await router.handle('rechne 10 durch 0');
+      expect(result.reply, 'Das konnte ich nicht berechnen.');
+    });
+  });
+
+  test('nachrichten lists the fake headlines', () async {
+    final result = await router.handle('nachrichten');
+    expect(result.reply, contains('Erste Meldung'));
+    expect(result.reply, contains('Zweite Meldung'));
+  });
+
+  test('wetter in <Stadt> uses byCity', () async {
+    final result = await router.handle('wetter in Hamburg');
+    expect(result.reply, contains('Hamburg'));
+    expect(result.reply, contains('sonnig'));
+  });
+
+  test('wetter without a city falls back to the current location', () async {
+    final result = await router.handle('wetter');
+    expect(result.reply, contains('bewölkt'));
+  });
+
+  test('standort reports the fake city/country', () async {
+    final result = await router.handle('wo bin ich');
+    expect(result.reply, contains('Berlin'));
+    expect(result.reply, contains('Deutschland'));
+  });
+
+  test('öffne <unbekannte App> reports it was not found', () async {
+    final result = await router.handle('öffne NichtInstalliert');
+    expect(result.reply, contains('nicht finden'));
+  });
+
+  test('kamera sets openCamera on the result', () async {
+    final result = await router.handle('kamera');
+    expect(result.openCamera, isTrue);
+  });
+
+  test('rufe <unbekannter Kontakt> reports it was not found', () async {
+    final result = await router.handle('rufe Mama an');
+    expect(result.reply, contains('keinen Kontakt'));
+    expect(call.lastPhone, isNull);
+  });
+
+  test('rufe <bekannter Kontakt> triggers CallService', () async {
+    contacts.contactToReturn = Contact(name: 'Mama', phone: '+491701234567');
+    final result = await router.handle('rufe Mama an');
+    expect(call.lastPhone, '+491701234567');
+    expect(result.reply, contains('Mama'));
+  });
+
+  test('whatsapp an <Kontakt>: <Nachricht> triggers WhatsappService', () async {
+    contacts.contactToReturn = Contact(name: 'Mama', phone: '+491701234567');
+    final result = await router.handle('whatsapp an Mama: Bin gleich da');
+    expect(whatsapp.lastPhone, '+491701234567');
+    expect(whatsapp.lastMessage, 'Bin gleich da');
+    expect(result.reply, contains('Mama'));
+  });
+
+  test('email an <Adresse>: <Nachricht> triggers EmailService', () async {
+    final result = await router.handle('email an chef@firma.de: Bin im Homeoffice');
+    expect(result.reply, contains('chef@firma.de'));
+  });
+
+  test('youtube <Suchbegriff> triggers YoutubeService', () async {
+    final result = await router.handle('youtube lofi hip hop');
+    expect(result.reply, contains('lofi hip hop'));
+  });
+
+  test('qr code <Text> returns qrData', () async {
+    final result = await router.handle('qr code https://example.com');
+    expect(result.qrData, 'https://example.com');
+  });
+
+  test('meine ip returns the fake public IP', () async {
+    final result = await router.handle('meine ip');
+    expect(result.reply, contains('1.2.3.4'));
+  });
+
+  test('akkustand returns the fake battery level', () async {
+    final result = await router.handle('akkustand');
+    expect(result.reply, contains('77 Prozent'));
+  });
+
+  group('Timer', () {
+    test('timer für <Zeit> starts a timer', () async {
+      final result = await router.handle('timer für 5 minuten');
+      expect(result.reply, contains('Timer'));
+      expect(router.timer.list().length, 1);
+    });
+
+    test('erinnere mich in <Zeit> an <Sache> keeps the label', () async {
+      final result = await router.handle('erinnere mich in 10 minuten an die wäsche');
+      expect(result.reply, contains('wäsche'));
+    });
+
+    test('unparsable time span reports the error', () async {
+      final result = await router.handle('timer für einen moment');
+      expect(result.reply, contains('nicht verstanden'));
+    });
+
+    test('meine timer lists active timers', () async {
+      await router.handle('timer für 5 minuten');
+      final result = await router.handle('meine timer');
+      expect(result.reply, contains('Laufende Timer'));
+    });
+
+    test('meine timer reports nothing running when there is none', () async {
+      final result = await router.handle('meine timer');
+      expect(result.reply, 'Es läuft gerade kein Timer.');
+    });
+
+    test('timer abbrechen cancels every running timer', () async {
+      await router.handle('timer für 5 minuten');
+      final result = await router.handle('timer abbrechen');
+      expect(result.reply, '1 Timer abgebrochen.');
+      expect(router.timer.list(), isEmpty);
+    });
+  });
+
+  group('Notizen', () {
+    test('notiz <Text> saves a note', () async {
+      final result = await router.handle('notiz kaufe milch');
+      expect(result.reply, 'Notiz gespeichert: kaufe milch');
+    });
+
+    test('meine notizen lists saved notes', () async {
+      await router.handle('notiz kaufe milch');
+      final result = await router.handle('meine notizen');
+      expect(result.reply, contains('1. kaufe milch'));
+    });
+
+    test('bare "notizen" also lists notes (regression: not misread as add)', () async {
+      await router.handle('notiz kaufe milch');
+      final result = await router.handle('zeig mir meine notizen bitte');
+      expect(result.reply, contains('kaufe milch'));
+    });
+
+    test('no notes yet reports that clearly', () async {
+      final result = await router.handle('meine notizen');
+      expect(result.reply, 'Du hast noch keine Notizen.');
+    });
+
+    test('lösche notiz <n> removes the note at that position', () async {
+      await router.handle('notiz erste');
+      await router.handle('notiz zweite');
+      final result = await router.handle('lösche notiz 1');
+      expect(result.reply, contains('erste'));
+
+      final remaining = await router.handle('meine notizen');
+      expect(remaining.reply, isNot(contains('erste')));
+      expect(remaining.reply, contains('zweite'));
+    });
+
+    test('lösche alle notizen clears the list', () async {
+      await router.handle('notiz erste');
+      await router.handle('lösche alle notizen');
+      final result = await router.handle('meine notizen');
+      expect(result.reply, 'Du hast noch keine Notizen.');
+    });
+  });
+
+  group('Münzwurf, Würfel, Zufallszahl', () {
+    test('münze werfen returns Kopf or Zahl', () async {
+      final result = await router.handle('wirf eine münze');
+      expect(result.reply, anyOf('Kopf!', 'Zahl!'));
+    });
+
+    test('würfle returns a value between 1 and 6', () async {
+      final result = await router.handle('würfle');
+      final match = RegExp(r'(\d+) gewürfelt').firstMatch(result.reply);
+      expect(match, isNotNull);
+      final value = int.parse(match!.group(1)!);
+      expect(value, inInclusiveRange(1, 6));
+    });
+
+    test('würfle mit 20 seiten returns a value between 1 and 20', () async {
+      final result = await router.handle('würfle mit 20 seiten');
+      expect(result.reply, contains('W20'));
+      final match = RegExp(r'eine (\d+) gewürfelt').firstMatch(result.reply);
+      final value = int.parse(match!.group(1)!);
+      expect(value, inInclusiveRange(1, 20));
+    });
+
+    test('zufallszahl zwischen 5 und 10 stays within bounds', () async {
+      final result = await router.handle('zufallszahl zwischen 5 und 10');
+      final value = int.parse(result.reply.trim());
+      expect(value, inInclusiveRange(5, 10));
+    });
+  });
+
+  test('unmatched input falls through to the AI', () async {
+    final result = await router.handle('wie geht es dir heute');
+    expect(aiChat.lastMessage, 'wie geht es dir heute');
+    expect(result.reply, 'FAKE_AI:wie geht es dir heute');
+  });
+}
