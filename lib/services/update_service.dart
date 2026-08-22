@@ -8,8 +8,9 @@ import 'package:package_info_plus/package_info_plus.dart';
 class UpdateInfo {
   final String version;
   final String apkUrl;
+  final List<String> notes;
 
-  UpdateInfo({required this.version, required this.apkUrl});
+  UpdateInfo({required this.version, required this.apkUrl, this.notes = const []});
 }
 
 /// Checks a small JSON manifest hosted alongside the website for a newer
@@ -27,8 +28,9 @@ class UpdateService {
       final json = jsonDecode(res.body) as Map<String, dynamic>;
       final latestVersion = json['version'] as String;
       final apkUrl = json['apkUrl'] as String;
+      final notes = (json['notes'] as List?)?.cast<String>() ?? const [];
       if (_buildNumber(latestVersion) > _buildNumber(info.version)) {
-        return UpdateInfo(version: latestVersion, apkUrl: apkUrl);
+        return UpdateInfo(version: latestVersion, apkUrl: apkUrl, notes: notes);
       }
     } catch (_) {
       // Update checks are best-effort; silently skip on any network/parse error.
