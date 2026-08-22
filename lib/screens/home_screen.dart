@@ -115,7 +115,22 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Update verfügbar'),
-        content: Text('Eine neue Version (${update.version}) von JARVIS ist verfügbar.'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Eine neue Version (${update.version}) von JARVIS ist verfügbar.'),
+            if (update.notes.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              const Text('Neu in dieser Version:', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 4),
+              ...update.notes.map((note) => Padding(
+                    padding: const EdgeInsets.only(bottom: 2),
+                    child: Text('•  $note'),
+                  )),
+            ],
+          ],
+        ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Später')),
           FilledButton(
