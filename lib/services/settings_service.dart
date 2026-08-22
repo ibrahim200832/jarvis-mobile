@@ -39,9 +39,15 @@ class SettingsService {
     await prefs.setString(_keyUserName, value);
   }
 
+  /// Default AI proxy Worker so function-calling (Anrufe/WhatsApp/Apps aus
+  /// dem Gespräch heraus) works without any manual setup; users can still
+  /// override it in Einstellungen, or clear it to use the zero-setup
+  /// public fallback instead.
+  static const _defaultAiBackendUrl = 'https://jarvis-ai.ibrahimcool2818.workers.dev';
+
   Future<String?> getAiBackendUrl() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_keyAiBackendUrl);
+    return prefs.getString(_keyAiBackendUrl) ?? _defaultAiBackendUrl;
   }
 
   Future<void> setAiBackendUrl(String value) async {
