@@ -1,44 +1,54 @@
 // JARVIS AI proxy — runs on Cloudflare Workers.
-// Keeps the real Gemini API key on the server, never inside the app.
-// Google AI Studio gives a free API key without a credit card — see
-// README.md under "Freies KI-Gespräch einrichten".
+// Uses Cloudflare Workers AI (an open-weight model hosted directly by
+// Cloudflare, via the AI binding below) instead of a third-party AI vendor —
+// no separate account, no API key, nothing beyond the Cloudflare account
+// this Worker already runs on. See README.md under "Freies KI-Gespräch".
 
 const TOOLS = [
   {
-    name: 'call_contact',
-    description:
-      'Ruft einen gespeicherten Kontakt auf dem Handy des Nutzers an. Nur verwenden, wenn der Nutzer klar darum bittet, jemanden anzurufen.',
-    parameters: {
-      type: 'OBJECT',
-      properties: {
-        name: { type: 'STRING', description: 'Name des Kontakts, wie er im Adressbuch gespeichert ist' },
+    type: 'function',
+    function: {
+      name: 'call_contact',
+      description:
+        'Ruft einen gespeicherten Kontakt auf dem Handy des Nutzers an. Nur verwenden, wenn der Nutzer klar darum bittet, jemanden anzurufen.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Name des Kontakts, wie er im Adressbuch gespeichert ist' },
+        },
+        required: ['name'],
       },
-      required: ['name'],
     },
   },
   {
-    name: 'send_whatsapp',
-    description:
-      'Öffnet WhatsApp mit einer vorausgefüllten Nachricht an einen gespeicherten Kontakt. Nur verwenden, wenn der Nutzer klar darum bittet, eine WhatsApp-Nachricht zu senden.',
-    parameters: {
-      type: 'OBJECT',
-      properties: {
-        name: { type: 'STRING', description: 'Name des Kontakts' },
-        message: { type: 'STRING', description: 'Der Nachrichtentext' },
+    type: 'function',
+    function: {
+      name: 'send_whatsapp',
+      description:
+        'Öffnet WhatsApp mit einer vorausgefüllten Nachricht an einen gespeicherten Kontakt. Nur verwenden, wenn der Nutzer klar darum bittet, eine WhatsApp-Nachricht zu senden.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Name des Kontakts' },
+          message: { type: 'string', description: 'Der Nachrichtentext' },
+        },
+        required: ['name', 'message'],
       },
-      required: ['name', 'message'],
     },
   },
   {
-    name: 'open_app',
-    description:
-      'Öffnet eine auf dem Handy installierte App. Nur verwenden, wenn der Nutzer klar darum bittet, eine App zu öffnen.',
-    parameters: {
-      type: 'OBJECT',
-      properties: {
-        app_name: { type: 'STRING', description: 'Name der zu öffnenden App' },
+    type: 'function',
+    function: {
+      name: 'open_app',
+      description:
+        'Öffnet eine auf dem Handy installierte App. Nur verwenden, wenn der Nutzer klar darum bittet, eine App zu öffnen.',
+      parameters: {
+        type: 'object',
+        properties: {
+          app_name: { type: 'string', description: 'Name der zu öffnenden App' },
+        },
+        required: ['app_name'],
       },
-      required: ['app_name'],
     },
   },
 ];
@@ -52,7 +62,7 @@ const SYSTEM_PROMPT =
   'öffnen, nutze das passende Werkzeug dafür, statt es nur zu beschreiben. Nutze Werkzeuge nur bei ' +
   'einer eindeutigen Bitte, nicht bei vagen Erwähnungen.';
 
-const GEMINI_MODEL = 'gemini-2.0-flash';
+const AI_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 
 export default {
   async fetch(request, env) {
@@ -74,36 +84,27 @@ export default {
       return json({ error: 'message fehlt' }, 400);
     }
 
-    const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
-      {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-goog-api-key': env.GEMINI_API_KEY,
-        },
-        body: JSON.stringify({
-          system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
-          contents: [{ role: 'user', parts: [{ text: message }] }],
-          tools: [{ functionDeclarations: TOOLS }],
-          generationConfig: { maxOutputTokens: 300 },
-        }),
-      },
-    );
-
-    if (!geminiRes.ok) {
-      const detail = await geminiRes.text();
-      return json({ error: 'AI-Anfrage fehlgeschlagen', detail }, 502);
+    let data;
+    try {
+      data = await env.AI.run(AI_MODEL, {
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: message },
+        ],
+        tools: TOOLS,
+        max_tokens: 300,
+      });
+    } catch (err) {
+      return json({ error: 'AI-Anfrage fehlgeschlagen', detail: String(err) }, 502);
     }
 
-    const data = await geminiRes.json();
-    const parts = data.candidates?.[0]?.content?.parts ?? [];
-    const textPart = parts.find((p) => typeof p.text === 'string');
-    const functionCallPart = parts.find((p) => p.functionCall);
-
-    const reply = textPart?.text ?? (functionCallPart ? 'Mach ich.' : 'Ich habe keine Antwort erhalten.');
-    const action = functionCallPart
-      ? { type: functionCallPart.functionCall.name, params: functionCallPart.functionCall.args ?? {} }
+    const toolCall = data.tool_calls?.[0];
+    const reply = data.response?.trim() || (toolCall ? 'Mach ich.' : 'Ich habe keine Antwort erhalten.');
+    const action = toolCall
+      ? {
+          type: toolCall.name,
+          params: typeof toolCall.arguments === 'string' ? JSON.parse(toolCall.arguments) : (toolCall.arguments ?? {}),
+        }
       : undefined;
 
     return json({ reply, action });

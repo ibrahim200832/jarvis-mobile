@@ -112,18 +112,17 @@ Alles, was JARVIS nicht als festen Befehl erkennt (z. B. „wikipedia …“, �
 
 ### Optionales Upgrade: eigener KI-Server
 
-Wer zuverlässigere Antworten möchte, oder will, dass die KI im Gespräch selbst Anrufe/WhatsApp-Nachrichten/Apps auslösen kann (Function-Calling) statt es nur zu beschreiben, kann optional einen eigenen KI-Server einrichten. Der API-Schlüssel darf dafür **nicht** in der App selbst liegen (sonst könnte ihn jeder aus der APK/Website extrahieren) — deshalb läuft ein kleiner, kostenloser Proxy-Server dazwischen (`worker/ai-proxy.js`, für [Cloudflare Workers](https://workers.cloudflare.com)).
+Wer zuverlässigere Antworten möchte, oder will, dass die KI im Gespräch selbst Anrufe/WhatsApp-Nachrichten/Apps auslösen kann (Function-Calling) statt es nur zu beschreiben, kann optional einen eigenen KI-Server einrichten: ein kleiner Proxy-Worker (`worker/ai-proxy.js`, für [Cloudflare Workers](https://workers.cloudflare.com)).
 
-Als KI kommt dabei **Google Gemini** zum Einsatz, weil der kostenlose Plan ganz ohne Kreditkarte funktioniert (anders als bei den meisten anderen KI-Anbietern).
+Als KI kommt dabei **Cloudflare Workers AI** zum Einsatz — ein offenes Modell (Llama), das direkt bei Cloudflare läuft, im selben Account wie der Worker selbst. Kein Google, kein separater KI-Anbieter, kein API-Schlüssel, der irgendwo verwaltet werden müsste.
 
 **Einmalige Einrichtung (kein Terminal nötig, alles über den Browser):**
 
-1. **Gemini-API-Schlüssel besorgen**: [aistudio.google.com/apikey](https://aistudio.google.com/apikey) → mit einem Google-Konto anmelden → **Create API key**. Kostenlos, es wird keine Kreditkarte verlangt.
-2. **Cloudflare-Account erstellen**: [dash.cloudflare.com/sign-up](https://dash.cloudflare.com/sign-up) (kostenlos, keine Kreditkarte nötig).
-3. Im Cloudflare-Dashboard: **Workers & Pages → Create → Create Worker** → einen Namen vergeben (z. B. `jarvis-ai`) → **Deploy**.
-4. Auf **Edit code** klicken, den kompletten Inhalt der Datei [`worker/ai-proxy.js`](worker/ai-proxy.js) aus diesem Repo hineinkopieren (vorhandenen Beispielcode überschreiben) → **Deploy**.
-5. Zurück auf der Worker-Übersichtsseite: **Settings → Variables and Secrets → Add** → Name `GEMINI_API_KEY`, Typ **Secret**, Wert = der Schlüssel aus Schritt 1 → **Save**.
-6. Die Worker-URL steht oben auf der Seite (z. B. `https://jarvis-ai.<dein-name>.workers.dev`) — die in der JARVIS-App unter **Einstellungen → „KI-Server-Adresse"** eintragen und speichern. Ist das Feld leer, nutzt JARVIS automatisch den kostenlosen Standard-Dienst ohne Setup.
+1. **Cloudflare-Account erstellen**: [dash.cloudflare.com/sign-up](https://dash.cloudflare.com/sign-up) (kostenlos, keine Kreditkarte nötig).
+2. Im Cloudflare-Dashboard: **Workers & Pages → Create → Create Worker** → einen Namen vergeben (z. B. `jarvis-ai`) → **Deploy**.
+3. Auf **Edit code** klicken, den kompletten Inhalt der Datei [`worker/ai-proxy.js`](worker/ai-proxy.js) aus diesem Repo hineinkopieren (vorhandenen Beispielcode überschreiben) → **Deploy**.
+4. Im Worker-Dashboard: **Settings → Bindings → Add → AI** → Binding-Name `AI` eintragen → **Deploy** (macht `wrangler.toml` in diesem Repo automatisch, falls per Actions deployt — siehe unten).
+5. Die Worker-URL steht oben auf der Seite (z. B. `https://jarvis-ai.<dein-name>.workers.dev`) — die in der JARVIS-App unter **Einstellungen → „KI-Server-Adresse"** eintragen und speichern. Ist das Feld leer, nutzt JARVIS automatisch den kostenlosen Standard-Dienst ohne Setup.
 
 Wird `worker/ai-proxy.js` später im Repo geändert (z. B. um neue Tools), muss der aktualisierte Code auch im bestehenden Worker per **Edit code** eingefügt und neu deployt werden — das passiert nicht automatisch.
 
