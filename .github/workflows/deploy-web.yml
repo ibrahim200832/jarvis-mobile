@@ -71,7 +71,14 @@ jobs:
           fi
 
       - run: flutter pub get
-      - run: flutter build web --release --base-href "/${{ github.event.repository.name }}/"
+      # --no-web-resources-cdn: without this, Flutter's release web build
+      # loads its CanvasKit renderer from Google's gstatic.com CDN at
+      # runtime instead of bundling it. If that CDN is unreachable for a
+      # visitor (blocked network, flaky mobile connection, some regions),
+      # the app never renders anything - just a permanent blank white page,
+      # with no visible error. Self-hosting CanvasKit alongside the rest of
+      # the site avoids that external dependency entirely.
+      - run: flutter build web --release --base-href "/${{ github.event.repository.name }}/" --no-web-resources-cdn
       - run: flutter build apk --release --build-name=1.0.${{ env.BUILD_NUMBER }} --build-number=${{ env.BUILD_NUMBER }}
 
       - name: Extract latest changelog notes
