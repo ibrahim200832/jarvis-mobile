@@ -17,6 +17,10 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -74,15 +78,19 @@ jobs:
       - run: flutter build web --release --base-href "/${{ github.event.repository.name }}/"
       - run: flutter build apk --release --build-name=1.0.${{ env.BUILD_NUMBER }} --build-number=${{ env.BUILD_NUMBER }}
 
+      - name: Extract latest changelog notes
+        run: |
+          # Pull the bullet points from CHANGELOG.md's topmost "## " section
+          # so both the in-app update dialog and the GitHub Release notes
+          # can show what changed in this build.
+          awk '/^## /{n++} n==1 && /^- /{sub(/^- /,""); print}' CHANGELOG.md > /tmp/release_notes.txt
+
       - name: Bundle the Android APK and version manifest into the website
         run: |
           mkdir -p build/web/downloads
           cp build/app/outputs/flutter-apk/app-release.apk build/web/downloads/jarvis-mobile.apk
 
-          # Pull the bullet points from CHANGELOG.md's topmost "## " section
-          # so the in-app update dialog can show what changed in this build.
-          NOTES_JSON=$(awk '/^## /{n++} n==1 && /^- /{sub(/^- /,""); print}' CHANGELOG.md \
-            | jq -R -s -c 'split("\n") | map(select(length>0))')
+          NOTES_JSON=$(jq -R -s -c 'split("\n") | map(select(length>0))' /tmp/release_notes.txt)
 
           jq -n \
             --arg version "1.0.${{ env.BUILD_NUMBER }}" \
@@ -90,6 +98,16 @@ jobs:
             --argjson notes "$NOTES_JSON" \
             '{version: $version, apkUrl: $apkUrl, notes: $notes}' \
             > build/web/downloads/version.json
+
+      - name: Create GitHub Release with the APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ env.BUILD_NUMBER }}
+          name: v1.0.${{ env.BUILD_NUMBER }}
+          body_path: /tmp/release_notes.txt
+          files: build/app/outputs/flutter-apk/app-release.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/configure-pages@v5
         with:
