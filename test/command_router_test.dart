@@ -176,6 +176,8 @@ void main() {
   late FakeAiChatService aiChat;
   late TimerService timer;
   late NotesService notes;
+  late FakeEmailService email;
+  late FakeYoutubeService youtube;
   late CommandRouter router;
 
   setUp(() {
@@ -187,6 +189,8 @@ void main() {
     aiChat = FakeAiChatService();
     timer = TimerService();
     notes = NotesService();
+    email = FakeEmailService();
+    youtube = FakeYoutubeService();
 
     router = CommandRouter(
       wikipedia: wikipedia,
@@ -194,10 +198,10 @@ void main() {
       news: FakeNewsService(),
       weather: FakeWeatherService(),
       whatsapp: whatsapp,
-      email: FakeEmailService(),
+      email: email,
       call: call,
       appLauncher: FakeAppLauncherService(),
-      youtube: FakeYoutubeService(),
+      youtube: youtube,
       qr: QrService(),
       location: FakeLocationService(),
       contacts: contacts,
@@ -461,5 +465,32 @@ void main() {
     final result = await router.handle('merk dir bitte milch kaufen');
     expect(result.reply, contains('Milch kaufen'));
     expect(await notes.list(), contains('Milch kaufen'));
+  });
+
+  test('AI search_wikipedia action calls WikipediaService', () async {
+    aiChat.nextAction = AiAction(type: 'search_wikipedia', params: {'topic': 'Albert Einstein'});
+    final result = await router.handle('was weißt du über albert einstein');
+    expect(wikipedia.lastQuery, 'Albert Einstein');
+    expect(result.reply, 'WIKI:Albert Einstein');
+  });
+
+  test('AI get_news action lists the fake headlines', () async {
+    aiChat.nextAction = AiAction(type: 'get_news', params: {});
+    final result = await router.handle('was gibt es neues');
+    expect(result.reply, contains('Erste Meldung'));
+  });
+
+  test('AI send_email action composes an email to the raw address', () async {
+    aiChat.nextAction = AiAction(type: 'send_email', params: {'to': 'chef@firma.de', 'body': 'Bin im Homeoffice'});
+    final result = await router.handle('schick eine email an chef@firma.de dass ich im homeoffice bin');
+    expect(email.lastTo, 'chef@firma.de');
+    expect(result.reply, contains('chef@firma.de'));
+  });
+
+  test('AI search_youtube action calls YoutubeService', () async {
+    aiChat.nextAction = AiAction(type: 'search_youtube', params: {'query': 'lofi hip hop'});
+    final result = await router.handle('kannst du bitte lofi hip hop für mich raussuchen');
+    expect(youtube.lastQuery, 'lofi hip hop');
+    expect(result.reply, contains('lofi hip hop'));
   });
 }
