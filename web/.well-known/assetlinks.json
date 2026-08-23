@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "app.lovable.jarvis_mobile_assist.twa",
+        "sha256_cert_fingerprints": ["C8:45:1B:E7:82:4D:54:EF:B7:AE:58:A2:45:7A:52:B9:2D:AB:EF:06:91:B6:66:6E:F0:AE:81:56:20:A1:D4:1D"]
+      }
+    }]
