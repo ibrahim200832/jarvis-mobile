@@ -81,6 +81,14 @@ class CommandRouter {
   final NotesService notes;
   final RandomFunService fun;
 
+  /// Rolling window of past AI exchanges (user+assistant pairs), so a
+  /// follow-up like "und morgen?" is understood in context instead of
+  /// answered in isolation. Only exchanges that actually went through the
+  /// AI fallback are kept — keyword-matched commands (weather, notes, ...)
+  /// aren't relevant conversational context for it.
+  final _aiHistory = <AiTurn>[];
+  static const _maxHistoryTurns = 8;
+
   static const helpText = '''
 Das kann ich für dich tun:
 • "wie spät ist es" / "welcher tag ist heute"
@@ -332,7 +340,12 @@ Das kann ich für dich tun:
 
       final backendUrl = await settings.getAiBackendUrl();
       final aiModel = await settings.getAiModel();
-      final aiResult = await aiChat.ask(backendUrl ?? '', text, model: aiModel);
+      final aiResult = await aiChat.ask(backendUrl ?? '', text, model: aiModel, history: List.unmodifiable(_aiHistory));
+      _aiHistory.add(AiTurn(role: 'user', content: text));
+      _aiHistory.add(AiTurn(role: 'assistant', content: aiResult.reply));
+      while (_aiHistory.length > _maxHistoryTurns * 2) {
+        _aiHistory.removeAt(0);
+      }
       return await _handleAiResult(aiResult);
     } catch (e) {
       return CommandResult('Fehler: ${e.toString().replaceFirst('Exception: ', '')}');
@@ -371,6 +384,36 @@ Das kann ich für dich tun:
         if (app == null) return CommandResult('Ich konnte die App "$appName" nicht finden.');
         await appLauncher.open(app.packageName);
         return CommandResult('Öffne ${app.name}.');
+
+      case 'set_timer':
+        final minutesValue = action.params['minutes'];
+        final minutes = minutesValue is num ? minutesValue.toInt() : int.tryParse('$minutesValue');
+        if (minutes == null || minutes <= 0) {
+          return CommandResult('Ich habe die Zeitangabe nicht verstanden. Sag z. B. "timer für 5 minuten".');
+        }
+        final label = (action.params['label'] as String?)?.trim();
+        final active = timer.start(Duration(minutes: minutes), label: label);
+        return CommandResult('Timer "${active.label}" gestellt: ${TimerService.describe(active.duration)}.');
+
+      case 'add_note':
+        final noteText = (action.params['text'] as String?)?.trim() ?? '';
+        if (noteText.isEmpty) return CommandResult('Was soll ich mir merken?');
+        await notes.add(noteText);
+        return CommandResult('Notiz gespeichert: $noteText');
+
+      case 'get_weather':
+        final key = await settings.getWeatherApiKey();
+        if (key == null || key.isEmpty) {
+          return CommandResult('Kein OpenWeatherMap-Schlüssel hinterlegt. Bitte in den Einstellungen eintragen.');
+        }
+        final city = (action.params['city'] as String?)?.trim();
+        final weatherResult = (city == null || city.isEmpty) ? await _weatherAtCurrentLocation(key) : await weather.byCity(key, city);
+        return CommandResult(
+          'Das Wetter in ${weatherResult.city}: ${weatherResult.description}, ${weatherResult.tempCelsius.toStringAsFixed(1)}°C.',
+        );
+
+      case 'open_camera':
+        return CommandResult('Öffne die Kamera.', openCamera: true);
 
       default:
         return CommandResult(aiResult.reply);

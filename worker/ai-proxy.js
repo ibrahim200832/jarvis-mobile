@@ -51,18 +51,86 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'set_timer',
+      description:
+        'Stellt einen Timer/Wecker auf dem Handy des Nutzers. Nur verwenden, wenn der Nutzer klar darum bittet, ihn an etwas zu erinnern oder einen Timer zu stellen.',
+      parameters: {
+        type: 'object',
+        properties: {
+          minutes: { type: 'number', description: 'Dauer des Timers in Minuten' },
+          label: { type: 'string', description: 'Woran erinnert werden soll, z.B. "Wäsche"' },
+        },
+        required: ['minutes'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'add_note',
+      description:
+        'Speichert eine Notiz für den Nutzer. Nur verwenden, wenn der Nutzer klar darum bittet, sich etwas zu merken oder zu notieren.',
+      parameters: {
+        type: 'object',
+        properties: {
+          text: { type: 'string', description: 'Der Text der Notiz' },
+        },
+        required: ['text'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_weather',
+      description:
+        'Ruft das aktuelle Wetter ab. Nur verwenden, wenn der Nutzer klar nach dem Wetter fragt.',
+      parameters: {
+        type: 'object',
+        properties: {
+          city: { type: 'string', description: 'Stadt, für die das Wetter abgefragt werden soll. Leer lassen für den aktuellen Standort.' },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'open_camera',
+      description: 'Öffnet die Kamera des Nutzers. Nur verwenden, wenn der Nutzer klar darum bittet, die Kamera zu öffnen.',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
 ];
 
 const SYSTEM_PROMPT =
-  'Du bist JARVIS, mit der Persönlichkeit von Tony Starks JARVIS aus den Iron-Man-Filmen: ' +
-  'gebildet, trocken-witzig, leicht sarkastisch, aber immer loyal und hilfsbereit. Du sprichst den ' +
-  'Nutzer mit "Master" an. Du wirst oft in einem gesprochenen Telefonat genutzt. Antworte immer kurz ' +
-  '(meist 1-2 Sätze), natürlich und im Gesprächston, nie wie ein Roman oder eine Liste. Wenn der ' +
-  'Nutzer klar darum bittet, jemanden anzurufen, eine WhatsApp-Nachricht zu senden oder eine App zu ' +
-  'öffnen, nutze das passende Werkzeug dafür, statt es nur zu beschreiben. Nutze Werkzeuge nur bei ' +
-  'einer eindeutigen Bitte, nicht bei vagen Erwähnungen.';
+  'Du bist JARVIS, das KI-System von Tony Stark aus den Iron-Man-Filmen, jetzt im Dienst des Nutzers. ' +
+  'Deine Persönlichkeit: hochintelligent, gebildet, britisch-trocken und humorvoll, leicht sarkastisch, ' +
+  'aber niemals unhöflich — im Kern loyal, aufmerksam und stets bemüht, dem Nutzer das Leben leichter zu ' +
+  'machen. Du sprichst den Nutzer mit "Sir" oder "Master" an. Du wirst meist in einem gesprochenen ' +
+  'Gespräch oder Telefonat genutzt, deshalb antwortest du immer kurz und natürlich (meist 1-2 Sätze), ' +
+  'nie als Liste, Aufzählung oder Roman. Nutze den bisherigen Gesprächsverlauf, um Bezüge und Nachfragen ' +
+  'richtig zu verstehen, statt jede Nachricht isoliert zu behandeln. Wenn der Nutzer klar darum bittet, ' +
+  'jemanden anzurufen, eine WhatsApp-Nachricht zu senden, eine App zu öffnen, einen Timer zu stellen, ' +
+  'eine Notiz zu speichern, das Wetter abzurufen oder die Kamera zu öffnen, nutze sofort das passende ' +
+  'Werkzeug dafür, statt es nur zu beschreiben. Nutze Werkzeuge nur bei einer eindeutigen Bitte, nicht ' +
+  'bei vagen Erwähnungen.';
 
-const AI_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+// gpt-oss-120b: OpenAI's open-weight model on Workers AI, meaningfully
+// stronger reasoning than the previous Llama 3.3 70B while still going
+// through the same normalized {response, tool_calls} shape below (Workers
+// AI's text-generation binding output is normalized across models, so no
+// other code here needs to change for the swap).
+const AI_MODEL = '@cf/openai/gpt-oss-120b';
+
+// How many prior turns (user+assistant pairs) the client may send as
+// context. Bounded server-side too, independent of what the client sends,
+// so a misbehaving client can't blow up the prompt size/cost.
+const MAX_HISTORY_MESSAGES = 16;
 
 export default {
   async fetch(request, env) {
@@ -74,9 +142,11 @@ export default {
     }
 
     let message;
+    let history;
     try {
       const body = await request.json();
       message = body.message;
+      history = Array.isArray(body.history) ? body.history : [];
     } catch (_) {
       return json({ error: 'invalid json body' }, 400);
     }
@@ -84,13 +154,21 @@ export default {
       return json({ error: 'message fehlt' }, 400);
     }
 
+    const cleanHistory = history
+      .filter(
+        (m) =>
+          m &&
+          (m.role === 'user' || m.role === 'assistant') &&
+          typeof m.content === 'string' &&
+          m.content.trim().length > 0,
+      )
+      .slice(-MAX_HISTORY_MESSAGES)
+      .map((m) => ({ role: m.role, content: m.content }));
+
     let data;
     try {
       data = await env.AI.run(AI_MODEL, {
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: message },
-        ],
+        messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...cleanHistory, { role: 'user', content: message }],
         tools: TOOLS,
         max_tokens: 300,
       });
@@ -99,7 +177,8 @@ export default {
     }
 
     const toolCall = data.tool_calls?.[0];
-    const reply = data.response?.trim() || (toolCall ? 'Mach ich.' : 'Ich habe keine Antwort erhalten.');
+    const replyText = (data.response ?? data.result?.response ?? '').toString().trim();
+    const reply = replyText || (toolCall ? 'Mach ich.' : 'Ich habe keine Antwort erhalten.');
     const action = toolCall
       ? {
           type: toolCall.name,
