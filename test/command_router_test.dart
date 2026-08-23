@@ -145,11 +145,19 @@ class FakeIpService extends IpService {
 
 class FakeAiChatService extends AiChatService {
   String? lastMessage;
+  List<AiTurn>? lastHistory;
+  AiAction? nextAction;
 
   @override
-  Future<AiChatResult> ask(String backendUrl, String message, {String model = 'openai'}) async {
+  Future<AiChatResult> ask(
+    String backendUrl,
+    String message, {
+    String model = 'openai',
+    List<AiTurn> history = const [],
+  }) async {
     lastMessage = message;
-    return AiChatResult(reply: 'FAKE_AI:$message');
+    lastHistory = history;
+    return AiChatResult(reply: 'FAKE_AI:$message', action: nextAction);
   }
 }
 
@@ -166,6 +174,8 @@ void main() {
   late FakeCallService call;
   late FakeWhatsappService whatsapp;
   late FakeAiChatService aiChat;
+  late TimerService timer;
+  late NotesService notes;
   late CommandRouter router;
 
   setUp(() {
@@ -175,6 +185,8 @@ void main() {
     call = FakeCallService();
     whatsapp = FakeWhatsappService();
     aiChat = FakeAiChatService();
+    timer = TimerService();
+    notes = NotesService();
 
     router = CommandRouter(
       wikipedia: wikipedia,
@@ -193,8 +205,8 @@ void main() {
       ip: FakeIpService(),
       aiChat: aiChat,
       deviceInfo: FakeDeviceInfoService(),
-      timer: TimerService(),
-      notes: NotesService(),
+      timer: timer,
+      notes: notes,
       fun: RandomFunService(),
     );
   });
@@ -423,5 +435,31 @@ void main() {
     final result = await router.handle('wie geht es dir heute');
     expect(aiChat.lastMessage, 'wie geht es dir heute');
     expect(result.reply, 'FAKE_AI:wie geht es dir heute');
+  });
+
+  test('AI fallback remembers prior turns as history for follow-up questions', () async {
+    await router.handle('wer war albert einstein');
+    expect(aiChat.lastHistory, isEmpty);
+
+    await router.handle('und wann ist er gestorben');
+    expect(aiChat.lastHistory!.length, 2);
+    expect(aiChat.lastHistory![0].role, 'user');
+    expect(aiChat.lastHistory![0].content, 'wer war albert einstein');
+    expect(aiChat.lastHistory![1].role, 'assistant');
+    expect(aiChat.lastHistory![1].content, 'FAKE_AI:wer war albert einstein');
+  });
+
+  test('AI set_timer action starts a real timer', () async {
+    aiChat.nextAction = AiAction(type: 'set_timer', params: {'minutes': 5, 'label': 'Kaffee'});
+    final result = await router.handle('kannst du mich in 5 minuten an den kaffee erinnern');
+    expect(result.reply, contains('Kaffee'));
+    expect(timer.list(), hasLength(1));
+  });
+
+  test('AI add_note action saves a note', () async {
+    aiChat.nextAction = AiAction(type: 'add_note', params: {'text': 'Milch kaufen'});
+    final result = await router.handle('merk dir bitte milch kaufen');
+    expect(result.reply, contains('Milch kaufen'));
+    expect(await notes.list(), contains('Milch kaufen'));
   });
 }

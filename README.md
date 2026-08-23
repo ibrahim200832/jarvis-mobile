@@ -114,7 +114,7 @@ Alles, was JARVIS nicht als festen Befehl erkennt (z. B. „wikipedia …“, �
 
 Wer zuverlässigere Antworten möchte, oder will, dass die KI im Gespräch selbst Anrufe/WhatsApp-Nachrichten/Apps auslösen kann (Function-Calling) statt es nur zu beschreiben, kann optional einen eigenen KI-Server einrichten: ein kleiner Proxy-Worker (`worker/ai-proxy.js`, für [Cloudflare Workers](https://workers.cloudflare.com)).
 
-Als KI kommt dabei **Cloudflare Workers AI** zum Einsatz — ein offenes Modell (Llama), das direkt bei Cloudflare läuft, im selben Account wie der Worker selbst. Kein Google, kein separater KI-Anbieter, kein API-Schlüssel, der irgendwo verwaltet werden müsste.
+Als KI kommt dabei **Cloudflare Workers AI** zum Einsatz — ein offenes Modell (OpenAIs gpt-oss-120b), das direkt bei Cloudflare läuft, im selben Account wie der Worker selbst. Kein Google, kein separater KI-Anbieter, kein API-Schlüssel, der irgendwo verwaltet werden müsste. JARVIS merkt sich dabei auch den bisherigen Gesprächsverlauf und kann neben Anrufen/WhatsApp/Apps auch Timer stellen, Notizen speichern, das Wetter abrufen und die Kamera öffnen.
 
 **Einmalige Einrichtung (kein Terminal nötig, alles über den Browser):**
 
