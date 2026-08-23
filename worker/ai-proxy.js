@@ -105,6 +105,61 @@ const TOOLS = [
       parameters: { type: 'object', properties: {}, required: [] },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'search_wikipedia',
+      description:
+        'Sucht einen kurzen Wikipedia-Überblick zu einem Thema oder einer Person. Nur verwenden, wenn der Nutzer klar danach fragt, was oder wer etwas ist, oder explizit Wikipedia erwähnt.',
+      parameters: {
+        type: 'object',
+        properties: {
+          topic: { type: 'string', description: 'Das Thema oder die Person, zu der Informationen gesucht werden sollen' },
+        },
+        required: ['topic'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_news',
+      description: 'Ruft aktuelle Top-Schlagzeilen ab. Nur verwenden, wenn der Nutzer klar nach Nachrichten oder Schlagzeilen fragt.',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'send_email',
+      description:
+        'Öffnet die E-Mail-App mit einer vorausgefüllten Nachricht an eine E-Mail-Adresse. Nur verwenden, wenn der Nutzer klar darum bittet, eine E-Mail zu senden, und eine E-Mail-Adresse nennt.',
+      parameters: {
+        type: 'object',
+        properties: {
+          to: { type: 'string', description: 'Die E-Mail-Adresse des Empfängers' },
+          subject: { type: 'string', description: 'Betreff der E-Mail (optional)' },
+          body: { type: 'string', description: 'Der Text der E-Mail' },
+        },
+        required: ['to', 'body'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'search_youtube',
+      description:
+        'Öffnet eine YouTube-Suche zu einem Begriff. Nur verwenden, wenn der Nutzer klar darum bittet, etwas auf YouTube zu suchen oder abzuspielen.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Der Suchbegriff für YouTube' },
+        },
+        required: ['query'],
+      },
+    },
+  },
 ];
 
 const SYSTEM_PROMPT =
@@ -113,12 +168,19 @@ const SYSTEM_PROMPT =
   'aber niemals unhöflich — im Kern loyal, aufmerksam und stets bemüht, dem Nutzer das Leben leichter zu ' +
   'machen. Du sprichst den Nutzer mit "Sir" oder "Master" an. Du wirst meist in einem gesprochenen ' +
   'Gespräch oder Telefonat genutzt, deshalb antwortest du immer kurz und natürlich (meist 1-2 Sätze), ' +
-  'nie als Liste, Aufzählung oder Roman. Nutze den bisherigen Gesprächsverlauf, um Bezüge und Nachfragen ' +
-  'richtig zu verstehen, statt jede Nachricht isoliert zu behandeln. Wenn der Nutzer klar darum bittet, ' +
-  'jemanden anzurufen, eine WhatsApp-Nachricht zu senden, eine App zu öffnen, einen Timer zu stellen, ' +
-  'eine Notiz zu speichern, das Wetter abzurufen oder die Kamera zu öffnen, nutze sofort das passende ' +
-  'Werkzeug dafür, statt es nur zu beschreiben. Nutze Werkzeuge nur bei einer eindeutigen Bitte, nicht ' +
-  'bei vagen Erwähnungen.';
+  'nie als Liste, Aufzählung oder Roman. ' +
+  'Wichtig: Die bisherigen Nachrichten dieses Gesprächs stehen dir direkt zur Verfügung. Lies sie aktiv, ' +
+  'bevor du antwortest, und beziehe dich bei Nachfragen wie "und morgen?" oder "was ist mit ihm?" ' +
+  'ausdrücklich auf das zuvor Gesagte, statt die Nachricht isoliert zu behandeln. ' +
+  'Wenn du eine Tatsache nicht sicher weißt, sag das ehrlich in ein bis zwei Worten, statt sie zu erfinden. ' +
+  'Du hast Werkzeuge für: Anrufen, WhatsApp senden, Apps öffnen, Timer stellen, Notizen speichern, Wetter ' +
+  'abrufen, Kamera öffnen, Wikipedia-Suche, Nachrichten abrufen, E-Mail senden und YouTube-Suche. ' +
+  'Nutze ein Werkzeug ausschließlich dann, wenn der Nutzer eine konkrete, eindeutige Handlungsaufforderung ' +
+  'ausspricht (z.B. "ruf Mama an", "schreib eine E-Mail an..."). Nutze niemals ein Werkzeug bei einer ' +
+  'bloßen Erwähnung, Frage über die Vergangenheit oder einem Gedanken laut — z.B. bei "ich sollte mal ' +
+  'meine Mutter anrufen" oder "was schreibst du normalerweise in E-Mails?" antwortest du nur in Worten, ' +
+  'ohne ein Werkzeug zu benutzen. Im Zweifel: lieber nachfragen oder in Worten antworten, als ungefragt zu ' +
+  'handeln.';
 
 // gpt-oss-120b: OpenAI's open-weight model on Workers AI, meaningfully
 // stronger reasoning than the previous Llama 3.3 70B while still going
@@ -171,6 +233,10 @@ export default {
         messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...cleanHistory, { role: 'user', content: message }],
         tools: TOOLS,
         max_tokens: 300,
+        // Moderate value: keeps replies grounded and tool-triggering conservative
+        // (helps with both off-topic answers and false-positive actions) without
+        // flattening the character's intended dry humor entirely (temperature 0).
+        temperature: 0.3,
       });
     } catch (err) {
       return json({ error: 'AI-Anfrage fehlgeschlagen', detail: String(err) }, 502);

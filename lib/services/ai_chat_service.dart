@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -37,7 +38,10 @@ const jarvisSystemPrompt =
     'Deine Persönlichkeit: hochintelligent, gebildet, britisch-trocken und humorvoll, leicht sarkastisch, '
     'aber niemals unhöflich — im Kern loyal und stets bemüht, dem Nutzer das Leben leichter zu machen. Du '
     'sprichst den Nutzer mit "Sir" oder "Master" an. Antworte kurz (meist 1-2 Sätze), natürlich und im '
-    'Gesprächston, wie ein echtes Telefonat, nicht wie ein Roman oder eine Liste.';
+    'Gesprächston, wie ein echtes Telefonat, nicht wie ein Roman oder eine Liste. '
+    'Das bisherige Gespräch steht dir unten zur Verfügung — lies es aktiv und beziehe dich bei Nachfragen '
+    'ausdrücklich darauf, statt die Nachricht isoliert zu behandeln. Wenn du eine Tatsache nicht sicher '
+    'weißt, sag das ehrlich, statt sie zu erfinden.';
 
 /// Sends free-form questions to an AI. If the user configured their own
 /// backend (see worker/ai-proxy.js) under Einstellungen, that's used — it
@@ -87,27 +91,45 @@ class AiChatService {
     }
   }
 
+  Uri _freeFallbackUri(String message, String model, List<AiTurn> history) {
+    final transcript = history.map((t) => '${t.role == 'user' ? 'Master' : 'JARVIS'}: ${t.content}').join('\n');
+    final prompt = '$jarvisSystemPrompt'
+        '${transcript.isEmpty ? '' : '\n\nBisheriges Gespräch:\n$transcript'}'
+        '\n\nMaster sagt: $message\n\nJARVIS antwortet:';
+    return Uri(
+      scheme: 'https',
+      host: 'text.pollinations.ai',
+      pathSegments: [prompt],
+      queryParameters: {'model': model},
+    );
+  }
+
+  /// Retries once on a transient failure (timeout, bad status, empty body)
+  /// before giving up — pollinations.ai is a free, unauthenticated public
+  /// endpoint with no uptime guarantee, so a single blip shouldn't surface
+  /// as an outright failure to the user.
   Future<AiChatResult> _askFreeFallback(String message, String model, List<AiTurn> history) async {
-    try {
-      final transcript = history.map((t) => '${t.role == 'user' ? 'Master' : 'JARVIS'}: ${t.content}').join('\n');
-      final prompt = '$jarvisSystemPrompt'
-          '${transcript.isEmpty ? '' : '\n\nBisheriges Gespräch:\n$transcript'}'
-          '\n\nMaster sagt: $message\n\nJARVIS antwortet:';
-      final uri = Uri(
-        scheme: 'https',
-        host: 'text.pollinations.ai',
-        pathSegments: [prompt],
-        queryParameters: {'model': model},
-      );
-      final res = await http.get(uri).timeout(const Duration(seconds: 25));
-      if (res.statusCode != 200 || res.body.trim().isEmpty) {
-        return AiChatResult(reply: 'Ich hab gerade keine Antwort bekommen, Master. Versuch es gleich nochmal.');
+    final uri = _freeFallbackUri(message, model, history);
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        final res = await http.get(uri).timeout(const Duration(seconds: 25));
+        if (res.statusCode == 200 && res.body.trim().isNotEmpty) {
+          return AiChatResult(reply: res.body.trim());
+        }
+        if (attempt == 0) continue;
+        return AiChatResult(
+          reply: 'Ich hab gerade keine Antwort bekommen, Master (Code ${res.statusCode}). Versuch es gleich nochmal.',
+        );
+      } on TimeoutException {
+        if (attempt == 0) continue;
+        return AiChatResult(reply: 'Die Antwort hat zu lange gedauert, Master. Versuch es gleich nochmal.');
+      } catch (_) {
+        if (attempt == 0) continue;
+        return AiChatResult(
+          reply: 'Ich konnte die KI gerade nicht erreichen, Master. Prüf deine Internetverbindung.',
+        );
       }
-      return AiChatResult(reply: res.body.trim());
-    } catch (_) {
-      return AiChatResult(
-        reply: 'Ich konnte die KI gerade nicht erreichen, Master. Prüf deine Internetverbindung.',
-      );
     }
+    return AiChatResult(reply: 'Ich hab gerade keine Antwort bekommen, Master.');
   }
 }

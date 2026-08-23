@@ -415,6 +415,35 @@ Das kann ich für dich tun:
       case 'open_camera':
         return CommandResult('Öffne die Kamera.', openCamera: true);
 
+      case 'search_wikipedia':
+        final topic = (action.params['topic'] as String?)?.trim() ?? '';
+        if (topic.isEmpty) return CommandResult('Wonach soll ich auf Wikipedia suchen?');
+        return CommandResult(await wikipedia.summary(topic));
+
+      case 'get_news':
+        final newsKey = await settings.getNewsApiKey();
+        final headlines = await news.topHeadlines(newsKey ?? '');
+        if (headlines.isEmpty) return CommandResult('Ich habe keine Schlagzeilen gefunden.');
+        return CommandResult('Aktuelle Schlagzeilen:\n${headlines.map((h) => '• $h').join('\n')}');
+
+      case 'send_email':
+        final to = (action.params['to'] as String?)?.trim() ?? '';
+        if (to.isEmpty) return CommandResult('An welche E-Mail-Adresse soll ich schreiben?');
+        final subject = (action.params['subject'] as String?)?.trim();
+        final body = (action.params['body'] as String?)?.trim() ?? '';
+        await email.compose(
+          to: to,
+          subject: (subject == null || subject.isEmpty) ? 'Nachricht von JARVIS' : subject,
+          body: body,
+        );
+        return CommandResult('Öffne E-Mail an $to.');
+
+      case 'search_youtube':
+        final query = (action.params['query'] as String?)?.trim() ?? '';
+        if (query.isEmpty) return CommandResult('Wonach soll ich auf YouTube suchen?');
+        await youtube.search(query);
+        return CommandResult('Suche "$query" auf YouTube.');
+
       default:
         return CommandResult(aiResult.reply);
     }
