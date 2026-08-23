@@ -23,6 +23,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   List<Contact> _contacts = [];
   String _appVersion = '';
   String _aiModel = 'openai';
+  bool? _hasDeviceContacts;
 
   static const _aiModels = {
     'openai': 'ChatGPT (Standard)',
@@ -96,6 +97,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Future<void> _requestDeviceContacts() async {
+    final granted = await widget.contacts.hasDeviceAccess();
+    if (mounted) setState(() => _hasDeviceContacts = granted);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -167,6 +173,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const Text('Kontakte', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               IconButton(onPressed: _addContact, icon: const Icon(Icons.add)),
             ],
+          ),
+          if (_hasDeviceContacts != true)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: OutlinedButton.icon(
+                onPressed: _requestDeviceContacts,
+                icon: const Icon(Icons.contacts_outlined),
+                label: const Text('Zugriff auf Handy-Kontakte erlauben'),
+              ),
+            )
+          else
+            const Padding(
+              padding: EdgeInsets.only(bottom: 12),
+              child: Text(
+                'Zugriff auf Handy-Kontakte erlaubt — JARVIS findet jeden Namen aus deinem Adressbuch, ohne dass du ihn hier eintragen musst.',
+                style: TextStyle(fontSize: 12),
+              ),
+            ),
+          const Text(
+            'Zusätzliche Kontakte (z. B. für Namen, die nicht im Handy-Adressbuch stehen):',
+            style: TextStyle(fontSize: 12),
           ),
           ..._contacts.map(
             (c) => ListTile(

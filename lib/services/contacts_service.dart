@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter_contacts/flutter_contacts.dart' as device;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class Contact {
@@ -17,10 +19,17 @@ class Contact {
       );
 }
 
-/// A tiny in-app phonebook, replacing the `Contacts.txt` +
-/// `PhoneNumer.py` telephone-dictionary feature from the desktop app.
+/// Looks up contacts from the phone's real address book (so JARVIS can call
+/// or message anyone in it without the user re-typing every name/number
+/// into the app), falling back to a small in-app list for entries not in
+/// the phone's contacts (or on platforms without one, e.g. web).
 class ContactsService {
   static const _key = 'jarvis_contacts';
+
+  Future<bool> hasDeviceAccess() async {
+    if (kIsWeb) return false;
+    return device.FlutterContacts.requestPermission(readonly: true);
+  }
 
   Future<List<Contact>> all() async {
     final prefs = await SharedPreferences.getInstance();
@@ -49,10 +58,32 @@ class ContactsService {
   }
 
   Future<Contact?> find(String name) async {
+    final fromDevice = await _findOnDevice(name);
+    if (fromDevice != null) return fromDevice;
+
     final contacts = await all();
     for (final c in contacts) {
       if (c.name.toLowerCase().contains(name.toLowerCase())) return c;
     }
     return null;
+  }
+
+  Future<Contact?> _findOnDevice(String name) async {
+    if (kIsWeb) return null;
+    try {
+      if (!await device.FlutterContacts.requestPermission(readonly: true)) return null;
+      final lower = name.toLowerCase();
+      final all = await device.FlutterContacts.getContacts(withProperties: true);
+      for (final c in all) {
+        if (!c.displayName.toLowerCase().contains(lower)) continue;
+        final phone = c.phones.isNotEmpty ? c.phones.first.number : '';
+        if (phone.isEmpty) continue;
+        final email = c.emails.isNotEmpty ? c.emails.first.address : '';
+        return Contact(name: c.displayName, phone: phone, email: email);
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
   }
 }
