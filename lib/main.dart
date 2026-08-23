@@ -17,11 +17,11 @@ class JarvisApp extends StatelessWidget {
     return MaterialApp(
       title: 'J.A.R.V.I.S.',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.cyan, brightness: Brightness.dark),
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFFD4952B), brightness: Brightness.dark),
         useMaterial3: true,
       ),
       darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.cyan, brightness: Brightness.dark),
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFFD4952B), brightness: Brightness.dark),
         useMaterial3: true,
       ),
       themeMode: ThemeMode.dark,
