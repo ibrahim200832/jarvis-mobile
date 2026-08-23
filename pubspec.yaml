@@ -30,6 +30,7 @@ dependencies:
   web: ^1.1.0
   google_sign_in: ^6.2.2
   image_picker: ^1.2.3
+  flutter_contacts: ^1.1.9+2
 
 dev_dependencies:
   flutter_test:
