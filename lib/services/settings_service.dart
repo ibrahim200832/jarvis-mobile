@@ -8,6 +8,7 @@ class SettingsService {
   static const _keyAiBackendUrl = 'ai_backend_url';
   static const _keyYoutubeClientId = 'youtube_client_id';
   static const _keyAiModel = 'ai_model';
+  static const _keySpotifyClientId = 'spotify_client_id';
 
   Future<String?> getNewsApiKey() async {
     final prefs = await SharedPreferences.getInstance();
@@ -80,5 +81,19 @@ class SettingsService {
   Future<void> setAiModel(String value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyAiModel, value);
+  }
+
+  /// No zero-setup default is possible here, unlike the AI backend or
+  /// YouTube — a Spotify app's redirect URI must be registered by whoever
+  /// owns the Client ID in their own Spotify Developer Dashboard, so each
+  /// user needs their own (see README).
+  Future<String?> getSpotifyClientId() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keySpotifyClientId);
+  }
+
+  Future<void> setSpotifyClientId(String value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keySpotifyClientId, value);
   }
 }

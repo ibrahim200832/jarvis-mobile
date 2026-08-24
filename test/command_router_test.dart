@@ -12,9 +12,11 @@ import 'package:jarvis_mobile/services/joke_service.dart';
 import 'package:jarvis_mobile/services/location_service.dart';
 import 'package:jarvis_mobile/services/news_service.dart';
 import 'package:jarvis_mobile/services/notes_service.dart';
+import 'package:jarvis_mobile/services/notification_service.dart';
 import 'package:jarvis_mobile/services/qr_service.dart';
 import 'package:jarvis_mobile/services/random_fun_service.dart';
 import 'package:jarvis_mobile/services/settings_service.dart';
+import 'package:jarvis_mobile/services/spotify_service.dart';
 import 'package:jarvis_mobile/services/timer_service.dart';
 import 'package:jarvis_mobile/services/weather_service.dart';
 import 'package:jarvis_mobile/services/whatsapp_service.dart';
@@ -166,6 +168,28 @@ class FakeDeviceInfoService extends DeviceInfoService {
   Future<int?> batteryLevel() async => 77;
 }
 
+class FakeSpotifyService extends SpotifyService {
+  bool connected = false;
+
+  @override
+  Future<bool> isConnected() async => connected;
+}
+
+class FakeNotificationService extends NotificationService {
+  int scheduleCalls = 0;
+  int cancelCalls = 0;
+
+  @override
+  Future<void> scheduleTimerNotification({required int id, required String body, required Duration delay}) async {
+    scheduleCalls++;
+  }
+
+  @override
+  Future<void> cancelAll() async {
+    cancelCalls++;
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -178,6 +202,8 @@ void main() {
   late NotesService notes;
   late FakeEmailService email;
   late FakeYoutubeService youtube;
+  late FakeNotificationService notifications;
+  late FakeSpotifyService spotify;
   late CommandRouter router;
 
   setUp(() {
@@ -191,6 +217,8 @@ void main() {
     notes = NotesService();
     email = FakeEmailService();
     youtube = FakeYoutubeService();
+    notifications = FakeNotificationService();
+    spotify = FakeSpotifyService();
 
     router = CommandRouter(
       wikipedia: wikipedia,
@@ -212,6 +240,8 @@ void main() {
       timer: timer,
       notes: notes,
       fun: RandomFunService(),
+      notifications: notifications,
+      spotify: spotify,
     );
   });
 
@@ -329,10 +359,11 @@ void main() {
   });
 
   group('Timer', () {
-    test('timer für <Zeit> starts a timer', () async {
+    test('timer für <Zeit> starts a timer and schedules a notification', () async {
       final result = await router.handle('timer für 5 minuten');
       expect(result.reply, contains('Timer'));
       expect(router.timer.list().length, 1);
+      expect(notifications.scheduleCalls, 1);
     });
 
     test('erinnere mich in <Zeit> an <Sache> keeps the label', () async {
@@ -356,11 +387,12 @@ void main() {
       expect(result.reply, 'Es läuft gerade kein Timer.');
     });
 
-    test('timer abbrechen cancels every running timer', () async {
+    test('timer abbrechen cancels every running timer and its notification', () async {
       await router.handle('timer für 5 minuten');
       final result = await router.handle('timer abbrechen');
       expect(result.reply, '1 Timer abgebrochen.');
       expect(router.timer.list(), isEmpty);
+      expect(notifications.cancelCalls, 1);
     });
   });
 
@@ -458,6 +490,7 @@ void main() {
     final result = await router.handle('kannst du mich in 5 minuten an den kaffee erinnern');
     expect(result.reply, contains('Kaffee'));
     expect(timer.list(), hasLength(1));
+    expect(notifications.scheduleCalls, 1);
   });
 
   test('AI add_note action saves a note', () async {
@@ -492,5 +525,17 @@ void main() {
     final result = await router.handle('kannst du bitte lofi hip hop für mich raussuchen');
     expect(youtube.lastQuery, 'lofi hip hop');
     expect(result.reply, contains('lofi hip hop'));
+  });
+
+  test('spiele <song> auf spotify reports missing Spotify setup instead of going to YouTube', () async {
+    final result = await router.handle('spiele bohemian rhapsody auf spotify');
+    expect(result.reply, contains('Spotify ist nicht eingerichtet'));
+    expect(youtube.lastQuery, isNull);
+  });
+
+  test('AI play_music action reports missing Spotify setup', () async {
+    aiChat.nextAction = AiAction(type: 'play_music', params: {'query': 'bohemian rhapsody'});
+    final result = await router.handle('kannst du bohemian rhapsody abspielen');
+    expect(result.reply, contains('Spotify ist nicht eingerichtet'));
   });
 }

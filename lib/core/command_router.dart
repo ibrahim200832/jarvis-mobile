@@ -12,9 +12,11 @@ import '../services/joke_service.dart';
 import '../services/location_service.dart';
 import '../services/news_service.dart';
 import '../services/notes_service.dart';
+import '../services/notification_service.dart';
 import '../services/qr_service.dart';
 import '../services/random_fun_service.dart';
 import '../services/settings_service.dart';
+import '../services/spotify_service.dart';
 import '../services/timer_service.dart';
 import '../services/weather_service.dart';
 import '../services/whatsapp_service.dart';
@@ -59,6 +61,8 @@ class CommandRouter {
     required this.timer,
     required this.notes,
     required this.fun,
+    required this.notifications,
+    required this.spotify,
   });
 
   final WikipediaService wikipedia;
@@ -80,6 +84,8 @@ class CommandRouter {
   final TimerService timer;
   final NotesService notes;
   final RandomFunService fun;
+  final NotificationService notifications;
+  final SpotifyService spotify;
 
   /// Rolling window of past AI exchanges (user+assistant pairs), so a
   /// follow-up like "und morgen?" is understood in context instead of
@@ -237,6 +243,10 @@ Das kann ich für dich tun:
 
       final youtubeQuery = _extractAfter(lower, text, ['youtube', 'spiele']);
       if (youtubeQuery != null) {
+        if (youtubeQuery.contains('spotify')) {
+          final song = youtubeQuery.replaceAll(RegExp(r'\s*(auf|bei|in)?\s*spotify\s*'), ' ').trim();
+          return CommandResult(await _playOnSpotify(song));
+        }
         await youtube.search(youtubeQuery);
         return CommandResult('Suche "$youtubeQuery" auf YouTube.');
       }
@@ -263,6 +273,7 @@ Das kann ich für dich tun:
 
       if (_matchesAny(lower, ['timer abbrechen', 'alle timer stoppen', 'timer stoppen', 'timer löschen'])) {
         final count = timer.cancelAll();
+        await notifications.cancelAll();
         return CommandResult(count == 0 ? 'Es läuft gerade kein Timer.' : '$count Timer abgebrochen.');
       }
 
@@ -284,6 +295,11 @@ Das kann ich für dich tun:
           return CommandResult('Ich habe die Zeitangabe nicht verstanden. Sag z. B. "timer für 5 minuten".');
         }
         final active = timer.start(parsed.duration, label: parsed.label);
+        await notifications.scheduleTimerNotification(
+          id: active.id.hashCode,
+          body: '⏰ „${active.label}" ist abgelaufen!',
+          delay: parsed.duration,
+        );
         return CommandResult('Timer "${active.label}" gestellt: ${TimerService.describe(parsed.duration)}.');
       }
 
@@ -393,6 +409,11 @@ Das kann ich für dich tun:
         }
         final label = (action.params['label'] as String?)?.trim();
         final active = timer.start(Duration(minutes: minutes), label: label);
+        await notifications.scheduleTimerNotification(
+          id: active.id.hashCode,
+          body: '⏰ „${active.label}" ist abgelaufen!',
+          delay: active.duration,
+        );
         return CommandResult('Timer "${active.label}" gestellt: ${TimerService.describe(active.duration)}.');
 
       case 'add_note':
@@ -444,6 +465,11 @@ Das kann ich für dich tun:
         await youtube.search(query);
         return CommandResult('Suche "$query" auf YouTube.');
 
+      case 'play_music':
+        final song = (action.params['query'] as String?)?.trim() ?? '';
+        if (song.isEmpty) return CommandResult('Was soll ich auf Spotify abspielen?');
+        return CommandResult(await _playOnSpotify(song));
+
       default:
         return CommandResult(aiResult.reply);
     }
@@ -452,6 +478,17 @@ Das kann ich für dich tun:
   Future<WeatherResult> _weatherAtCurrentLocation(String key) async {
     final loc = await location.current();
     return weather.byCoordinates(key, loc.latitude, loc.longitude);
+  }
+
+  Future<String> _playOnSpotify(String song) async {
+    final clientId = await settings.getSpotifyClientId();
+    if (clientId == null || clientId.isEmpty) {
+      return 'Spotify ist nicht eingerichtet. Bitte Client-ID in den Einstellungen eintragen und verbinden.';
+    }
+    if (!await spotify.isConnected()) {
+      return 'Spotify ist noch nicht verbunden. Bitte in den Einstellungen anmelden.';
+    }
+    return spotify.play(clientId, song);
   }
 
   bool _matchesAny(String lower, List<String> keywords) {
