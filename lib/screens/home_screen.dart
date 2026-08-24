@@ -29,6 +29,7 @@ import '../services/timer_service.dart';
 import '../services/tts_service.dart';
 import '../services/update_service.dart';
 import '../services/weather_service.dart';
+import '../services/web_search_service.dart';
 import '../services/whatsapp_service.dart';
 import '../services/wikipedia_service.dart';
 import '../services/youtube_service.dart';
@@ -98,6 +99,7 @@ class _HomeScreenState extends State<HomeScreen> {
       fun: RandomFunService(),
       notifications: NotificationService(),
       spotify: _spotify,
+      webSearch: WebSearchService(),
     );
     _timer.onFire = _onTimerFired;
     _speech.init();

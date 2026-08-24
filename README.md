@@ -20,6 +20,7 @@ Jeder Push auf `main` baut die App automatisch als Website und veröffentlicht s
 | Wikipedia-Suche | Wikipedia-REST-API |
 | Programmierer-Witze | Lokale Witz-Datenbank |
 | Nachrichten | NewsAPI.org (eigener API-Key nötig) |
+| Websuche (aktuelle/spezifische Fakten) | Brave Search API (eigener API-Key nötig) |
 | Wetter | OpenWeatherMap (eigener API-Key nötig) |
 | Standort über Handynummer (Schätzung) | Echte GPS-Position (`geolocator` + `geocoding`) |
 | PC-Apps öffnen/schließen | Installierte Android-Apps öffnen (`installed_apps`, nur Android – iOS/Web erlauben das aus Sicherheitsgründen nicht) |
@@ -46,6 +47,7 @@ Jeder Push auf `main` baut die App automatisch als Website und veröffentlicht s
 - „wie spät ist es" / „welcher Tag ist heute"
 - „erzähl mir einen Witz"
 - „wikipedia Albert Einstein" / „was ist Photosynthese"
+- „suche im internet nach dem aktuellen bitcoin preis" / „recherchiere die neueste flutter version"
 - „nachrichten"
 - „wetter" oder „wetter in Berlin"
 - „standort"
@@ -103,6 +105,7 @@ Sobald beide Secrets gesetzt sind, signieren `build-apk.yml` und `deploy-web.yml
 
 - News: https://newsapi.org (kostenloser Free-Plan)
 - Wetter: https://openweathermap.org/api (kostenloser Free-Plan)
+- Websuche: https://brave.com/search/api/ (kostenloser Free-Plan)
 
 ## Freies KI-Gespräch
 
