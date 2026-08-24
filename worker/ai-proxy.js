@@ -248,7 +248,14 @@ export default {
       data = await env.AI.run(AI_MODEL, {
         messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...cleanHistory, { role: 'user', content: message }],
         tools: TOOLS,
-        max_tokens: 300,
+        // gpt-oss-120b is a reasoning model — it spends some of its token
+        // budget on internal reasoning before writing the final reply, so a
+        // tight budget (previously 300) could get used up entirely by
+        // reasoning, leaving nothing for the actual answer (empty `response`,
+        // no tool call — surfaced to the user as "Ich habe keine Antwort
+        // erhalten."). 1024 leaves enough room for reasoning *and* a full
+        // 1-2 sentence reply.
+        max_tokens: 1024,
         // Moderate value: keeps replies grounded and tool-triggering conservative
         // (helps with both off-topic answers and false-positive actions) without
         // flattening the character's intended dry humor entirely (temperature 0).
