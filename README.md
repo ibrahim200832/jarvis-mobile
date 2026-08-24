@@ -142,6 +142,17 @@ Weil das Schreibrechte auf einem echten Google-Konto braucht, ist einmalig ein e
 
 **Beim ersten Anmelden** zeigt Google eine Warnung „Diese App wurde nicht überprüft" — das ist normal und unbedenklich, weil es dein eigenes Projekt ist und nur du selbst als Test-Nutzer eingetragen bist. Auf „Erweitert" → „Weiter zu … (unsicher)" klicken, um fortzufahren.
 
+## Spotify-Musiksteuerung einrichten (optional)
+
+Sag „spiele \<Song\> auf Spotify" oder frag JARVIS frei danach, etwas abzuspielen, und er startet den Song auf deinem gerade aktiven Spotify-Gerät (dafür ist ein **Spotify-Premium-Konto** nötig — das ist eine Einschränkung von Spotify selbst, keine der App). Weil dafür Zugriff auf dein eigenes Spotify-Konto nötig ist, brauchst du einmalig eine eigene (kostenlose) Spotify-Developer-App:
+
+1. **Spotify-Developer-App anlegen**: [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard) → mit deinem Spotify-Konto anmelden → „Create app" → beliebigen Namen/Beschreibung eintragen.
+2. **Redirect URI eintragen**: In den App-Einstellungen unter „Redirect URIs" genau `jarvismobile://spotify-callback` hinzufügen und speichern.
+3. **Client ID kopieren**: Auf der App-Übersichtsseite steht die **Client ID** — die in der JARVIS-App unter **Einstellungen → „Spotify-Client-ID"** eintragen und speichern.
+4. **Verbinden**: In den Einstellungen auf „Mit Spotify verbinden" tippen und im sich öffnenden Spotify-Login bestätigen.
+
+Kein Client Secret nötig — die Anmeldung läuft über einen sicheren Code-Flow (PKCE), bei dem kein Geheimnis im Gerät gespeichert werden muss.
+
 ## Projekt bauen
 
 ```bash
@@ -187,7 +198,7 @@ Wer stattdessen eine echte native iOS-App (`.ipa`) bauen will, braucht einmalig 
 
 ## Berechtigungen
 
-Mikrofon, Kamera, Standort werden zur Laufzeit angefragt. `QUERY_ALL_PACKAGES` erlaubt das Auflisten installierter Apps (nur Android).
+Mikrofon, Kamera, Standort, Kontakte und Benachrichtigungen werden zur Laufzeit angefragt. `QUERY_ALL_PACKAGES` erlaubt das Auflisten installierter Apps (nur Android).
 
 ## Projektstruktur
 

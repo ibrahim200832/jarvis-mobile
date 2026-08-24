@@ -160,6 +160,21 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'play_music',
+      description:
+        'Spielt einen Song auf Spotify ab. Nur verwenden, wenn der Nutzer klar darum bittet, Musik abzuspielen, und Spotify meint oder keine andere Plattform nennt.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Songtitel und/oder Interpret' },
+        },
+        required: ['query'],
+      },
+    },
+  },
 ];
 
 const SYSTEM_PROMPT =
@@ -174,7 +189,8 @@ const SYSTEM_PROMPT =
   'ausdrücklich auf das zuvor Gesagte, statt die Nachricht isoliert zu behandeln. ' +
   'Wenn du eine Tatsache nicht sicher weißt, sag das ehrlich in ein bis zwei Worten, statt sie zu erfinden. ' +
   'Du hast Werkzeuge für: Anrufen, WhatsApp senden, Apps öffnen, Timer stellen, Notizen speichern, Wetter ' +
-  'abrufen, Kamera öffnen, Wikipedia-Suche, Nachrichten abrufen, E-Mail senden und YouTube-Suche. ' +
+  'abrufen, Kamera öffnen, Wikipedia-Suche, Nachrichten abrufen, E-Mail senden, YouTube-Suche und Musik auf ' +
+  'Spotify abspielen. ' +
   'Nutze ein Werkzeug ausschließlich dann, wenn der Nutzer eine konkrete, eindeutige Handlungsaufforderung ' +
   'ausspricht (z.B. "ruf Mama an", "schreib eine E-Mail an..."). Nutze niemals ein Werkzeug bei einer ' +
   'bloßen Erwähnung, Frage über die Vergangenheit oder einem Gedanken laut — z.B. bei "ich sollte mal ' +

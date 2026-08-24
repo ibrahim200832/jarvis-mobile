@@ -3,12 +3,15 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../services/contacts_service.dart';
 import '../services/settings_service.dart';
+import '../services/spotify_service.dart';
+import 'changelog_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key, required this.settings, required this.contacts});
+  const SettingsScreen({super.key, required this.settings, required this.contacts, required this.spotify});
 
   final SettingsService settings;
   final ContactsService contacts;
+  final SpotifyService spotify;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -20,10 +23,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _nameCtrl = TextEditingController();
   final _aiBackendCtrl = TextEditingController();
   final _youtubeClientIdCtrl = TextEditingController();
+  final _spotifyClientIdCtrl = TextEditingController();
   List<Contact> _contacts = [];
   String _appVersion = '';
   String _aiModel = 'openai';
   bool? _hasDeviceContacts;
+  bool _spotifyConnected = false;
+  bool _connectingSpotify = false;
 
   static const _aiModels = {
     'openai': 'ChatGPT (Standard)',
@@ -44,8 +50,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _nameCtrl.text = await widget.settings.getUserName();
     _aiBackendCtrl.text = await widget.settings.getAiBackendUrl() ?? '';
     _youtubeClientIdCtrl.text = await widget.settings.getYoutubeClientId() ?? '';
+    _spotifyClientIdCtrl.text = await widget.settings.getSpotifyClientId() ?? '';
     _aiModel = await widget.settings.getAiModel();
     _contacts = await widget.contacts.all();
+    _spotifyConnected = await widget.spotify.isConnected();
     if (mounted) setState(() {});
   }
 
@@ -60,9 +68,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await widget.settings.setUserName(_nameCtrl.text.trim());
     await widget.settings.setAiBackendUrl(_aiBackendCtrl.text.trim());
     await widget.settings.setYoutubeClientId(_youtubeClientIdCtrl.text.trim());
+    await widget.settings.setSpotifyClientId(_spotifyClientIdCtrl.text.trim());
     await widget.settings.setAiModel(_aiModel);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gespeichert.')));
+  }
+
+  Future<void> _connectSpotify() async {
+    final clientId = _spotifyClientIdCtrl.text.trim();
+    if (clientId.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Bitte zuerst eine Spotify-Client-ID eintragen und speichern.')));
+      return;
+    }
+    await widget.settings.setSpotifyClientId(clientId);
+    setState(() => _connectingSpotify = true);
+    final ok = await widget.spotify.connect(clientId);
+    if (!mounted) return;
+    setState(() {
+      _connectingSpotify = false;
+      _spotifyConnected = ok;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(ok ? 'Mit Spotify verbunden.' : 'Spotify-Verbindung fehlgeschlagen.')),
+    );
+  }
+
+  Future<void> _disconnectSpotify() async {
+    await widget.spotify.disconnect();
+    if (mounted) setState(() => _spotifyConnected = false);
   }
 
   Future<void> _addContact() async {
@@ -165,6 +200,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
           const SizedBox(height: 16),
+          TextField(
+            controller: _spotifyClientIdCtrl,
+            decoration: const InputDecoration(
+              labelText: 'Spotify-Client-ID (für Musiksteuerung)',
+              helperText: 'Eigene App unter developer.spotify.com anlegen, siehe README',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (_spotifyConnected)
+            OutlinedButton.icon(
+              onPressed: _disconnectSpotify,
+              icon: const Icon(Icons.link_off),
+              label: const Text('Spotify trennen'),
+            )
+          else
+            OutlinedButton.icon(
+              onPressed: _connectingSpotify ? null : _connectSpotify,
+              icon: _connectingSpotify
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.link),
+              label: Text(_connectingSpotify ? 'Verbinde…' : 'Mit Spotify verbinden'),
+            ),
+          const SizedBox(height: 16),
           FilledButton(onPressed: _save, child: const Text('Speichern')),
           const Divider(height: 40),
           Row(
@@ -209,6 +268,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
           const Divider(height: 40),
+          OutlinedButton.icon(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const ChangelogScreen()),
+            ),
+            icon: const Icon(Icons.history),
+            label: const Text('Änderungsverlauf'),
+          ),
+          const SizedBox(height: 12),
           Center(
             child: Text(
               _appVersion.isEmpty ? '' : 'J.A.R.V.I.S. Version $_appVersion',

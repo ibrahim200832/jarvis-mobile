@@ -19,10 +19,12 @@ import '../services/joke_service.dart';
 import '../services/location_service.dart';
 import '../services/news_service.dart';
 import '../services/notes_service.dart';
+import '../services/notification_service.dart';
 import '../services/qr_service.dart';
 import '../services/random_fun_service.dart';
 import '../services/settings_service.dart';
 import '../services/speech_service.dart';
+import '../services/spotify_service.dart';
 import '../services/timer_service.dart';
 import '../services/tts_service.dart';
 import '../services/update_service.dart';
@@ -51,6 +53,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _settings = SettingsService();
   final _contacts = ContactsService();
   final _timer = TimerService();
+  final _spotify = SpotifyService();
   final _textCtrl = TextEditingController();
   final _scrollCtrl = ScrollController();
 
@@ -93,6 +96,8 @@ class _HomeScreenState extends State<HomeScreen> {
       timer: _timer,
       notes: NotesService(),
       fun: RandomFunService(),
+      notifications: NotificationService(),
+      spotify: _spotify,
     );
     _timer.onFire = _onTimerFired;
     _speech.init();
@@ -449,7 +454,7 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: const Icon(Icons.settings),
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(
-                builder: (_) => SettingsScreen(settings: _settings, contacts: _contacts),
+                builder: (_) => SettingsScreen(settings: _settings, contacts: _contacts, spotify: _spotify),
               ),
             ),
           ),
