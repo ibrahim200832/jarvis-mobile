@@ -29,16 +29,21 @@ import '../services/timer_service.dart';
 import '../services/tts_service.dart';
 import '../services/update_service.dart';
 import '../services/weather_service.dart';
+import '../services/web_search_service.dart';
 import '../services/whatsapp_service.dart';
 import '../services/wikipedia_service.dart';
 import '../services/youtube_service.dart';
 import '../services/youtube_upload_service.dart';
+import '../theme/jarvis_theme.dart';
 import '../widgets/chat_bubble.dart';
+import '../widgets/glass_container.dart';
 import '../widgets/voice_orb_overlay.dart';
 import 'camera_screen.dart';
 import 'gesture_screen.dart';
 import 'settings_screen.dart';
 import 'youtube_upload_screen.dart';
+
+const _quickActions = ['Wetter', 'Nachrichten', 'Witz', 'Hilfe'];
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -98,6 +103,7 @@ class _HomeScreenState extends State<HomeScreen> {
       fun: RandomFunService(),
       notifications: NotificationService(),
       spotify: _spotify,
+      webSearch: WebSearchService(),
     );
     _timer.onFire = _onTimerFired;
     _speech.init();
@@ -404,131 +410,305 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(
-        flexibleSpace: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [colorScheme.primary.withValues(alpha: 0.25), colorScheme.surface],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-          ),
-        ),
-        title: Row(
-          children: [
-            ClipOval(
-              child: SvgPicture.asset('assets/icon/logo.svg', width: 36, height: 36),
-            ),
-            const SizedBox(width: 12),
-            const Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('J.A.R.V.I.S.', style: TextStyle(fontWeight: FontWeight.bold)),
-                Text('Dein persönlicher Assistent', style: TextStyle(fontSize: 12)),
-              ],
-            ),
-          ],
-        ),
-        actions: [
-          if (kIsWeb) ...[
-            IconButton(
-              icon: const Icon(Icons.android),
-              tooltip: 'Für Android herunterladen (APK)',
-              onPressed: () => launchUrl(Uri.base.resolve('downloads/jarvis-mobile.apk')),
-            ),
-            IconButton(
-              icon: const Icon(Icons.apple),
-              tooltip: 'Für iPhone installieren',
-              onPressed: _showIOSInstallDialog,
-            ),
-            IconButton(
-              icon: const Icon(Icons.front_hand_outlined),
-              tooltip: 'Gesten-Modus (Handerkennung)',
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const GestureScreen()),
-              ),
-            ),
-          ],
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => SettingsScreen(settings: _settings, contacts: _contacts, spotify: _spotify),
-              ),
-            ),
-          ),
-        ],
-      ),
       body: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 720),
-          child: Column(
+          child: Stack(
             children: [
-              Expanded(
-                child: ListView.builder(
-                  controller: _scrollCtrl,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  itemCount: _messages.length,
-                  itemBuilder: (context, index) => ChatBubble(message: _messages[index]),
+              // Ambient glow — mirrors the blurred radial gradient behind the
+              // AETHER web redesign, so the glass header/composer have
+              // something to visibly show through.
+              Positioned(
+                top: -220,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Container(
+                    width: 560,
+                    height: 560,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          JarvisColors.accentGlow.withValues(alpha: 0.16),
+                          JarvisColors.accentGlow.withValues(alpha: 0),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ),
-              if (_listening)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Text(
-                    _partialText.isEmpty ? 'Ich höre zu…' : _partialText,
-                    style: TextStyle(color: colorScheme.primary),
+              Column(
+                children: [
+                  _buildHeader(context, colorScheme),
+                  if (_listening)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                      child: Text(
+                        _partialText.isEmpty ? 'Ich höre zu…' : _partialText,
+                        style: TextStyle(color: colorScheme.primary),
+                      ),
+                    )
+                  else if (_processing)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                      child: Text(
+                        'JARVIS denkt nach…',
+                        style: TextStyle(color: colorScheme.primary),
+                      ),
+                    ),
+                  Expanded(
+                    child: ListView.builder(
+                      controller: _scrollCtrl,
+                      padding: const EdgeInsets.fromLTRB(12, 20, 12, 12),
+                      itemCount: _messages.length,
+                      itemBuilder: (context, index) => ChatBubble(message: _messages[index]),
+                    ),
                   ),
-                )
-              else if (_processing)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Text(
-                    'JARVIS denkt nach…',
-                    style: TextStyle(color: colorScheme.primary),
+                  _buildComposer(context, colorScheme),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader(BuildContext context, ColorScheme colorScheme) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: JarvisColors.glassFillStrong,
+        border: Border(bottom: BorderSide(color: JarvisColors.border)),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 8, 12),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: colorScheme.primary.withValues(alpha: 0.12),
+                  border: Border.all(color: colorScheme.primary.withValues(alpha: 0.25)),
+                ),
+                child: ClipOval(child: SvgPicture.asset('assets/icon/logo.svg')),
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'J.A.R.V.I.S.',
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, letterSpacing: -0.2),
+                  ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: BoxDecoration(shape: BoxShape.circle, color: colorScheme.primary),
+                      ),
+                      const SizedBox(width: 6),
+                      Text('Online', style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
+                    ],
+                  ),
+                ],
+              ),
+              const Spacer(),
+              if (kIsWeb) ...[
+                IconButton(
+                  icon: const Icon(Icons.android),
+                  tooltip: 'Für Android herunterladen (APK)',
+                  onPressed: () => launchUrl(Uri.base.resolve('downloads/jarvis-mobile.apk')),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.apple),
+                  tooltip: 'Für iPhone installieren',
+                  onPressed: _showIOSInstallDialog,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.front_hand_outlined),
+                  tooltip: 'Gesten-Modus (Handerkennung)',
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const GestureScreen()),
                   ),
                 ),
-              SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: Row(
-                    children: [
-                      IconButton(
-                        iconSize: 30,
-                        icon: const Icon(Icons.call),
-                        tooltip: 'Gespräch mit JARVIS starten',
-                        onPressed: _toggleCall,
-                      ),
-                      IconButton(
-                        iconSize: 32,
-                        icon: Icon(_listening ? Icons.mic : Icons.mic_none),
-                        color: _listening ? Colors.red : null,
-                        onPressed: _toggleListening,
-                      ),
-                      Expanded(
-                        child: TextField(
-                          controller: _textCtrl,
-                          decoration: InputDecoration(
-                            hintText: 'Nachricht an JARVIS…',
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(24)),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                            filled: true,
-                            fillColor: colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-                          ),
-                          onSubmitted: _submit,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      IconButton.filled(
-                        icon: const Icon(Icons.send),
-                        onPressed: () => _submit(_textCtrl.text),
-                      ),
-                    ],
+              ],
+              IconButton(
+                icon: const Icon(Icons.settings_outlined),
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => SettingsScreen(settings: _settings, contacts: _contacts, spotify: _spotify),
                   ),
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildComposer(BuildContext context, ColorScheme colorScheme) {
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+        child: Column(
+          children: [
+            SizedBox(
+              height: 34,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: _quickActions.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                itemBuilder: (context, index) {
+                  final action = _quickActions[index];
+                  return GestureDetector(
+                    onTap: _processing ? null : () => _submit(action),
+                    child: GlassContainer(
+                      borderRadius: BorderRadius.circular(999),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: Text(
+                        action,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w500,
+                          color: colorScheme.onSurface.withValues(alpha: 0.85),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                _GlassIconButton(
+                  icon: Icons.call,
+                  tooltip: 'Gespräch mit JARVIS starten',
+                  onTap: _toggleCall,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: GlassContainer(
+                    strong: true,
+                    borderRadius: BorderRadius.circular(999),
+                    padding: const EdgeInsets.all(6),
+                    boxShadow: [
+                      BoxShadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: 24, offset: const Offset(0, 10)),
+                    ],
+                    child: Row(
+                      children: [
+                        _RoundActionButton(
+                          icon: _listening ? Icons.mic : Icons.mic_none,
+                          active: _listening,
+                          onTap: _toggleListening,
+                        ),
+                        Expanded(
+                          child: TextField(
+                            controller: _textCtrl,
+                            enabled: !_processing,
+                            style: TextStyle(color: colorScheme.onSurface, fontSize: 15),
+                            decoration: InputDecoration(
+                              hintText: _listening ? 'Ich höre zu…' : 'Nachricht an JARVIS…',
+                              hintStyle: TextStyle(color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
+                              border: InputBorder.none,
+                              isDense: true,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                            ),
+                            onSubmitted: _processing ? null : _submit,
+                          ),
+                        ),
+                        _RoundActionButton(
+                          icon: Icons.arrow_upward,
+                          filled: true,
+                          onTap: _processing ? null : () => _submit(_textCtrl.text),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Verschlüsselte Verbindung aktiv',
+              style: TextStyle(fontSize: 10.5, letterSpacing: 0.3, color: colorScheme.onSurfaceVariant.withValues(alpha: 0.6)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _GlassIconButton extends StatelessWidget {
+  const _GlassIconButton({required this.icon, required this.onTap, required this.tooltip});
+
+  final IconData icon;
+  final VoidCallback onTap;
+  final String tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassContainer(
+      borderRadius: BorderRadius.circular(999),
+      child: Tooltip(
+        message: tooltip,
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onTap,
+            child: SizedBox(
+              width: 44,
+              height: 44,
+              child: Icon(icon, size: 20, color: Theme.of(context).colorScheme.onSurfaceVariant),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RoundActionButton extends StatelessWidget {
+  const _RoundActionButton({required this.icon, required this.onTap, this.active = false, this.filled = false});
+
+  final IconData icon;
+  final VoidCallback? onTap;
+  final bool active;
+  final bool filled;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final highlighted = active || (filled && onTap != null);
+    return Material(
+      color: highlighted ? colorScheme.primary : Colors.transparent,
+      shape: const CircleBorder(),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: onTap,
+        child: SizedBox(
+          width: 40,
+          height: 40,
+          child: Icon(
+            icon,
+            size: 18,
+            color: highlighted
+                ? colorScheme.onPrimary
+                : (onTap == null ? colorScheme.onSurfaceVariant.withValues(alpha: 0.4) : colorScheme.onSurfaceVariant),
           ),
         ),
       ),

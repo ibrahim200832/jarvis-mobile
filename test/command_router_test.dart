@@ -19,6 +19,7 @@ import 'package:jarvis_mobile/services/settings_service.dart';
 import 'package:jarvis_mobile/services/spotify_service.dart';
 import 'package:jarvis_mobile/services/timer_service.dart';
 import 'package:jarvis_mobile/services/weather_service.dart';
+import 'package:jarvis_mobile/services/web_search_service.dart';
 import 'package:jarvis_mobile/services/whatsapp_service.dart';
 import 'package:jarvis_mobile/services/wikipedia_service.dart';
 import 'package:jarvis_mobile/services/youtube_service.dart';
@@ -56,6 +57,17 @@ class FakeWeatherService extends WeatherService {
   @override
   Future<WeatherResult> byCoordinates(String apiKey, double lat, double lon) async =>
       WeatherResult(description: 'bewölkt', tempCelsius: 10.0, city: 'Irgendwo');
+}
+
+class FakeWebSearchService extends WebSearchService {
+  String? lastQuery;
+  List<WebSearchResult> results = [WebSearchResult('Titel', 'Web-Ergebnis-Text')];
+
+  @override
+  Future<List<WebSearchResult>> search(String apiKey, String query, {int count = 3}) async {
+    lastQuery = query;
+    return results;
+  }
 }
 
 class FakeWhatsappService extends WhatsappService {
@@ -124,6 +136,7 @@ class FakeContactsService extends ContactsService {
 class FakeSettingsService extends SettingsService {
   String? weatherApiKey = 'test-key';
   String? newsApiKey = 'test-key';
+  String? webSearchApiKey = 'test-key';
   String? aiBackendUrl = '';
   String aiModel = 'openai';
 
@@ -132,6 +145,9 @@ class FakeSettingsService extends SettingsService {
 
   @override
   Future<String?> getNewsApiKey() async => newsApiKey;
+
+  @override
+  Future<String?> getWebSearchApiKey() async => webSearchApiKey;
 
   @override
   Future<String?> getAiBackendUrl() async => aiBackendUrl;
@@ -204,6 +220,8 @@ void main() {
   late FakeYoutubeService youtube;
   late FakeNotificationService notifications;
   late FakeSpotifyService spotify;
+  late FakeWebSearchService webSearch;
+  late FakeSettingsService settings;
   late CommandRouter router;
 
   setUp(() {
@@ -219,6 +237,8 @@ void main() {
     youtube = FakeYoutubeService();
     notifications = FakeNotificationService();
     spotify = FakeSpotifyService();
+    webSearch = FakeWebSearchService();
+    settings = FakeSettingsService();
 
     router = CommandRouter(
       wikipedia: wikipedia,
@@ -233,7 +253,7 @@ void main() {
       qr: QrService(),
       location: FakeLocationService(),
       contacts: contacts,
-      settings: FakeSettingsService(),
+      settings: settings,
       ip: FakeIpService(),
       aiChat: aiChat,
       deviceInfo: FakeDeviceInfoService(),
@@ -242,6 +262,7 @@ void main() {
       fun: RandomFunService(),
       notifications: notifications,
       spotify: spotify,
+      webSearch: webSearch,
     );
   });
 
@@ -277,6 +298,19 @@ void main() {
       final result = await router.handle('rechne 10 durch 0');
       expect(result.reply, 'Das konnte ich nicht berechnen.');
     });
+  });
+
+  test('recherchiere <Thema> triggers WebSearchService and shows the result', () async {
+    final result = await router.handle('recherchiere den aktuellen preis von bitcoin');
+    expect(webSearch.lastQuery, 'den aktuellen preis von bitcoin');
+    expect(result.reply, contains('Web-Ergebnis-Text'));
+  });
+
+  test('suche im internet nach <Frage> without a configured key reports that clearly', () async {
+    settings.webSearchApiKey = null;
+    final result = await router.handle('suche im internet nach dem wetter auf dem mars');
+    expect(result.reply, contains('Kein Websuche-Schlüssel hinterlegt'));
+    expect(webSearch.lastQuery, isNull);
   });
 
   test('nachrichten lists the fake headlines', () async {
@@ -525,6 +559,13 @@ void main() {
     final result = await router.handle('kannst du bitte lofi hip hop für mich raussuchen');
     expect(youtube.lastQuery, 'lofi hip hop');
     expect(result.reply, contains('lofi hip hop'));
+  });
+
+  test('AI search_web action calls WebSearchService', () async {
+    aiChat.nextAction = AiAction(type: 'search_web', params: {'query': 'aktueller bitcoin preis'});
+    final result = await router.handle('was kostet bitcoin gerade');
+    expect(webSearch.lastQuery, 'aktueller bitcoin preis');
+    expect(result.reply, contains('Web-Ergebnis-Text'));
   });
 
   test('spiele <song> auf spotify reports missing Spotify setup instead of going to YouTube', () async {

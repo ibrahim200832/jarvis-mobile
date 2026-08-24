@@ -19,6 +19,7 @@ import '../services/settings_service.dart';
 import '../services/spotify_service.dart';
 import '../services/timer_service.dart';
 import '../services/weather_service.dart';
+import '../services/web_search_service.dart';
 import '../services/whatsapp_service.dart';
 import '../services/wikipedia_service.dart';
 import '../services/youtube_service.dart';
@@ -63,6 +64,7 @@ class CommandRouter {
     required this.fun,
     required this.notifications,
     required this.spotify,
+    required this.webSearch,
   });
 
   final WikipediaService wikipedia;
@@ -86,6 +88,7 @@ class CommandRouter {
   final RandomFunService fun;
   final NotificationService notifications;
   final SpotifyService spotify;
+  final WebSearchService webSearch;
 
   /// Rolling window of past AI exchanges (user+assistant pairs), so a
   /// follow-up like "und morgen?" is understood in context instead of
@@ -100,6 +103,7 @@ Das kann ich für dich tun:
 • "wie spät ist es" / "welcher tag ist heute"
 • "erzähl mir einen witz"
 • "wikipedia <Thema>" oder "was ist <Thema>"
+• "suche im internet nach <Frage>" / "recherchiere <Thema>" (Websuche-Schlüssel in Einstellungen nötig)
 • "nachrichten" (NewsAPI-Schlüssel in Einstellungen nötig)
 • "wetter" oder "wetter in <Stadt>" (OpenWeatherMap-Schlüssel nötig)
 • "standort" / "wo bin ich"
@@ -159,6 +163,17 @@ Das kann ich für dich tun:
       if (wikiQuery != null) {
         final result = await wikipedia.summary(wikiQuery);
         return CommandResult(result);
+      }
+
+      final webSearchQuery = _extractAfter(lower, text, ['suche im internet nach', 'suche online nach', 'recherchiere']);
+      if (webSearchQuery != null) {
+        final searchKey = await settings.getWebSearchApiKey();
+        if (searchKey == null || searchKey.isEmpty) {
+          return CommandResult('Kein Websuche-Schlüssel hinterlegt. Bitte in den Einstellungen eintragen.');
+        }
+        final results = await webSearch.search(searchKey, webSearchQuery);
+        if (results.isEmpty) return CommandResult('Ich konnte dazu nichts im Web finden.');
+        return CommandResult(results.take(2).map((r) => r.description).join(' '));
       }
 
       if (_matchesAny(lower, ['nachrichten', 'news', 'schlagzeilen'])) {
@@ -464,6 +479,17 @@ Das kann ich für dich tun:
         if (query.isEmpty) return CommandResult('Wonach soll ich auf YouTube suchen?');
         await youtube.search(query);
         return CommandResult('Suche "$query" auf YouTube.');
+
+      case 'search_web':
+        final query = (action.params['query'] as String?)?.trim() ?? '';
+        if (query.isEmpty) return CommandResult('Wonach soll ich im Web suchen?');
+        final searchKey = await settings.getWebSearchApiKey();
+        if (searchKey == null || searchKey.isEmpty) {
+          return CommandResult('Kein Websuche-Schlüssel hinterlegt. Bitte in den Einstellungen eintragen.');
+        }
+        final results = await webSearch.search(searchKey, query);
+        if (results.isEmpty) return CommandResult('Ich konnte dazu nichts im Web finden.');
+        return CommandResult(results.take(2).map((r) => r.description).join(' '));
 
       case 'play_music':
         final song = (action.params['query'] as String?)?.trim() ?? '';
