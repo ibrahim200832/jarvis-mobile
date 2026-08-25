@@ -232,6 +232,15 @@ export default {
     if (request.method === 'OPTIONS') {
       return new Response(null, { headers: corsHeaders() });
     }
+
+    const url = new URL(request.url);
+    if (url.pathname === '/search') {
+      if (request.method !== 'GET') {
+        return json({ error: 'method not allowed' }, 405);
+      }
+      return handleSearch(url, env);
+    }
+
     if (request.method !== 'POST') {
       return json({ error: 'method not allowed' }, 405);
     }
@@ -298,6 +307,43 @@ export default {
     return json({ reply, action });
   },
 };
+
+// Proxies web-search requests through Brave Search, keeping BRAVE_API_KEY a
+// server-side secret (set via `wrangler secret put BRAVE_API_KEY` or the
+// Cloudflare dashboard) instead of shipping it inside the app, where anyone
+// could extract it from the APK/web bundle and drain the quota.
+async function handleSearch(url, env) {
+  const query = (url.searchParams.get('q') || '').trim();
+  if (!query) {
+    return json({ error: 'q fehlt' }, 400);
+  }
+  if (!env.BRAVE_API_KEY) {
+    return json({ error: 'Kein Brave-Schlüssel auf dem Server hinterlegt.' }, 500);
+  }
+
+  const braveUrl = new URL('https://api.search.brave.com/res/v1/web/search');
+  braveUrl.searchParams.set('q', query);
+  braveUrl.searchParams.set('count', '3');
+
+  let res;
+  try {
+    res = await fetch(braveUrl, {
+      headers: { Accept: 'application/json', 'X-Subscription-Token': env.BRAVE_API_KEY },
+    });
+  } catch (err) {
+    return json({ error: 'Websuche fehlgeschlagen', detail: String(err) }, 502);
+  }
+  if (!res.ok) {
+    return json({ error: `Websuche fehlgeschlagen (${res.status})` }, 502);
+  }
+
+  const data = await res.json();
+  const results = (data.web?.results ?? []).slice(0, 3).map((r) => ({
+    title: r.title ?? '',
+    description: (r.description ?? '').replace(/<[^>]*>/g, ''), // Brave highlights matches with <strong> tags
+  }));
+  return json({ results });
+}
 
 function corsHeaders() {
   return {

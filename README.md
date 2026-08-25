@@ -20,7 +20,7 @@ Jeder Push auf `main` baut die App automatisch als Website und veröffentlicht s
 | Wikipedia-Suche | Wikipedia-REST-API |
 | Programmierer-Witze | Lokale Witz-Datenbank |
 | Nachrichten | NewsAPI.org (eigener API-Key nötig) |
-| Websuche (aktuelle/spezifische Fakten) | Brave Search API (eigener API-Key nötig) |
+| Websuche (aktuelle/spezifische Fakten) | Brave Search API, läuft server-seitig über den eigenen Worker (siehe unten) |
 | Wetter | OpenWeatherMap (eigener API-Key nötig) |
 | Standort über Handynummer (Schätzung) | Echte GPS-Position (`geolocator` + `geocoding`) |
 | PC-Apps öffnen/schließen | Installierte Android-Apps öffnen (`installed_apps`, nur Android – iOS/Web erlauben das aus Sicherheitsgründen nicht) |
@@ -105,7 +105,19 @@ Sobald beide Secrets gesetzt sind, signieren `build-apk.yml` und `deploy-web.yml
 
 - News: https://newsapi.org (kostenloser Free-Plan)
 - Wetter: https://openweathermap.org/api (kostenloser Free-Plan)
-- Websuche: https://brave.com/search/api/ (kostenloser Free-Plan)
+
+### Websuche einrichten (optional, für den eigenen Worker)
+
+Damit JARVIS aktuelle Informationen selbst recherchieren kann ("suche im internet nach ...", "recherchiere ..."),
+braucht der **Worker** (nicht die App) einen Brave-Search-Schlüssel:
+
+1. Kostenlosen Schlüssel unter https://brave.com/search/api/ holen
+2. Im [Cloudflare-Dashboard](https://dash.cloudflare.com) → **Workers & Pages** → den eigenen Worker öffnen →
+   **Settings** → **Variables and Secrets** → **Add**: Name `BRAVE_API_KEY`, Typ **Secret**, Wert der Schlüssel → **Deploy**
+
+Der Schlüssel bleibt danach dauerhaft im Worker gespeichert (übersteht auch künftige Deploys über
+`deploy-worker.yml`) und wird nie an die App weitergegeben — genau wie beim KI-Modell selbst bleibt er
+server-seitig geheim. Ohne diesen Schlüssel meldet die Websuche einen Fehler statt eines Ergebnisses.
 
 ## Freies KI-Gespräch
 

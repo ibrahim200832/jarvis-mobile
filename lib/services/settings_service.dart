@@ -9,7 +9,6 @@ class SettingsService {
   static const _keyYoutubeClientId = 'youtube_client_id';
   static const _keyAiModel = 'ai_model';
   static const _keySpotifyClientId = 'spotify_client_id';
-  static const _keyWebSearchApi = 'web_search_api_key';
 
   Future<String?> getNewsApiKey() async {
     final prefs = await SharedPreferences.getInstance();
@@ -96,15 +95,5 @@ class SettingsService {
   Future<void> setSpotifyClientId(String value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keySpotifyClientId, value);
-  }
-
-  Future<String?> getWebSearchApiKey() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_keyWebSearchApi);
-  }
-
-  Future<void> setWebSearchApiKey(String value) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keyWebSearchApi, value);
   }
 }
