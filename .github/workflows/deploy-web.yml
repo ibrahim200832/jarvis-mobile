@@ -17,6 +17,10 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -101,6 +105,16 @@ jobs:
             --argjson notes "$NOTES_JSON" \
             '{version: $version, apkUrl: $apkUrl, notes: $notes}' \
             > build/web/downloads/version.json
+
+      - name: Create GitHub Release with the APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ env.BUILD_NUMBER }}
+          name: v1.0.${{ env.BUILD_NUMBER }}
+          body_path: /tmp/release_notes.txt
+          files: build/app/outputs/flutter-apk/app-release.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/configure-pages@v5
         with:
