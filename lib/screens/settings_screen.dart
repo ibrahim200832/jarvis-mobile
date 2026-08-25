@@ -20,7 +20,6 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final _newsKeyCtrl = TextEditingController();
   final _weatherKeyCtrl = TextEditingController();
-  final _webSearchKeyCtrl = TextEditingController();
   final _nameCtrl = TextEditingController();
   final _aiBackendCtrl = TextEditingController();
   final _youtubeClientIdCtrl = TextEditingController();
@@ -48,7 +47,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _load() async {
     _newsKeyCtrl.text = await widget.settings.getNewsApiKey() ?? '';
     _weatherKeyCtrl.text = await widget.settings.getWeatherApiKey() ?? '';
-    _webSearchKeyCtrl.text = await widget.settings.getWebSearchApiKey() ?? '';
     _nameCtrl.text = await widget.settings.getUserName();
     _aiBackendCtrl.text = await widget.settings.getAiBackendUrl() ?? '';
     _youtubeClientIdCtrl.text = await widget.settings.getYoutubeClientId() ?? '';
@@ -67,7 +65,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _save() async {
     await widget.settings.setNewsApiKey(_newsKeyCtrl.text.trim());
     await widget.settings.setWeatherApiKey(_weatherKeyCtrl.text.trim());
-    await widget.settings.setWebSearchApiKey(_webSearchKeyCtrl.text.trim());
     await widget.settings.setUserName(_nameCtrl.text.trim());
     await widget.settings.setAiBackendUrl(_aiBackendCtrl.text.trim());
     await widget.settings.setYoutubeClientId(_youtubeClientIdCtrl.text.trim());
@@ -166,15 +163,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             decoration: const InputDecoration(
               labelText: 'OpenWeatherMap-Schlüssel',
               helperText: 'Kostenlos unter openweathermap.org',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _webSearchKeyCtrl,
-            decoration: const InputDecoration(
-              labelText: 'Websuche-Schlüssel (Brave Search)',
-              helperText: 'Kostenlos unter brave.com/search/api',
               border: OutlineInputBorder(),
             ),
           ),

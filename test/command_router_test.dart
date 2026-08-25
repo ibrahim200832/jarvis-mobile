@@ -60,11 +60,13 @@ class FakeWeatherService extends WeatherService {
 }
 
 class FakeWebSearchService extends WebSearchService {
+  String? lastBackendUrl;
   String? lastQuery;
   List<WebSearchResult> results = [WebSearchResult('Titel', 'Web-Ergebnis-Text')];
 
   @override
-  Future<List<WebSearchResult>> search(String apiKey, String query, {int count = 3}) async {
+  Future<List<WebSearchResult>> search(String backendUrl, String query) async {
+    lastBackendUrl = backendUrl;
     lastQuery = query;
     return results;
   }
@@ -136,7 +138,6 @@ class FakeContactsService extends ContactsService {
 class FakeSettingsService extends SettingsService {
   String? weatherApiKey = 'test-key';
   String? newsApiKey = 'test-key';
-  String? webSearchApiKey = 'test-key';
   String? aiBackendUrl = '';
   String aiModel = 'openai';
 
@@ -145,9 +146,6 @@ class FakeSettingsService extends SettingsService {
 
   @override
   Future<String?> getNewsApiKey() async => newsApiKey;
-
-  @override
-  Future<String?> getWebSearchApiKey() async => webSearchApiKey;
 
   @override
   Future<String?> getAiBackendUrl() async => aiBackendUrl;
@@ -301,15 +299,17 @@ void main() {
   });
 
   test('recherchiere <Thema> triggers WebSearchService and shows the result', () async {
+    settings.aiBackendUrl = 'https://worker.example';
     final result = await router.handle('recherchiere den aktuellen preis von bitcoin');
+    expect(webSearch.lastBackendUrl, 'https://worker.example');
     expect(webSearch.lastQuery, 'den aktuellen preis von bitcoin');
     expect(result.reply, contains('Web-Ergebnis-Text'));
   });
 
-  test('suche im internet nach <Frage> without a configured key reports that clearly', () async {
-    settings.webSearchApiKey = null;
+  test('suche im internet nach <Frage> without a configured AI backend reports that clearly', () async {
+    settings.aiBackendUrl = '';
     final result = await router.handle('suche im internet nach dem wetter auf dem mars');
-    expect(result.reply, contains('Kein Websuche-Schlüssel hinterlegt'));
+    expect(result.reply, contains('Websuche benötigt eine KI-Server-Adresse'));
     expect(webSearch.lastQuery, isNull);
   });
 
@@ -562,6 +562,7 @@ void main() {
   });
 
   test('AI search_web action calls WebSearchService', () async {
+    settings.aiBackendUrl = 'https://worker.example';
     aiChat.nextAction = AiAction(type: 'search_web', params: {'query': 'aktueller bitcoin preis'});
     final result = await router.handle('was kostet bitcoin gerade');
     expect(webSearch.lastQuery, 'aktueller bitcoin preis');

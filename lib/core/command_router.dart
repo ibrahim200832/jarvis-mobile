@@ -103,7 +103,7 @@ Das kann ich für dich tun:
 • "wie spät ist es" / "welcher tag ist heute"
 • "erzähl mir einen witz"
 • "wikipedia <Thema>" oder "was ist <Thema>"
-• "suche im internet nach <Frage>" / "recherchiere <Thema>" (Websuche-Schlüssel in Einstellungen nötig)
+• "suche im internet nach <Frage>" / "recherchiere <Thema>"
 • "nachrichten" (NewsAPI-Schlüssel in Einstellungen nötig)
 • "wetter" oder "wetter in <Stadt>" (OpenWeatherMap-Schlüssel nötig)
 • "standort" / "wo bin ich"
@@ -167,11 +167,11 @@ Das kann ich für dich tun:
 
       final webSearchQuery = _extractAfter(lower, text, ['suche im internet nach', 'suche online nach', 'recherchiere']);
       if (webSearchQuery != null) {
-        final searchKey = await settings.getWebSearchApiKey();
-        if (searchKey == null || searchKey.isEmpty) {
-          return CommandResult('Kein Websuche-Schlüssel hinterlegt. Bitte in den Einstellungen eintragen.');
+        final backendUrl = await settings.getAiBackendUrl();
+        if (backendUrl == null || backendUrl.isEmpty) {
+          return CommandResult('Websuche benötigt eine KI-Server-Adresse in den Einstellungen.');
         }
-        final results = await webSearch.search(searchKey, webSearchQuery);
+        final results = await webSearch.search(backendUrl, webSearchQuery);
         if (results.isEmpty) return CommandResult('Ich konnte dazu nichts im Web finden.');
         return CommandResult(results.take(2).map((r) => r.description).join(' '));
       }
@@ -483,11 +483,11 @@ Das kann ich für dich tun:
       case 'search_web':
         final query = (action.params['query'] as String?)?.trim() ?? '';
         if (query.isEmpty) return CommandResult('Wonach soll ich im Web suchen?');
-        final searchKey = await settings.getWebSearchApiKey();
-        if (searchKey == null || searchKey.isEmpty) {
-          return CommandResult('Kein Websuche-Schlüssel hinterlegt. Bitte in den Einstellungen eintragen.');
+        final backendUrl = await settings.getAiBackendUrl();
+        if (backendUrl == null || backendUrl.isEmpty) {
+          return CommandResult('Websuche benötigt eine KI-Server-Adresse in den Einstellungen.');
         }
-        final results = await webSearch.search(searchKey, query);
+        final results = await webSearch.search(backendUrl, query);
         if (results.isEmpty) return CommandResult('Ich konnte dazu nichts im Web finden.');
         return CommandResult(results.take(2).map((r) => r.description).join(' '));
 
