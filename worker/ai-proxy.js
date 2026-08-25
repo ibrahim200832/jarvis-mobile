@@ -267,12 +267,15 @@ export default {
         tools: TOOLS,
         // gpt-oss-120b is a reasoning model — it spends some of its token
         // budget on internal reasoning before writing the final reply, so a
-        // tight budget (previously 300) could get used up entirely by
-        // reasoning, leaving nothing for the actual answer (empty `response`,
-        // no tool call — surfaced to the user as "Ich habe keine Antwort
-        // erhalten."). 1024 leaves enough room for reasoning *and* a full
-        // 1-2 sentence reply.
-        max_tokens: 1024,
+        // tight budget could get used up entirely by reasoning, leaving
+        // nothing for the actual answer (empty `response`, no tool call —
+        // surfaced to the user as "Ich habe keine Antwort erhalten."). This
+        // happened once already at 300 and was raised to 1024; with 12 tools
+        // now defined (incl. search_web) and a longer system prompt, the
+        // model has more to reason about before answering, so 1024 started
+        // recurring too. 2048 leaves comfortable room for reasoning over the
+        // full tool list *and* a full reply.
+        max_tokens: 2048,
         // Moderate value: keeps replies grounded and tool-triggering conservative
         // (helps with both off-topic answers and false-positive actions) without
         // flattening the character's intended dry humor entirely (temperature 0).
