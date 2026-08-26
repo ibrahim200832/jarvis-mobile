@@ -28,6 +28,13 @@ class WikipediaService {
       '/api/rest_v1/page/summary/${Uri.encodeComponent(title)}',
     );
     final summaryRes = await http.get(summaryUri);
+    // 404 here means the found title has no fetchable summary page (e.g. a
+    // disambiguation or redirect target) — a legitimate "nothing found"
+    // case, not a real failure, so it gets the same friendly message as an
+    // empty search result instead of surfacing as a raw error.
+    if (summaryRes.statusCode == 404) {
+      return 'Dazu konnte ich nichts auf Wikipedia finden.';
+    }
     if (summaryRes.statusCode != 200) {
       throw Exception('Wikipedia-Zusammenfassung fehlgeschlagen (${summaryRes.statusCode})');
     }
