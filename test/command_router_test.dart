@@ -580,4 +580,16 @@ void main() {
     final result = await router.handle('kannst du bohemian rhapsody abspielen');
     expect(result.reply, contains('Spotify ist nicht eingerichtet'));
   });
+
+  test('spiele playlist <name> auf spotify reports missing Spotify setup instead of going to YouTube', () async {
+    final result = await router.handle('spiele playlist workout auf spotify');
+    expect(result.reply, contains('Spotify ist nicht eingerichtet'));
+    expect(youtube.lastQuery, isNull);
+  });
+
+  test('AI play_playlist action reports missing Spotify setup', () async {
+    aiChat.nextAction = AiAction(type: 'play_playlist', params: {'query': 'workout'});
+    final result = await router.handle('kannst du meine workout playlist abspielen');
+    expect(result.reply, contains('Spotify ist nicht eingerichtet'));
+  });
 }

@@ -190,6 +190,21 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'play_playlist',
+      description:
+        'Spielt eine Playlist des Nutzers auf Spotify ab. Nur verwenden, wenn der Nutzer klar eine eigene Playlist (nicht einen einzelnen Song) abspielen möchte.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Name der Playlist (oder ein Teil davon)' },
+        },
+        required: ['query'],
+      },
+    },
+  },
 ];
 
 const SYSTEM_PROMPT =
@@ -208,7 +223,7 @@ const SYSTEM_PROMPT =
   'Websuche nichts findet, gib die Lücke ehrlich in ein bis zwei Worten zu. ' +
   'Du hast Werkzeuge für: Anrufen, WhatsApp senden, Apps öffnen, Timer stellen, Notizen speichern, Wetter ' +
   'abrufen, Kamera öffnen, Wikipedia-Suche, Nachrichten abrufen, E-Mail senden, YouTube-Suche, das Web ' +
-  'durchsuchen und Musik auf Spotify abspielen. ' +
+  'durchsuchen und Musik oder eine Playlist auf Spotify abspielen. ' +
   'Nutze ein Werkzeug ausschließlich dann, wenn der Nutzer eine konkrete, eindeutige Handlungsaufforderung ' +
   'ausspricht (z.B. "ruf Mama an", "schreib eine E-Mail an..."). Nutze niemals ein Werkzeug bei einer ' +
   'bloßen Erwähnung, Frage über die Vergangenheit oder einem Gedanken laut — z.B. bei "ich sollte mal ' +
