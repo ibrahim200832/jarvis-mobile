@@ -80,7 +80,7 @@ Statt jede Nachricht einzeln per Mikrofon-Knopf aufzunehmen, startet das Telefon
 - **Reset-Symbol** (oben) — setzt das Gespräch zurück und fängt neu an
 - **Kamera-Symbol** (oben) — öffnet die Kamera, während der Anruf im Hintergrund weiterläuft
 
-JARVIS antwortet dabei mit einer eigenen Persönlichkeit angelehnt an Tony Starks JARVIS aus den Iron-Man-Filmen: trocken-witzig, leicht sarkastisch, spricht den Nutzer mit „Master" an.
+JARVIS antwortet dabei mit einer eigenen, fröhlichen und warmherzigen Persönlichkeit, angelehnt an Tony Starks JARVIS aus den Iron-Man-Filmen, aber mit guter Laune statt trockenem Sarkasmus — spricht den Nutzer mit „Master" an.
 
 ## Automatische Update-Benachrichtigung (Android)
 
