@@ -276,21 +276,25 @@ export default {
     let toolCall;
     let replyText;
     try {
-      data = await runModel(env, messages);
+      data = await runModel(env, messages, true);
       toolCall = data.tool_calls?.[0];
       replyText = (data.response ?? data.result?.response ?? '').toString().trim();
 
       // gpt-oss-120b is a reasoning model — it spends some of its token
       // budget on internal reasoning before writing the final reply, and can
-      // occasionally exhaust that budget (or just produce a rare degenerate
-      // completion) leaving neither a response nor a tool call, even for
-      // trivial messages like "hi". Raising max_tokens (300 -> 1024 -> 2048)
-      // only reduced how often this happened, not eliminated it — a
-      // same-request retry is far more reliable than guessing an
-      // ever-larger ceiling, so try once more before giving up.
+      // exhaust that budget leaving neither a response nor a tool call, even
+      // for trivial messages like "hi". Raising max_tokens (300 -> 1024 ->
+      // 2048) only reduced how often this happened, and a same-request retry
+      // with the *same* 12-tool payload still hit it again — the tool list
+      // itself (deciding whether any of 12 functions might apply) is the
+      // more likely reasoning sink than the message content. So the retry
+      // drops `tools` entirely: with nothing to reason about, the model
+      // reliably produces text. Trades this one fallback turn's ability to
+      // trigger a phone action for actually getting a reply instead of
+      // silence — a clear win.
       if (!replyText && !toolCall) {
-        data = await runModel(env, messages);
-        toolCall = data.tool_calls?.[0];
+        data = await runModel(env, messages, false);
+        toolCall = undefined;
         replyText = (data.response ?? data.result?.response ?? '').toString().trim();
       }
     } catch (err) {
@@ -309,16 +313,17 @@ export default {
   },
 };
 
-function runModel(env, messages) {
-  return env.AI.run(AI_MODEL, {
+function runModel(env, messages, includeTools) {
+  const payload = {
     messages,
-    tools: TOOLS,
     max_tokens: 2048,
     // Moderate value: keeps replies grounded and tool-triggering conservative
     // (helps with both off-topic answers and false-positive actions) without
     // flattening the character's intended warm, cheerful tone entirely (temperature 0).
     temperature: 0.3,
-  });
+  };
+  if (includeTools) payload.tools = TOOLS;
+  return env.AI.run(AI_MODEL, payload);
 }
 
 // Proxies web-search requests through Brave Search, keeping BRAVE_API_KEY a
