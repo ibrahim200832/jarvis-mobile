@@ -110,7 +110,7 @@ const TOOLS = [
     function: {
       name: 'search_wikipedia',
       description:
-        'Sucht einen kurzen Wikipedia-Überblick zu einem Thema oder einer Person. Nur verwenden, wenn der Nutzer klar danach fragt, was oder wer etwas ist, oder explizit Wikipedia erwähnt.',
+        'Sucht einen kurzen Wikipedia-Überblick zu einem konkreten Thema, Begriff oder einer Person (z.B. "was ist Photosynthese", "wer ist Albert Einstein"). Nicht verwenden für Ereignis- oder Datumsfragen wie "was ist am 11. Dezember passiert" — solche Fragen direkt aus eigenem Wissen beantworten oder bei Unsicherheit das Websuche-Werkzeug nutzen.',
       parameters: {
         type: 'object',
         properties: {
