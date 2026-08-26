@@ -270,33 +270,33 @@ export default {
       .slice(-MAX_HISTORY_MESSAGES)
       .map((m) => ({ role: m.role, content: m.content }));
 
+    const messages = [{ role: 'system', content: SYSTEM_PROMPT }, ...cleanHistory, { role: 'user', content: message }];
+
     let data;
+    let toolCall;
+    let replyText;
     try {
-      data = await env.AI.run(AI_MODEL, {
-        messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...cleanHistory, { role: 'user', content: message }],
-        tools: TOOLS,
-        // gpt-oss-120b is a reasoning model — it spends some of its token
-        // budget on internal reasoning before writing the final reply, so a
-        // tight budget could get used up entirely by reasoning, leaving
-        // nothing for the actual answer (empty `response`, no tool call —
-        // surfaced to the user as "Ich habe keine Antwort erhalten."). This
-        // happened once already at 300 and was raised to 1024; with 12 tools
-        // now defined (incl. search_web) and a longer system prompt, the
-        // model has more to reason about before answering, so 1024 started
-        // recurring too. 2048 leaves comfortable room for reasoning over the
-        // full tool list *and* a full reply.
-        max_tokens: 2048,
-        // Moderate value: keeps replies grounded and tool-triggering conservative
-        // (helps with both off-topic answers and false-positive actions) without
-        // flattening the character's intended dry humor entirely (temperature 0).
-        temperature: 0.3,
-      });
+      data = await runModel(env, messages);
+      toolCall = data.tool_calls?.[0];
+      replyText = (data.response ?? data.result?.response ?? '').toString().trim();
+
+      // gpt-oss-120b is a reasoning model — it spends some of its token
+      // budget on internal reasoning before writing the final reply, and can
+      // occasionally exhaust that budget (or just produce a rare degenerate
+      // completion) leaving neither a response nor a tool call, even for
+      // trivial messages like "hi". Raising max_tokens (300 -> 1024 -> 2048)
+      // only reduced how often this happened, not eliminated it — a
+      // same-request retry is far more reliable than guessing an
+      // ever-larger ceiling, so try once more before giving up.
+      if (!replyText && !toolCall) {
+        data = await runModel(env, messages);
+        toolCall = data.tool_calls?.[0];
+        replyText = (data.response ?? data.result?.response ?? '').toString().trim();
+      }
     } catch (err) {
       return json({ error: 'AI-Anfrage fehlgeschlagen', detail: String(err) }, 502);
     }
 
-    const toolCall = data.tool_calls?.[0];
-    const replyText = (data.response ?? data.result?.response ?? '').toString().trim();
     const reply = replyText || (toolCall ? 'Mach ich.' : 'Ich habe keine Antwort erhalten.');
     const action = toolCall
       ? {
@@ -308,6 +308,18 @@ export default {
     return json({ reply, action });
   },
 };
+
+function runModel(env, messages) {
+  return env.AI.run(AI_MODEL, {
+    messages,
+    tools: TOOLS,
+    max_tokens: 2048,
+    // Moderate value: keeps replies grounded and tool-triggering conservative
+    // (helps with both off-topic answers and false-positive actions) without
+    // flattening the character's intended warm, cheerful tone entirely (temperature 0).
+    temperature: 0.3,
+  });
+}
 
 // Proxies web-search requests through Brave Search, keeping BRAVE_API_KEY a
 // server-side secret (set via `wrangler secret put BRAVE_API_KEY` or the
