@@ -216,12 +216,20 @@ const SYSTEM_PROMPT =
   'ohne ein Werkzeug zu benutzen. Im Zweifel: lieber nachfragen oder in Worten antworten, als ungefragt zu ' +
   'handeln.';
 
-// gpt-oss-120b: OpenAI's open-weight model on Workers AI, meaningfully
-// stronger reasoning than the previous Llama 3.3 70B while still going
-// through the same normalized {response, tool_calls} shape below (Workers
-// AI's text-generation binding output is normalized across models, so no
-// other code here needs to change for the swap).
-const AI_MODEL = '@cf/openai/gpt-oss-120b';
+// Reverted from @cf/openai/gpt-oss-120b back to Llama 3.3 70B. gpt-oss-120b
+// is a reasoning model that repeatedly produced empty completions (neither
+// `response` text nor a tool call — surfaced to the user as "Ich habe keine
+// Antwort erhalten."), and the failure persisted across three rounds of
+// max_tokens increases (300 -> 1024 -> 2048) and a same-request retry that
+// dropped the tool list entirely on the second attempt. Since even a
+// tools-free retry still came back empty, the issue isn't reasoning-budget
+// exhaustion from the tool list — something about this model/binding
+// combination just isn't reliably returning text. Llama 3.3 70B ran the
+// exact same {response, tool_calls} shape, the same tools, and even a lower
+// max_tokens (300) without ever exhibiting this bug, so it's the more
+// trustworthy choice until gpt-oss-120b's behavior on Workers AI is better
+// understood.
+const AI_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 
 // How many prior turns (user+assistant pairs) the client may send as
 // context. Bounded server-side too, independent of what the client sends,
@@ -280,18 +288,11 @@ export default {
       toolCall = data.tool_calls?.[0];
       replyText = (data.response ?? data.result?.response ?? '').toString().trim();
 
-      // gpt-oss-120b is a reasoning model — it spends some of its token
-      // budget on internal reasoning before writing the final reply, and can
-      // exhaust that budget leaving neither a response nor a tool call, even
-      // for trivial messages like "hi". Raising max_tokens (300 -> 1024 ->
-      // 2048) only reduced how often this happened, and a same-request retry
-      // with the *same* 12-tool payload still hit it again — the tool list
-      // itself (deciding whether any of 12 functions might apply) is the
-      // more likely reasoning sink than the message content. So the retry
-      // drops `tools` entirely: with nothing to reason about, the model
-      // reliably produces text. Trades this one fallback turn's ability to
-      // trigger a phone action for actually getting a reply instead of
-      // silence — a clear win.
+      // Belt-and-suspenders: retry once, without tools, if a call ever comes
+      // back with neither response text nor a tool call. Kept as a safety
+      // net even after reverting away from gpt-oss-120b (see AI_MODEL above)
+      // — cheap insurance against any model occasionally returning empty,
+      // and strictly better than surfacing silence to the user.
       if (!replyText && !toolCall) {
         data = await runModel(env, messages, false);
         toolCall = undefined;
