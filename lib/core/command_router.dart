@@ -122,6 +122,7 @@ Das kann ich für dich tun:
 • "meine timer" / "timer abbrechen"
 • "notiz <Text>" / "meine notizen" / "lösche notiz <Nummer>"
 • "wirf eine münze" / "würfle" / "zufallszahl zwischen 1 und 100"
+• "spiele <Song> auf spotify" / "spiele playlist <Name> auf spotify" (Spotify-Verbindung nötig, siehe Einstellungen)
 • alles andere: frag mich einfach frei, ich antworte mit echter KI und kann
   dabei auch direkt anrufen, WhatsApp schreiben oder Apps öffnen
 ''';
@@ -259,8 +260,12 @@ Das kann ich für dich tun:
       final youtubeQuery = _extractAfter(lower, text, ['youtube', 'spiele']);
       if (youtubeQuery != null) {
         if (youtubeQuery.contains('spotify')) {
-          final song = youtubeQuery.replaceAll(RegExp(r'\s*(auf|bei|in)?\s*spotify\s*'), ' ').trim();
-          return CommandResult(await _playOnSpotify(song));
+          final withoutSpotify = youtubeQuery.replaceAll(RegExp(r'\s*(auf|bei|in)?\s*spotify\s*'), ' ').trim();
+          if (withoutSpotify.contains('playlist')) {
+            final playlistName = withoutSpotify.replaceAll(RegExp(r'^(meine\s+)?playlist\s*'), '').trim();
+            return CommandResult(await _playPlaylistOnSpotify(playlistName));
+          }
+          return CommandResult(await _playOnSpotify(withoutSpotify));
         }
         await youtube.search(youtubeQuery);
         return CommandResult('Suche "$youtubeQuery" auf YouTube.');
@@ -496,6 +501,11 @@ Das kann ich für dich tun:
         if (song.isEmpty) return CommandResult('Was soll ich auf Spotify abspielen?');
         return CommandResult(await _playOnSpotify(song));
 
+      case 'play_playlist':
+        final playlistName = (action.params['query'] as String?)?.trim() ?? '';
+        if (playlistName.isEmpty) return CommandResult('Welche Playlist soll ich abspielen?');
+        return CommandResult(await _playPlaylistOnSpotify(playlistName));
+
       default:
         return CommandResult(aiResult.reply);
     }
@@ -515,6 +525,18 @@ Das kann ich für dich tun:
       return 'Spotify ist noch nicht verbunden. Bitte in den Einstellungen anmelden.';
     }
     return spotify.play(clientId, song);
+  }
+
+  Future<String> _playPlaylistOnSpotify(String name) async {
+    final clientId = await settings.getSpotifyClientId();
+    if (clientId == null || clientId.isEmpty) {
+      return 'Spotify ist nicht eingerichtet. Bitte Client-ID in den Einstellungen eintragen und verbinden.';
+    }
+    if (!await spotify.isConnected()) {
+      return 'Spotify ist noch nicht verbunden. Bitte in den Einstellungen anmelden.';
+    }
+    if (name.isEmpty) return 'Welche Playlist soll ich abspielen?';
+    return spotify.playPlaylist(clientId, name);
   }
 
   bool _matchesAny(String lower, List<String> keywords) {

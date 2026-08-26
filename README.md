@@ -159,12 +159,14 @@ Weil das Schreibrechte auf einem echten Google-Konto braucht, ist einmalig ein e
 
 ## Spotify-Musiksteuerung einrichten (optional)
 
-Sag „spiele \<Song\> auf Spotify" oder frag JARVIS frei danach, etwas abzuspielen, und er startet den Song auf deinem gerade aktiven Spotify-Gerät (dafür ist ein **Spotify-Premium-Konto** nötig — das ist eine Einschränkung von Spotify selbst, keine der App). Weil dafür Zugriff auf dein eigenes Spotify-Konto nötig ist, brauchst du einmalig eine eigene (kostenlose) Spotify-Developer-App:
+Sag „spiele \<Song\> auf Spotify", „spiele playlist \<Name\> auf Spotify" oder frag JARVIS frei danach, etwas abzuspielen, und er startet den Song bzw. die Playlist auf deinem gerade aktiven Spotify-Gerät (dafür ist ein **Spotify-Premium-Konto** nötig — das ist eine Einschränkung von Spotify selbst, keine der App). Das funktioniert sowohl in der APK auf dem Handy als auch in der Web-Version am PC — die Anmeldung läuft in beiden Fällen über die normale Spotify-Login-Seite mit deinen normalen Zugangsdaten; die App selbst sieht dein Passwort nie. Weil dafür Zugriff auf dein eigenes Spotify-Konto nötig ist, brauchst du einmalig eine eigene (kostenlose) Spotify-Developer-App:
 
 1. **Spotify-Developer-App anlegen**: [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard) → mit deinem Spotify-Konto anmelden → „Create app" → beliebigen Namen/Beschreibung eintragen.
-2. **Redirect URI eintragen**: In den App-Einstellungen unter „Redirect URIs" genau `jarvismobile://spotify-callback` hinzufügen und speichern.
-3. **Client ID kopieren**: Auf der App-Übersichtsseite steht die **Client ID** — die in der JARVIS-App unter **Einstellungen → „Spotify-Client-ID"** eintragen und speichern.
-4. **Verbinden**: In den Einstellungen auf „Mit Spotify verbinden" tippen und im sich öffnenden Spotify-Login bestätigen.
+2. **Redirect URIs eintragen**: In den App-Einstellungen unter „Redirect URIs" **beide** folgenden Werte hinzufügen und speichern:
+   - `jarvismobile://spotify-callback` (für die APK auf dem Handy)
+   - `https://ibrahim200832.github.io/jarvis-mobile/spotify-callback.html` (für die Web-Version am PC)
+3. **Client ID kopieren**: Auf der App-Übersichtsseite steht die **Client ID** — die in der JARVIS-App unter **Einstellungen → „Spotify-Client-ID"** eintragen und speichern (auf jedem Gerät, auf dem du dich anmeldest).
+4. **Verbinden**: In den Einstellungen auf „Mit Spotify verbinden" tippen und im sich öffnenden Spotify-Login mit deinem normalen Spotify-Konto bestätigen. Dabei fragt Spotify auch nach Zugriff auf deine Playlists, damit JARVIS sie später abspielen kann.
 
 Kein Client Secret nötig — die Anmeldung läuft über einen sicheren Code-Flow (PKCE), bei dem kein Geheimnis im Gerät gespeichert werden muss.
 
