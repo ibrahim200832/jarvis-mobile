@@ -349,6 +349,8 @@ class _HomeScreenState extends State<HomeScreen> {
               uploadService: YoutubeUploadService(
                 webClientId: (clientId != null && clientId.isNotEmpty) ? clientId : null,
               ),
+              initialPrivacy: result.youtubePrivacy,
+              initialPublishAt: result.youtubePublishAt,
             ),
           ),
         );

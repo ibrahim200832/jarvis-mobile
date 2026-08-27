@@ -31,8 +31,17 @@ class CommandResult {
   final String? qrData;
   final bool openCamera;
   final bool openYoutubeUpload;
+  final String? youtubePrivacy;
+  final DateTime? youtubePublishAt;
 
-  CommandResult(this.reply, {this.qrData, this.openCamera = false, this.openYoutubeUpload = false});
+  CommandResult(
+    this.reply, {
+    this.qrData,
+    this.openCamera = false,
+    this.openYoutubeUpload = false,
+    this.youtubePrivacy,
+    this.youtubePublishAt,
+  });
 }
 
 /// Parses a single line of recognized speech or typed text and dispatches it
@@ -113,7 +122,7 @@ Das kann ich für dich tun:
 • "whatsapp an <Kontakt>: <Nachricht>"
 • "email an <Adresse>: <Nachricht>"
 • "youtube <Suchbegriff>"
-• "video hochladen" (auf dein YouTube-Konto, siehe README)
+• "video hochladen" / "video öffentlich hochladen" (auf dein YouTube-Konto, siehe README)
 • "qr code <Text>"
 • "meine ip" / "ip adresse"
 • "akkustand" / "wie ist der akku"
@@ -221,7 +230,18 @@ Das kann ich für dich tun:
       }
 
       if (_matchesAny(lower, ['hochladen', 'upload']) && _matchesAny(lower, ['video', 'youtube'])) {
-        return CommandResult('Öffne den YouTube-Upload.', openYoutubeUpload: true);
+        final privacy = _matchesAny(lower, ['öffentlich', 'public'])
+            ? 'public'
+            : _matchesAny(lower, ['nicht gelistet', 'ungelistet', 'unlisted'])
+            ? 'unlisted'
+            : null;
+        return CommandResult(
+          privacy == null
+              ? 'Öffne den YouTube-Upload.'
+              : 'Öffne den YouTube-Upload (${privacy == 'public' ? 'öffentlich' : 'nicht gelistet'} vorausgewählt).',
+          openYoutubeUpload: true,
+          youtubePrivacy: privacy,
+        );
       }
 
       final callTarget = _extractAfter(lower, text, ['rufe', 'ruf', 'call']);
@@ -506,6 +526,16 @@ Das kann ich für dich tun:
         if (playlistName.isEmpty) return CommandResult('Welche Playlist soll ich abspielen?');
         return CommandResult(await _playPlaylistOnSpotify(playlistName));
 
+      case 'open_youtube_upload':
+        final uploadPrivacy = _normalizeYoutubePrivacy(action.params['privacy_status'] as String?);
+        final publishAt = _parseYoutubePublishAt(action.params['publish_at'] as String?);
+        return CommandResult(
+          'Öffne den YouTube-Upload.',
+          openYoutubeUpload: true,
+          youtubePrivacy: publishAt != null ? 'private' : uploadPrivacy,
+          youtubePublishAt: publishAt,
+        );
+
       default:
         return CommandResult(aiResult.reply);
     }
@@ -537,6 +567,19 @@ Das kann ich für dich tun:
     }
     if (name.isEmpty) return 'Welche Playlist soll ich abspielen?';
     return spotify.playPlaylist(clientId, name);
+  }
+
+  String? _normalizeYoutubePrivacy(String? raw) {
+    const allowed = {'private', 'unlisted', 'public'};
+    final value = raw?.trim().toLowerCase();
+    return allowed.contains(value) ? value : null;
+  }
+
+  DateTime? _parseYoutubePublishAt(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    final parsed = DateTime.tryParse(raw.trim())?.toUtc();
+    if (parsed == null || !parsed.isAfter(DateTime.now().toUtc())) return null;
+    return parsed;
   }
 
   bool _matchesAny(String lower, List<String> keywords) {

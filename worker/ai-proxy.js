@@ -205,6 +205,30 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'open_youtube_upload',
+      description:
+        'Öffnet den YouTube-Video-Upload-Bildschirm, optional mit vorausgewählter Sichtbarkeit und/oder geplanter Veröffentlichungszeit. Das Video selbst muss der Nutzer immer noch manuell auswählen. Nur verwenden, wenn der Nutzer klar darum bittet, ein Video hochzuladen.',
+      parameters: {
+        type: 'object',
+        properties: {
+          privacy_status: {
+            type: 'string',
+            enum: ['private', 'unlisted', 'public'],
+            description: 'Gewünschte Sichtbarkeit. Weglassen, wenn nicht genannt.',
+          },
+          publish_at: {
+            type: 'string',
+            description:
+              'Geplanter Veröffentlichungszeitpunkt als ISO-8601-UTC-Zeitstempel (z.B. "2026-08-28T16:00:00Z"), berechnet relativ zur aktuellen Zeit unten. Weglassen, wenn keine Zeitplanung genannt wurde.',
+          },
+        },
+        required: [],
+      },
+    },
+  },
 ];
 
 const SYSTEM_PROMPT =
@@ -223,7 +247,8 @@ const SYSTEM_PROMPT =
   'Websuche nichts findet, gib die Lücke ehrlich in ein bis zwei Worten zu. ' +
   'Du hast Werkzeuge für: Anrufen, WhatsApp senden, Apps öffnen, Timer stellen, Notizen speichern, Wetter ' +
   'abrufen, Kamera öffnen, Wikipedia-Suche, Nachrichten abrufen, E-Mail senden, YouTube-Suche, das Web ' +
-  'durchsuchen und Musik oder eine Playlist auf Spotify abspielen. ' +
+  'durchsuchen, Musik oder eine Playlist auf Spotify abspielen und den YouTube-Video-Upload öffnen (mit ' +
+  'Sichtbarkeit/Zeitplanung). ' +
   'Nutze ein Werkzeug ausschließlich dann, wenn der Nutzer eine konkrete, eindeutige Handlungsaufforderung ' +
   'ausspricht (z.B. "ruf Mama an", "schreib eine E-Mail an..."). Nutze niemals ein Werkzeug bei einer ' +
   'bloßen Erwähnung, Frage über die Vergangenheit oder einem Gedanken laut — z.B. bei "ich sollte mal ' +
@@ -293,7 +318,11 @@ export default {
       .slice(-MAX_HISTORY_MESSAGES)
       .map((m) => ({ role: m.role, content: m.content }));
 
-    const messages = [{ role: 'system', content: SYSTEM_PROMPT }, ...cleanHistory, { role: 'user', content: message }];
+    // The model has no built-in notion of "now", so tools that need to
+    // resolve relative times (e.g. open_youtube_upload's publish_at from
+    // "morgen um 18 Uhr") need the current time handed to it explicitly.
+    const systemPrompt = `${SYSTEM_PROMPT} Aktuelles Datum/Uhrzeit (UTC): ${new Date().toISOString()}.`;
+    const messages = [{ role: 'system', content: systemPrompt }, ...cleanHistory, { role: 'user', content: message }];
 
     let data;
     let toolCall;

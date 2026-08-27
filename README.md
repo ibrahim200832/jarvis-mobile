@@ -40,7 +40,7 @@ Jeder Push auf `main` baut die App automatisch als Website und veröffentlicht s
 | — | Freies KI-Gespräch, funktioniert sofort ohne jede Einrichtung (siehe unten) |
 | — | Anruf-Modus: Vollbild-Gespräch mit animiertem Orb statt Einzelbefehle (siehe unten) |
 | — | Die KI kann im Gespräch selbst Anrufe/WhatsApp/Apps auslösen (optional, siehe unten) |
-| — | Video vom Handy auf dein eigenes YouTube-Konto hochladen (optional, siehe unten) |
+| — | Video vom Handy auf dein eigenes YouTube-Konto hochladen — Sichtbarkeit (privat/nicht gelistet/öffentlich) wählbar, optional zeitgesteuerte Veröffentlichung (optional, siehe unten) |
 
 ## Sprachbefehle (Beispiele)
 
@@ -58,6 +58,7 @@ Jeder Push auf `main` baut die App automatisch als Website und veröffentlicht s
 - „email an chef@firma.de: Bin heute im Homeoffice"
 - „youtube lofi hip hop"
 - „video hochladen" (auf dein YouTube-Konto, siehe unten)
+- „lade das video öffentlich hoch" (Sichtbarkeit vorauswählen, siehe unten)
 - „qr code https://example.com"
 - „meine ip"
 - „akkustand" / „wie ist der akku"
@@ -145,7 +146,7 @@ Wird `worker/ai-proxy.js` später im Repo geändert (z. B. um neue Tools), muss 
 
 ## YouTube-Video-Upload einrichten (optional)
 
-Der Befehl „video hochladen" lässt dich ein Video von deinem Handy/Computer auswählen und direkt auf dein eigenes YouTube-Konto hochladen — jeder Upload ist ein bewusster Tastendruck (Anmelden → Video wählen → Titel eintippen → Hochladen), nichts passiert automatisch im Hintergrund. Videos werden immer zuerst als **„privat"** hochgeladen; öffentlich machst du sie danach selbst in YouTube Studio, falls gewünscht.
+Der Befehl „video hochladen" lässt dich ein Video von deinem Handy/Computer auswählen und direkt auf dein eigenes YouTube-Konto hochladen — jeder Upload ist ein bewusster Tastendruck (Anmelden → Video wählen → Sichtbarkeit wählen → Titel eintippen → Hochladen), nichts passiert automatisch im Hintergrund. Beim Hochladen wählst du die Sichtbarkeit — **privat**, **nicht gelistet** oder **öffentlich** — und kannst optional eine spätere Veröffentlichungszeit festlegen; YouTube macht das Video dann automatisch zur gewählten Zeit öffentlich (bis dahin bleibt es privat, das schreibt die YouTube-API so vor). Standard bleibt „privat", damit nichts versehentlich sofort öffentlich landet. Auch JARVIS selbst kann beim Öffnen des Upload-Bildschirms schon eine Sichtbarkeit vorauswählen (z. B. „lade das video öffentlich hoch") — die eigentliche Datei wählst du danach weiterhin immer manuell aus.
 
 Weil das Schreibrechte auf einem echten Google-Konto braucht, ist einmalig ein eigenes (kostenloses) Google-Cloud-Projekt nötig:
 
