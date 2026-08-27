@@ -25,6 +25,7 @@ import '../services/random_fun_service.dart';
 import '../services/settings_service.dart';
 import '../services/speech_service.dart';
 import '../services/spotify_service.dart';
+import '../services/tiktok_upload_service.dart';
 import '../services/timer_service.dart';
 import '../services/tts_service.dart';
 import '../services/update_service.dart';
@@ -41,6 +42,7 @@ import '../widgets/voice_orb_overlay.dart';
 import 'camera_screen.dart';
 import 'gesture_screen.dart';
 import 'settings_screen.dart';
+import 'tiktok_upload_screen.dart';
 import 'youtube_upload_screen.dart';
 
 const _quickActions = ['Wetter', 'Nachrichten', 'Witz', 'Hilfe'];
@@ -59,6 +61,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _contacts = ContactsService();
   final _timer = TimerService();
   final _spotify = SpotifyService();
+  final _tiktok = TikTokUploadService();
   final _textCtrl = TextEditingController();
   final _scrollCtrl = ScrollController();
 
@@ -356,6 +359,17 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       }
     }
+
+    if (result.openTiktokUpload && mounted) {
+      final backendUrl = await _settings.getAiBackendUrl();
+      if (mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => TikTokUploadScreen(uploadService: _tiktok, backendUrl: backendUrl ?? ''),
+          ),
+        );
+      }
+    }
   }
 
   void _showQrDialog(String data) {
@@ -547,7 +561,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 icon: const Icon(Icons.settings_outlined),
                 onPressed: () => Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => SettingsScreen(settings: _settings, contacts: _contacts, spotify: _spotify),
+                    builder: (_) => SettingsScreen(
+                      settings: _settings,
+                      contacts: _contacts,
+                      spotify: _spotify,
+                      tiktok: _tiktok,
+                    ),
                   ),
                 ),
               ),

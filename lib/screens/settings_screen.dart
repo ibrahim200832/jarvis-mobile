@@ -4,14 +4,22 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../services/contacts_service.dart';
 import '../services/settings_service.dart';
 import '../services/spotify_service.dart';
+import '../services/tiktok_upload_service.dart';
 import 'changelog_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key, required this.settings, required this.contacts, required this.spotify});
+  const SettingsScreen({
+    super.key,
+    required this.settings,
+    required this.contacts,
+    required this.spotify,
+    required this.tiktok,
+  });
 
   final SettingsService settings;
   final ContactsService contacts;
   final SpotifyService spotify;
+  final TikTokUploadService tiktok;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -24,12 +32,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _aiBackendCtrl = TextEditingController();
   final _youtubeClientIdCtrl = TextEditingController();
   final _spotifyClientIdCtrl = TextEditingController();
+  final _tiktokClientKeyCtrl = TextEditingController();
   List<Contact> _contacts = [];
   String _appVersion = '';
   String _aiModel = 'openai';
   bool? _hasDeviceContacts;
   bool _spotifyConnected = false;
   bool _connectingSpotify = false;
+  bool _tiktokConnected = false;
+  bool _connectingTiktok = false;
 
   static const _aiModels = {
     'openai': 'ChatGPT (Standard)',
@@ -51,9 +62,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _aiBackendCtrl.text = await widget.settings.getAiBackendUrl() ?? '';
     _youtubeClientIdCtrl.text = await widget.settings.getYoutubeClientId() ?? '';
     _spotifyClientIdCtrl.text = await widget.settings.getSpotifyClientId() ?? '';
+    _tiktokClientKeyCtrl.text = await widget.settings.getTiktokClientKey() ?? '';
     _aiModel = await widget.settings.getAiModel();
     _contacts = await widget.contacts.all();
     _spotifyConnected = await widget.spotify.isConnected();
+    _tiktokConnected = await widget.tiktok.isConnected();
     if (mounted) setState(() {});
   }
 
@@ -69,6 +82,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await widget.settings.setAiBackendUrl(_aiBackendCtrl.text.trim());
     await widget.settings.setYoutubeClientId(_youtubeClientIdCtrl.text.trim());
     await widget.settings.setSpotifyClientId(_spotifyClientIdCtrl.text.trim());
+    await widget.settings.setTiktokClientKey(_tiktokClientKeyCtrl.text.trim());
     await widget.settings.setAiModel(_aiModel);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gespeichert.')));
@@ -98,6 +112,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _disconnectSpotify() async {
     await widget.spotify.disconnect();
     if (mounted) setState(() => _spotifyConnected = false);
+  }
+
+  Future<void> _connectTiktok() async {
+    final clientKey = _tiktokClientKeyCtrl.text.trim();
+    if (clientKey.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Bitte zuerst einen TikTok-Client-Key eintragen und speichern.')));
+      return;
+    }
+    await widget.settings.setTiktokClientKey(clientKey);
+    final backendUrl = await widget.settings.getAiBackendUrl();
+    if (backendUrl == null || backendUrl.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('TikTok-Upload benötigt eine KI-Server-Adresse in den Einstellungen.')),
+      );
+      return;
+    }
+    setState(() => _connectingTiktok = true);
+    final ok = await widget.tiktok.connect(clientKey, backendUrl);
+    if (!mounted) return;
+    setState(() {
+      _connectingTiktok = false;
+      _tiktokConnected = ok;
+    });
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(ok ? 'Mit TikTok verbunden.' : 'TikTok-Verbindung fehlgeschlagen.')));
+  }
+
+  Future<void> _disconnectTiktok() async {
+    await widget.tiktok.disconnect();
+    if (mounted) setState(() => _tiktokConnected = false);
   }
 
   Future<void> _addContact() async {
@@ -222,6 +270,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                   : const Icon(Icons.link),
               label: Text(_connectingSpotify ? 'Verbinde…' : 'Mit Spotify verbinden'),
+            ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _tiktokClientKeyCtrl,
+            decoration: const InputDecoration(
+              labelText: 'TikTok-Client-Key (für Video-Upload)',
+              helperText: 'Eigene App unter developers.tiktok.com anlegen, siehe README',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (_tiktokConnected)
+            OutlinedButton.icon(
+              onPressed: _disconnectTiktok,
+              icon: const Icon(Icons.link_off),
+              label: const Text('TikTok trennen'),
+            )
+          else
+            OutlinedButton.icon(
+              onPressed: _connectingTiktok ? null : _connectTiktok,
+              icon: _connectingTiktok
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.link),
+              label: Text(_connectingTiktok ? 'Verbinde…' : 'Mit TikTok verbinden'),
             ),
           const SizedBox(height: 16),
           FilledButton(onPressed: _save, child: const Text('Speichern')),
