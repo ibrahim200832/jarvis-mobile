@@ -33,6 +33,7 @@ client.on('interactionCreate', async (interaction) => {
       await speakInChannel(voiceChannel, reply);
       await interaction.editReply(reply);
     } catch (err) {
+      console.error(err);
       await interaction.editReply(`Fehler: ${err.message}`);
     }
   }
