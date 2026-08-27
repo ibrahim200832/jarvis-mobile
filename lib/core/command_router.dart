@@ -33,6 +33,7 @@ class CommandResult {
   final bool openYoutubeUpload;
   final String? youtubePrivacy;
   final DateTime? youtubePublishAt;
+  final bool openTiktokUpload;
 
   CommandResult(
     this.reply, {
@@ -41,6 +42,7 @@ class CommandResult {
     this.openYoutubeUpload = false,
     this.youtubePrivacy,
     this.youtubePublishAt,
+    this.openTiktokUpload = false,
   });
 }
 
@@ -123,6 +125,7 @@ Das kann ich für dich tun:
 • "email an <Adresse>: <Nachricht>"
 • "youtube <Suchbegriff>"
 • "video hochladen" / "video öffentlich hochladen" (auf dein YouTube-Konto, siehe README)
+• "video auf tiktok hochladen" (TikTok-Verbindung nötig, siehe Einstellungen)
 • "qr code <Text>"
 • "meine ip" / "ip adresse"
 • "akkustand" / "wie ist der akku"
@@ -227,6 +230,10 @@ Das kann ich für dich tun:
 
       if (_matchesAny(lower, ['kamera', 'camera'])) {
         return CommandResult('Öffne die Kamera.', openCamera: true);
+      }
+
+      if (_matchesAny(lower, ['hochladen', 'upload']) && _matchesAny(lower, ['tiktok'])) {
+        return CommandResult('Öffne den TikTok-Upload.', openTiktokUpload: true);
       }
 
       if (_matchesAny(lower, ['hochladen', 'upload']) && _matchesAny(lower, ['video', 'youtube'])) {
@@ -525,6 +532,9 @@ Das kann ich für dich tun:
         final playlistName = (action.params['query'] as String?)?.trim() ?? '';
         if (playlistName.isEmpty) return CommandResult('Welche Playlist soll ich abspielen?');
         return CommandResult(await _playPlaylistOnSpotify(playlistName));
+
+      case 'open_tiktok_upload':
+        return CommandResult('Öffne den TikTok-Upload.', openTiktokUpload: true);
 
       case 'open_youtube_upload':
         final uploadPrivacy = _normalizeYoutubePrivacy(action.params['privacy_status'] as String?);

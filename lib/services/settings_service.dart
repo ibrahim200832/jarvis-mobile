@@ -9,6 +9,7 @@ class SettingsService {
   static const _keyYoutubeClientId = 'youtube_client_id';
   static const _keyAiModel = 'ai_model';
   static const _keySpotifyClientId = 'spotify_client_id';
+  static const _keyTiktokClientKey = 'tiktok_client_key';
 
   Future<String?> getNewsApiKey() async {
     final prefs = await SharedPreferences.getInstance();
@@ -95,5 +96,19 @@ class SettingsService {
   Future<void> setSpotifyClientId(String value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keySpotifyClientId, value);
+  }
+
+  /// No zero-setup default is possible here either — a TikTok app's
+  /// redirect URIs must be registered by whoever owns the Client Key in
+  /// their own TikTok Developer app, so each user needs their own (see
+  /// README).
+  Future<String?> getTiktokClientKey() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyTiktokClientKey);
+  }
+
+  Future<void> setTiktokClientKey(String value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyTiktokClientKey, value);
   }
 }

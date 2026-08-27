@@ -638,4 +638,15 @@ void main() {
     expect(result.youtubePrivacy, isNull);
     expect(result.youtubePublishAt, isNull);
   });
+
+  test('video auf tiktok hochladen sets openTiktokUpload', () async {
+    final result = await router.handle('video auf tiktok hochladen');
+    expect(result.openTiktokUpload, isTrue);
+  });
+
+  test('AI open_tiktok_upload action sets openTiktokUpload', () async {
+    aiChat.nextAction = AiAction(type: 'open_tiktok_upload', params: {});
+    final result = await router.handle('kannst du das auf tiktok posten');
+    expect(result.openTiktokUpload, isTrue);
+  });
 }

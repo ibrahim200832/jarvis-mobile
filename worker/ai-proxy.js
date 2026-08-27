@@ -208,6 +208,15 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'open_tiktok_upload',
+      description:
+        'Öffnet den TikTok-Video-Upload-Bildschirm. Das Video selbst muss der Nutzer immer noch manuell auswählen. Nur verwenden, wenn der Nutzer klar darum bittet, ein Video auf TikTok hochzuladen.',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'open_youtube_upload',
       description:
         'Öffnet den YouTube-Video-Upload-Bildschirm, optional mit vorausgewählter Sichtbarkeit und/oder geplanter Veröffentlichungszeit. Das Video selbst muss der Nutzer immer noch manuell auswählen. Nur verwenden, wenn der Nutzer klar darum bittet, ein Video hochzuladen.',
@@ -247,8 +256,8 @@ const SYSTEM_PROMPT =
   'Websuche nichts findet, gib die Lücke ehrlich in ein bis zwei Worten zu. ' +
   'Du hast Werkzeuge für: Anrufen, WhatsApp senden, Apps öffnen, Timer stellen, Notizen speichern, Wetter ' +
   'abrufen, Kamera öffnen, Wikipedia-Suche, Nachrichten abrufen, E-Mail senden, YouTube-Suche, das Web ' +
-  'durchsuchen, Musik oder eine Playlist auf Spotify abspielen und den YouTube-Video-Upload öffnen (mit ' +
-  'Sichtbarkeit/Zeitplanung). ' +
+  'durchsuchen, Musik oder eine Playlist auf Spotify abspielen, den TikTok-Video-Upload öffnen und den ' +
+  'YouTube-Video-Upload öffnen (mit Sichtbarkeit/Zeitplanung). ' +
   'Nutze ein Werkzeug ausschließlich dann, wenn der Nutzer eine konkrete, eindeutige Handlungsaufforderung ' +
   'ausspricht (z.B. "ruf Mama an", "schreib eine E-Mail an..."). Nutze niemals ein Werkzeug bei einer ' +
   'bloßen Erwähnung, Frage über die Vergangenheit oder einem Gedanken laut — z.B. bei "ich sollte mal ' +
@@ -288,6 +297,12 @@ export default {
         return json({ error: 'method not allowed' }, 405);
       }
       return handleSearch(url, env);
+    }
+    if (url.pathname === '/tiktok/token' || url.pathname === '/tiktok/refresh') {
+      if (request.method !== 'POST') {
+        return json({ error: 'method not allowed' }, 405);
+      }
+      return handleTiktokToken(url.pathname, request, env);
     }
 
     if (request.method !== 'POST') {
@@ -406,6 +421,57 @@ async function handleSearch(url, env) {
     description: (r.description ?? '').replace(/<[^>]*>/g, ''), // Brave highlights matches with <strong> tags
   }));
   return json({ results });
+}
+
+// Proxies TikTok's OAuth token exchange/refresh, keeping TIKTOK_CLIENT_KEY
+// and (crucially) TIKTOK_CLIENT_SECRET server-side secrets (set via
+// `wrangler secret put` or the Cloudflare dashboard) — unlike Spotify's
+// PKCE-only public-client flow, TikTok's token endpoint requires a client
+// secret, which must never ship inside the app.
+async function handleTiktokToken(pathname, request, env) {
+  if (!env.TIKTOK_CLIENT_KEY || !env.TIKTOK_CLIENT_SECRET) {
+    return json({ error: 'Kein TikTok-Schlüssel auf dem Server hinterlegt.' }, 500);
+  }
+  let body;
+  try {
+    body = await request.json();
+  } catch (_) {
+    return json({ error: 'invalid json body' }, 400);
+  }
+
+  const form = { client_key: env.TIKTOK_CLIENT_KEY, client_secret: env.TIKTOK_CLIENT_SECRET };
+  if (pathname === '/tiktok/token') {
+    if (!body.code || !body.redirect_uri) {
+      return json({ error: 'code/redirect_uri fehlt' }, 400);
+    }
+    Object.assign(form, {
+      grant_type: 'authorization_code',
+      code: body.code,
+      redirect_uri: body.redirect_uri,
+      code_verifier: body.code_verifier,
+    });
+  } else {
+    if (!body.refresh_token) {
+      return json({ error: 'refresh_token fehlt' }, 400);
+    }
+    Object.assign(form, { grant_type: 'refresh_token', refresh_token: body.refresh_token });
+  }
+
+  let res;
+  try {
+    res = await fetch('https://open.tiktokapis.com/v2/oauth/token/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+      body: new URLSearchParams(form),
+    });
+  } catch (err) {
+    return json({ error: 'TikTok-Anmeldung fehlgeschlagen', detail: String(err) }, 502);
+  }
+  const data = await res.json();
+  if (!res.ok || data.error) {
+    return json({ error: data.error_description || 'TikTok-Anmeldung fehlgeschlagen' }, 502);
+  }
+  return json(data);
 }
 
 function corsHeaders() {

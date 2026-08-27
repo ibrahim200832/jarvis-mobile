@@ -41,6 +41,7 @@ Jeder Push auf `main` baut die App automatisch als Website und veröffentlicht s
 | — | Anruf-Modus: Vollbild-Gespräch mit animiertem Orb statt Einzelbefehle (siehe unten) |
 | — | Die KI kann im Gespräch selbst Anrufe/WhatsApp/Apps auslösen (optional, siehe unten) |
 | — | Video vom Handy auf dein eigenes YouTube-Konto hochladen — Sichtbarkeit (privat/nicht gelistet/öffentlich) wählbar, optional zeitgesteuerte Veröffentlichung (optional, siehe unten) |
+| — | Video vom Handy auf dein eigenes TikTok-Konto hochladen — Sichtbarkeit wählbar (optional, siehe unten; Einschränkungen beachten) |
 
 ## Sprachbefehle (Beispiele)
 
@@ -59,6 +60,7 @@ Jeder Push auf `main` baut die App automatisch als Website und veröffentlicht s
 - „youtube lofi hip hop"
 - „video hochladen" (auf dein YouTube-Konto, siehe unten)
 - „lade das video öffentlich hoch" (Sichtbarkeit vorauswählen, siehe unten)
+- „video auf tiktok hochladen" (auf dein TikTok-Konto, siehe unten)
 - „qr code https://example.com"
 - „meine ip"
 - „akkustand" / „wie ist der akku"
@@ -170,6 +172,26 @@ Sag „spiele \<Song\> auf Spotify", „spiele playlist \<Name\> auf Spotify" od
 4. **Verbinden**: In den Einstellungen auf „Mit Spotify verbinden" tippen und im sich öffnenden Spotify-Login mit deinem normalen Spotify-Konto bestätigen. Dabei fragt Spotify auch nach Zugriff auf deine Playlists, damit JARVIS sie später abspielen kann.
 
 Kein Client Secret nötig — die Anmeldung läuft über einen sicheren Code-Flow (PKCE), bei dem kein Geheimnis im Gerät gespeichert werden muss.
+
+## TikTok-Video-Upload einrichten (optional)
+
+Sag „video auf tiktok hochladen", und JARVIS öffnet den Upload-Bildschirm, in dem du ein Video auswählst, einen Titel eingibst und die Sichtbarkeit festlegst.
+
+> **Wichtige Einschränkung:** Solange deine eigene TikTok-Entwickler-App kein offizielles TikTok-Audit bestanden hat, erzwingt TikTok bei **jedem** Upload die Sichtbarkeit „Nur ich" (privat) — unabhängig davon, was in JARVIS ausgewählt wird. „Öffentlich" oder „Nur Freunde" funktionieren erst, nachdem TikTok die App geprüft hat; das dauert Tage bis Wochen, verlangt ein Demo-Video der fertigen Funktion sowie eine gehostete Datenschutzerklärung/Nutzungsbedingungen, und ist für eine private Hobby-App nicht garantiert genehmigt. Verbinden und Hochladen funktionieren aber auch ohne Audit sofort — nur eben ausschließlich privat.
+
+Weil TikToks Login sowohl einen Client Key **als auch** ein geheimes Client Secret verlangt (letzteres darf niemals in der App landen), läuft die Anmeldung über den eigenen Worker — genau wie schon die Websuche. Einmalige Einrichtung:
+
+1. **TikTok-Entwickler-App anlegen**: [developers.tiktok.com](https://developers.tiktok.com) → mit deinem TikTok-Konto anmelden → neue App erstellen → die Produkte **„Login Kit"** und **„Content Posting API"** hinzufügen.
+2. **Redirect URIs eintragen**: In den App-Einstellungen **beide** folgenden Werte als Redirect-URI hinzufügen:
+   - `jarvismobile://tiktok-callback` (für die APK auf dem Handy)
+   - `https://ibrahim200832.github.io/jarvis-mobile/tiktok-callback.html` (für die Web-Version am PC)
+
+   Für die zweite URI verlangt TikTok eine Domain-Verifizierung — TikTok zeigt dafür direkt im Dashboard an, welche Datei/welches Meta-Tag nötig ist (kann sich ändern, deshalb hier nicht fest vorgeschrieben).
+3. **Client Key kopieren**: Auf der App-Übersichtsseite steht der **Client Key** — den in der JARVIS-App unter **Einstellungen → „TikTok-Client-Key"** eintragen und speichern.
+4. **Client Key und Client Secret im Worker hinterlegen**: Im [Cloudflare-Dashboard](https://dash.cloudflare.com) → **Workers & Pages** → den eigenen Worker öffnen → **Settings → Variables and Secrets → Add**, zweimal: Name `TIKTOK_CLIENT_KEY` (Wert = Client Key) und Name `TIKTOK_CLIENT_SECRET` (Wert = Client Secret) → jeweils Typ **Secret** → **Deploy**.
+5. **Verbinden**: In den Einstellungen auf „Mit TikTok verbinden" tippen und im sich öffnenden TikTok-Login mit deinem normalen TikTok-Konto bestätigen.
+
+Getestet ist dieser Ablauf bisher auf der APK (Handy); die Web-Version nutzt denselben Code, TikToks API ist aber primär für Server-zu-Server-Aufrufe gedacht, daher ist nicht sichergestellt, dass der eigentliche Video-Upload im Browser funktioniert.
 
 ## Projekt bauen
 
