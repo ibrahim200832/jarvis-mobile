@@ -146,6 +146,8 @@ Wird `worker/ai-proxy.js` später im Repo geändert (z. B. um neue Tools), muss 
 
 **Geteiltes Backend mit dem WhatsApp-Bot:** Derselbe Worker lässt sich auch vom [DARKZONE-MD](https://github.com/ibrahim200832/DARKZONE-MD) WhatsApp-Bot nutzen (`lib/aichat.js` dort, `AI_BACKEND_URL` in dessen `config.env`) — beide Apps antworten dann mit derselben JARVIS-Persönlichkeit über dieselbe KI.
 
+**Auch als Discord-Bot verfügbar:** JARVIS kann auch einem Discord-Sprachkanal beitreten und Antworten vorlesen, wenn man ihn per Slash-Befehl fragt — nutzt denselben Worker als Backend, läuft aber als eigener Node.js-Dienst auf einem eigenen Server. Einrichtung siehe [`discord-bot/README.md`](discord-bot/README.md).
+
 ## YouTube-Video-Upload einrichten (optional)
 
 Der Befehl „video hochladen" lässt dich ein Video von deinem Handy/Computer auswählen und direkt auf dein eigenes YouTube-Konto hochladen — jeder Upload ist ein bewusster Tastendruck (Anmelden → Video wählen → Sichtbarkeit wählen → Titel eintippen → Hochladen), nichts passiert automatisch im Hintergrund. Beim Hochladen wählst du die Sichtbarkeit — **privat**, **nicht gelistet** oder **öffentlich** — und kannst optional eine spätere Veröffentlichungszeit festlegen; YouTube macht das Video dann automatisch zur gewählten Zeit öffentlich (bis dahin bleibt es privat, das schreibt die YouTube-API so vor). Standard bleibt „privat", damit nichts versehentlich sofort öffentlich landet. Auch JARVIS selbst kann beim Öffnen des Upload-Bildschirms schon eine Sichtbarkeit vorauswählen (z. B. „lade das video öffentlich hoch") — die eigentliche Datei wählst du danach weiterhin immer manuell aus.

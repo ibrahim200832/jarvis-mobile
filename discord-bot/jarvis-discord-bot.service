@@ -1,0 +1,12 @@
+[Unit]
+Description=JARVIS Discord Bot
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/jarvis-discord-bot
+ExecStart=/usr/bin/node index.js
+Restart=on-failure
+EnvironmentFile=/opt/jarvis-discord-bot/.env
+
+[Install]
+WantedBy=multi-user.target

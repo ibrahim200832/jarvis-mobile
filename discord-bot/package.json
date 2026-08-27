@@ -1,0 +1,16 @@
+{
+  "name": "jarvis-discord-bot",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "deploy-commands": "node deploy-commands.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.3",
+    "@discordjs/voice": "^0.18.0",
+    "@discordjs/opus": "^0.10.0",
+    "ffmpeg-static": "^5.2.0",
+    "dotenv": "^16.4.5"
+  }
+}
