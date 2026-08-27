@@ -7,9 +7,9 @@ import 'package:http/http.dart' as http;
 /// Handles Google sign-in (with YouTube upload scope) and uploading a video
 /// the user picked to their own YouTube channel. Every upload is triggered
 /// explicitly by the user picking a file and confirming — nothing happens
-/// automatically or in the background, and uploads default to "private" so
-/// nothing becomes public without the user changing that themselves in
-/// YouTube Studio afterwards.
+/// automatically or in the background. Privacy defaults to "private" unless
+/// the caller chooses otherwise, and a video scheduled via [publishAt] is
+/// always forced private until YouTube auto-publishes it at that time.
 class YoutubeUploadService {
   YoutubeUploadService({String? webClientId})
       : _googleSignIn = GoogleSignIn(
@@ -29,6 +29,8 @@ class YoutubeUploadService {
     required Uint8List videoBytes,
     required String title,
     String description = 'Hochgeladen mit JARVIS',
+    String privacyStatus = 'private',
+    DateTime? publishAt,
   }) async {
     var account = _googleSignIn.currentUser;
     account ??= await _googleSignIn.signIn();
@@ -41,9 +43,18 @@ class YoutubeUploadService {
       throw Exception('Kein Zugriffstoken erhalten.');
     }
 
+    // YouTube verlangt privacyStatus == 'private', sobald publishAt gesetzt
+    // ist (das Video bleibt bis dahin privat und wird automatisch
+    // veröffentlicht) — hier an der einen Stelle erzwungen, durch die jeder
+    // Aufrufer muss.
+    final status = <String, dynamic>{'privacyStatus': publishAt != null ? 'private' : privacyStatus};
+    if (publishAt != null) {
+      status['publishAt'] = publishAt.toUtc().toIso8601String();
+    }
+
     final metadata = jsonEncode({
       'snippet': {'title': title, 'description': description},
-      'status': {'privacyStatus': 'private'},
+      'status': status,
     });
 
     const boundary = 'jarvis-upload-boundary';

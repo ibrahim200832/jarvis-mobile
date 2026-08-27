@@ -592,4 +592,50 @@ void main() {
     final result = await router.handle('kannst du meine workout playlist abspielen');
     expect(result.reply, contains('Spotify ist nicht eingerichtet'));
   });
+
+  test('video hochladen sets openYoutubeUpload with no forced privacy', () async {
+    final result = await router.handle('video hochladen');
+    expect(result.openYoutubeUpload, isTrue);
+    expect(result.youtubePrivacy, isNull);
+  });
+
+  test('video öffentlich hochladen preselects public', () async {
+    final result = await router.handle('video öffentlich hochladen');
+    expect(result.openYoutubeUpload, isTrue);
+    expect(result.youtubePrivacy, 'public');
+  });
+
+  test('video nicht gelistet hochladen preselects unlisted', () async {
+    final result = await router.handle('video nicht gelistet hochladen');
+    expect(result.youtubePrivacy, 'unlisted');
+  });
+
+  test('AI open_youtube_upload action passes through a valid privacy_status', () async {
+    aiChat.nextAction = AiAction(type: 'open_youtube_upload', params: {'privacy_status': 'public'});
+    final result = await router.handle('kannst du das öffentlich freigeben');
+    expect(result.openYoutubeUpload, isTrue);
+    expect(result.youtubePrivacy, 'public');
+    expect(result.youtubePublishAt, isNull);
+  });
+
+  test('AI open_youtube_upload action forces private when publish_at is set', () async {
+    final future = DateTime.now().toUtc().add(const Duration(days: 1)).toIso8601String();
+    aiChat.nextAction = AiAction(
+      type: 'open_youtube_upload',
+      params: {'privacy_status': 'public', 'publish_at': future},
+    );
+    final result = await router.handle('plane das für morgen ein');
+    expect(result.youtubePrivacy, 'private');
+    expect(result.youtubePublishAt, isNotNull);
+  });
+
+  test('AI open_youtube_upload action ignores an invalid privacy_status and a past publish_at', () async {
+    aiChat.nextAction = AiAction(
+      type: 'open_youtube_upload',
+      params: {'privacy_status': 'geheim', 'publish_at': '2000-01-01T00:00:00Z'},
+    );
+    final result = await router.handle('mach das bitte klar');
+    expect(result.youtubePrivacy, isNull);
+    expect(result.youtubePublishAt, isNull);
+  });
 }
