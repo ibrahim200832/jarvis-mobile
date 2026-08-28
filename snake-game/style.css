@@ -60,6 +60,10 @@ h1 {
   text-shadow: 0 0 18px rgba(240, 198, 116, 0.35);
 }
 
+.hidden {
+  display: none !important;
+}
+
 .hud {
   display: flex;
   gap: 24px;
@@ -70,6 +74,98 @@ h1 {
 .hud strong {
   color: var(--accent);
   font-size: 16px;
+}
+
+.game {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.lobby {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  max-width: 340px;
+  padding: 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow:
+    0 0 0 1px rgba(227, 165, 82, 0.08),
+    0 0 50px rgba(240, 198, 116, 0.1),
+    0 20px 60px rgba(0, 0, 0, 0.45);
+}
+
+.lobby-highscore {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.lobby-highscore strong {
+  color: var(--accent);
+}
+
+.option-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.option-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.option-buttons {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+}
+
+.option-btn {
+  flex: 1;
+  padding: 8px 0;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.option-btn.selected {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+  font-weight: 700;
+}
+
+.primary-btn {
+  width: 100%;
+  margin-top: 4px;
+  padding: 12px 0;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 700;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.primary-btn:hover {
+  background: var(--accent-glow);
 }
 
 .board-wrap {
@@ -143,19 +239,39 @@ canvas {
   color: var(--foreground);
 }
 
-#restart-btn {
+.overlay-actions {
+  display: flex;
+  gap: 10px;
   margin-top: 8px;
-  padding: 10px 22px;
+}
+
+#restart-btn,
+#lobby-btn {
+  padding: 10px 20px;
   border-radius: 999px;
-  border: 1px solid var(--accent);
-  background: var(--accent);
-  color: var(--on-accent);
   font-weight: 700;
   cursor: pointer;
 }
 
+#restart-btn {
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
 #restart-btn:hover {
   background: var(--accent-glow);
+}
+
+#lobby-btn {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--foreground);
+}
+
+#lobby-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .dpad {

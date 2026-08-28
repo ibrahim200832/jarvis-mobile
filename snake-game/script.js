@@ -1,15 +1,29 @@
 (() => {
   "use strict";
 
-  const COLS = 15;
-  const ROWS = 20;
   const CELL = 30;
-  const START_TICK_MS = 220;
-  const MIN_TICK_MS = 80;
   const HIGHSCORE_KEY = "snake-game-highscore";
   const POINTS_PER_LEVEL = 5;
-  const LEVEL_UP_TICK_BONUS_MS = 10;
   const LEVEL_TOAST_DURATION_MS = 1200;
+
+  // All presets keep a 3:4 aspect ratio so the canvas CSS never has to change.
+  const SIZE_PRESETS = {
+    small: { cols: 9, rows: 12 },
+    medium: { cols: 15, rows: 20 },
+    large: { cols: 21, rows: 28 },
+  };
+
+  const DIFFICULTY_PRESETS = {
+    easy: { startTick: 260, decrement: 3, minTick: 100, levelBonus: 6 },
+    normal: { startTick: 220, decrement: 4, minTick: 80, levelBonus: 10 },
+    hard: { startTick: 180, decrement: 6, minTick: 60, levelBonus: 14 },
+  };
+
+  const lobby = document.getElementById("lobby");
+  const gameSection = document.getElementById("game");
+  const startBtn = document.getElementById("start-btn");
+  const lobbyHighscoreEl = document.getElementById("lobby-highscore");
+  const optionGroups = document.querySelectorAll(".option-buttons");
 
   const canvas = document.getElementById("board");
   const ctx = canvas.getContext("2d");
@@ -21,6 +35,7 @@
   const overlayTitle = document.getElementById("overlay-title");
   const overlayScore = document.getElementById("overlay-score");
   const restartBtn = document.getElementById("restart-btn");
+  const lobbyBtn = document.getElementById("lobby-btn");
   const dpadButtons = document.querySelectorAll(".dpad-btn");
 
   const colors = {
@@ -38,10 +53,22 @@
   };
   const OPPOSITE = { up: "down", down: "up", left: "right", right: "left" };
 
-  let snake, direction, pendingDirection, food, score, level, tickMs, timer, gameOver, levelToastTimer;
+  let selectedSize = "medium";
+  let selectedDifficulty = "normal";
+  let COLS, ROWS, difficulty;
+  let snake, direction, pendingDirection, food, score, level, tickMs, gameOver;
+  let rafId = null;
+  let lastFrameTime = 0;
+  let accumulator = 0;
+  let levelToastTimer = null;
 
   function loadHighscore() {
     return Number(localStorage.getItem(HIGHSCORE_KEY) || 0);
+  }
+
+  function updateHighscoreDisplays(value) {
+    highscoreEl.textContent = String(value);
+    lobbyHighscoreEl.textContent = String(value);
   }
 
   function saveHighscoreIfBetter(value) {
@@ -49,7 +76,7 @@
     if (value > current) {
       localStorage.setItem(HIGHSCORE_KEY, String(value));
     }
-    highscoreEl.textContent = Math.max(current, value);
+    updateHighscoreDisplays(Math.max(current, value));
   }
 
   function randomFreeCell() {
@@ -60,28 +87,74 @@
     return cell;
   }
 
+  function applySelectedSettings() {
+    const size = SIZE_PRESETS[selectedSize];
+    COLS = size.cols;
+    ROWS = size.rows;
+    canvas.width = COLS * CELL;
+    canvas.height = ROWS * CELL;
+    difficulty = DIFFICULTY_PRESETS[selectedDifficulty];
+  }
+
   function startGame() {
+    applySelectedSettings();
     const startY = Math.floor(ROWS / 2);
+    const startX = Math.min(7, COLS - 3);
     snake = [
-      { x: 7, y: startY },
-      { x: 6, y: startY },
-      { x: 5, y: startY },
+      { x: startX, y: startY },
+      { x: startX - 1, y: startY },
+      { x: startX - 2, y: startY },
     ];
     direction = "right";
     pendingDirection = "right";
     score = 0;
     level = 1;
-    tickMs = START_TICK_MS;
+    tickMs = difficulty.startTick;
     gameOver = false;
     food = randomFreeCell();
     scoreEl.textContent = "0";
     levelEl.textContent = "1";
-    highscoreEl.textContent = loadHighscore();
+    updateHighscoreDisplays(loadHighscore());
     overlay.classList.add("hidden");
     levelToast.classList.remove("show");
     if (levelToastTimer) clearTimeout(levelToastTimer);
-    restartTimer();
     draw();
+    startLoop();
+  }
+
+  // A requestAnimationFrame accumulator instead of setInterval: changing
+  // tickMs (food eaten / level up) takes effect on the next check without
+  // restarting the timer's phase, which used to cause a visible stutter
+  // right at the moment of eating.
+  function startLoop() {
+    if (rafId) cancelAnimationFrame(rafId);
+    lastFrameTime = 0;
+    accumulator = 0;
+    rafId = requestAnimationFrame(gameLoop);
+  }
+
+  function stopLoop() {
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = null;
+  }
+
+  function gameLoop(timestamp) {
+    if (!lastFrameTime) lastFrameTime = timestamp;
+    const delta = timestamp - lastFrameTime;
+    lastFrameTime = timestamp;
+
+    if (gameOver) return;
+
+    accumulator += delta;
+    while (accumulator >= tickMs) {
+      tick();
+      accumulator -= tickMs;
+      if (gameOver) {
+        accumulator = 0;
+        break;
+      }
+    }
+    rafId = requestAnimationFrame(gameLoop);
   }
 
   function showLevelUpToast(newLevel) {
@@ -91,18 +164,12 @@
     levelToastTimer = setTimeout(() => levelToast.classList.remove("show"), LEVEL_TOAST_DURATION_MS);
   }
 
-  function restartTimer() {
-    if (timer) clearInterval(timer);
-    timer = setInterval(tick, tickMs);
-  }
-
   function setDirection(dir) {
     if (gameOver || OPPOSITE[dir] === direction) return;
     pendingDirection = dir;
   }
 
   function tick() {
-    if (gameOver) return;
     direction = pendingDirection;
     const offset = DIRS[direction];
     const head = snake[0];
@@ -124,17 +191,15 @@
       score++;
       scoreEl.textContent = String(score);
       food = randomFreeCell();
-      tickMs = Math.max(MIN_TICK_MS, tickMs - 4);
+      tickMs = Math.max(difficulty.minTick, tickMs - difficulty.decrement);
 
       const newLevel = Math.floor(score / POINTS_PER_LEVEL) + 1;
       if (newLevel !== level) {
         level = newLevel;
         levelEl.textContent = String(level);
         showLevelUpToast(level);
-        tickMs = Math.max(MIN_TICK_MS, tickMs - LEVEL_UP_TICK_BONUS_MS);
+        tickMs = Math.max(difficulty.minTick, tickMs - difficulty.levelBonus);
       }
-
-      restartTimer();
     } else {
       snake.pop();
     }
@@ -144,7 +209,6 @@
 
   function endGame() {
     gameOver = true;
-    clearInterval(timer);
     saveHighscoreIfBetter(score);
     overlayTitle.textContent = "Game Over";
     overlayScore.textContent = `Punkte: ${score}`;
@@ -192,6 +256,39 @@
     }
   }
 
+  // Lobby option selectors (difficulty / board size)
+  optionGroups.forEach((group) => {
+    const option = group.dataset.option;
+    group.querySelectorAll(".option-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        group.querySelectorAll(".option-btn").forEach((b) => b.classList.remove("selected"));
+        btn.classList.add("selected");
+        if (option === "difficulty") selectedDifficulty = btn.dataset.value;
+        if (option === "size") selectedSize = btn.dataset.value;
+      });
+    });
+  });
+
+  function showLobby() {
+    stopLoop();
+    gameSection.classList.add("hidden");
+    lobby.classList.remove("hidden");
+    updateHighscoreDisplays(loadHighscore());
+  }
+
+  function showGame() {
+    lobby.classList.add("hidden");
+    gameSection.classList.remove("hidden");
+  }
+
+  startBtn.addEventListener("click", () => {
+    showGame();
+    startGame();
+  });
+
+  lobbyBtn.addEventListener("click", showLobby);
+  restartBtn.addEventListener("click", startGame);
+
   // Keyboard controls
   window.addEventListener("keydown", (e) => {
     const map = {
@@ -233,7 +330,5 @@
     btn.addEventListener("click", () => setDirection(btn.dataset.dir));
   });
 
-  restartBtn.addEventListener("click", startGame);
-
-  startGame();
+  updateHighscoreDisplays(loadHighscore());
 })();

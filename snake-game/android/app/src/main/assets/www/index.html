@@ -13,32 +13,63 @@
       <img class="logo" src="icon.svg" alt="" width="40" height="40">
       <h1>Snake</h1>
     </div>
-    <div class="hud">
-      <span>Punkte: <strong id="score">0</strong></span>
-      <span>Level: <strong id="level">1</strong></span>
-      <span>Highscore: <strong id="highscore">0</strong></span>
-    </div>
 
-    <div class="board-wrap">
-      <canvas id="board" width="450" height="600"></canvas>
-      <div id="level-toast" class="level-toast"></div>
-      <div id="overlay" class="overlay hidden">
-        <p id="overlay-title">Game Over</p>
-        <p id="overlay-score"></p>
-        <button id="restart-btn">Neu starten</button>
+    <section id="lobby" class="lobby">
+      <p class="lobby-highscore">Highscore: <strong id="lobby-highscore">0</strong></p>
+
+      <div class="option-group">
+        <span class="option-label">Schwierigkeit</span>
+        <div class="option-buttons" data-option="difficulty">
+          <button class="option-btn" data-value="easy">Leicht</button>
+          <button class="option-btn selected" data-value="normal">Normal</button>
+          <button class="option-btn" data-value="hard">Schwer</button>
+        </div>
       </div>
-    </div>
 
-    <div class="dpad" aria-hidden="true">
-      <button class="dpad-btn dpad-up" data-dir="up">&#9650;</button>
-      <div class="dpad-row">
-        <button class="dpad-btn dpad-left" data-dir="left">&#9664;</button>
-        <button class="dpad-btn dpad-right" data-dir="right">&#9654;</button>
+      <div class="option-group">
+        <span class="option-label">Feldgröße</span>
+        <div class="option-buttons" data-option="size">
+          <button class="option-btn" data-value="small">Klein</button>
+          <button class="option-btn selected" data-value="medium">Mittel</button>
+          <button class="option-btn" data-value="large">Groß</button>
+        </div>
       </div>
-      <button class="dpad-btn dpad-down" data-dir="down">&#9660;</button>
-    </div>
 
-    <p class="hint">Pfeiltasten/WASD, Wischen oder die Buttons zum Steuern.</p>
+      <button id="start-btn" class="primary-btn">Spiel starten</button>
+      <p class="hint">Multiplayer ist für eine spätere Version geplant.</p>
+    </section>
+
+    <section id="game" class="game hidden">
+      <div class="hud">
+        <span>Punkte: <strong id="score">0</strong></span>
+        <span>Level: <strong id="level">1</strong></span>
+        <span>Highscore: <strong id="highscore">0</strong></span>
+      </div>
+
+      <div class="board-wrap">
+        <canvas id="board" width="450" height="600"></canvas>
+        <div id="level-toast" class="level-toast"></div>
+        <div id="overlay" class="overlay hidden">
+          <p id="overlay-title">Game Over</p>
+          <p id="overlay-score"></p>
+          <div class="overlay-actions">
+            <button id="restart-btn">Neu starten</button>
+            <button id="lobby-btn">Zur Lobby</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="dpad" aria-hidden="true">
+        <button class="dpad-btn dpad-up" data-dir="up">&#9650;</button>
+        <div class="dpad-row">
+          <button class="dpad-btn dpad-left" data-dir="left">&#9664;</button>
+          <button class="dpad-btn dpad-right" data-dir="right">&#9654;</button>
+        </div>
+        <button class="dpad-btn dpad-down" data-dir="down">&#9660;</button>
+      </div>
+
+      <p class="hint">Pfeiltasten/WASD, Wischen oder die Buttons zum Steuern.</p>
+    </section>
   </main>
 
   <script src="script.js"></script>
