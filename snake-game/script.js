@@ -7,11 +7,16 @@
   const START_TICK_MS = 220;
   const MIN_TICK_MS = 80;
   const HIGHSCORE_KEY = "snake-game-highscore";
+  const POINTS_PER_LEVEL = 5;
+  const LEVEL_UP_TICK_BONUS_MS = 10;
+  const LEVEL_TOAST_DURATION_MS = 1200;
 
   const canvas = document.getElementById("board");
   const ctx = canvas.getContext("2d");
   const scoreEl = document.getElementById("score");
+  const levelEl = document.getElementById("level");
   const highscoreEl = document.getElementById("highscore");
+  const levelToast = document.getElementById("level-toast");
   const overlay = document.getElementById("overlay");
   const overlayTitle = document.getElementById("overlay-title");
   const overlayScore = document.getElementById("overlay-score");
@@ -33,7 +38,7 @@
   };
   const OPPOSITE = { up: "down", down: "up", left: "right", right: "left" };
 
-  let snake, direction, pendingDirection, food, score, tickMs, timer, gameOver;
+  let snake, direction, pendingDirection, food, score, level, tickMs, timer, gameOver, levelToastTimer;
 
   function loadHighscore() {
     return Number(localStorage.getItem(HIGHSCORE_KEY) || 0);
@@ -65,14 +70,25 @@
     direction = "right";
     pendingDirection = "right";
     score = 0;
+    level = 1;
     tickMs = START_TICK_MS;
     gameOver = false;
     food = randomFreeCell();
     scoreEl.textContent = "0";
+    levelEl.textContent = "1";
     highscoreEl.textContent = loadHighscore();
     overlay.classList.add("hidden");
+    levelToast.classList.remove("show");
+    if (levelToastTimer) clearTimeout(levelToastTimer);
     restartTimer();
     draw();
+  }
+
+  function showLevelUpToast(newLevel) {
+    levelToast.textContent = `Level ${newLevel}!`;
+    levelToast.classList.add("show");
+    if (levelToastTimer) clearTimeout(levelToastTimer);
+    levelToastTimer = setTimeout(() => levelToast.classList.remove("show"), LEVEL_TOAST_DURATION_MS);
   }
 
   function restartTimer() {
@@ -109,6 +125,15 @@
       scoreEl.textContent = String(score);
       food = randomFreeCell();
       tickMs = Math.max(MIN_TICK_MS, tickMs - 4);
+
+      const newLevel = Math.floor(score / POINTS_PER_LEVEL) + 1;
+      if (newLevel !== level) {
+        level = newLevel;
+        levelEl.textContent = String(level);
+        showLevelUpToast(level);
+        tickMs = Math.max(MIN_TICK_MS, tickMs - LEVEL_UP_TICK_BONUS_MS);
+      }
+
       restartTimer();
     } else {
       snake.pop();

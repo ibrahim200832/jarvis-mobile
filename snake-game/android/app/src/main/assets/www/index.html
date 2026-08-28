@@ -4,18 +4,24 @@
 <meta charset="UTF-8">
 <title>Snake</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <main class="wrap">
-    <h1>Snake</h1>
+    <div class="title">
+      <img class="logo" src="icon.svg" alt="" width="40" height="40">
+      <h1>Snake</h1>
+    </div>
     <div class="hud">
       <span>Punkte: <strong id="score">0</strong></span>
+      <span>Level: <strong id="level">1</strong></span>
       <span>Highscore: <strong id="highscore">0</strong></span>
     </div>
 
     <div class="board-wrap">
       <canvas id="board" width="450" height="600"></canvas>
+      <div id="level-toast" class="level-toast"></div>
       <div id="overlay" class="overlay hidden">
         <p id="overlay-title">Game Over</p>
         <p id="overlay-score"></p>
