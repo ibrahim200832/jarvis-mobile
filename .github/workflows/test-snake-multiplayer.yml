@@ -1,0 +1,110 @@
+name: Test Snake Multiplayer Live Connectivity
+
+on:
+  push:
+    branches: [claude/game-code-pyet6p]
+    paths:
+      - '.github/workflows/test-snake-multiplayer.yml'
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Connect two real clients to the live server and play a round
+        run: |
+          node --input-type=module -e "
+          const BASE = 'wss://snake-multiplayer.ibrahimcool2818.workers.dev';
+
+          // A persistent per-socket message queue/waiter, attached once at
+          // connect time, so no broadcast sent between two waitFor() calls
+          // is ever missed (the naive attach-a-listener-per-await pattern
+          // has exactly that race: this server pushes a 'lobby' broadcast
+          // right after 'welcome', unprompted).
+          function connect(url) {
+            return new Promise((resolve, reject) => {
+              const ws = new WebSocket(url);
+              const queue = [];
+              const waiters = [];
+              ws.addEventListener('message', (evt) => {
+                const msg = JSON.parse(evt.data);
+                const idx = waiters.findIndex((w) => w.type === msg.type);
+                if (idx !== -1) {
+                  const [waiter] = waiters.splice(idx, 1);
+                  waiter.resolve(msg);
+                } else {
+                  queue.push(msg);
+                }
+              });
+              ws.waitFor = (type, timeoutMs = 8000) => {
+                const qi = queue.findIndex((m) => m.type === type);
+                if (qi !== -1) return Promise.resolve(queue.splice(qi, 1)[0]);
+                return new Promise((res, rej) => {
+                  const timer = setTimeout(() => {
+                    const wi = waiters.findIndex((w) => w.resolve === wrapped);
+                    if (wi !== -1) waiters.splice(wi, 1);
+                    rej(new Error('timeout waiting for ' + type));
+                  }, timeoutMs);
+                  const wrapped = (m) => { clearTimeout(timer); res(m); };
+                  waiters.push({ type, resolve: wrapped });
+                });
+              };
+              ws.addEventListener('open', () => resolve(ws));
+              ws.addEventListener('error', () => reject(new Error('connection failed: ' + url)));
+            });
+          }
+
+          function waitFor(ws, type, timeoutMs) {
+            return ws.waitFor(type, timeoutMs);
+          }
+
+          // The server broadcasts a fresh 'lobby' message on every join, so
+          // the first one we see may be stale (e.g. the 1-player lobby sent
+          // right after the host itself connects, before the guest joins).
+          // Keep consuming 'lobby' messages until one actually matches.
+          async function waitForMatch(ws, type, predicate, timeoutMs = 8000) {
+            const deadline = Date.now() + timeoutMs;
+            for (;;) {
+              const remaining = deadline - Date.now();
+              if (remaining <= 0) throw new Error('timeout waiting for matching ' + type);
+              const msg = await ws.waitFor(type, remaining);
+              if (predicate(msg)) return msg;
+            }
+          }
+
+          async function main() {
+            console.log('Connecting host to', BASE);
+            const host = await connect(BASE + '/create?name=CI-Host&max=2');
+            const welcome = await waitFor(host, 'welcome');
+            console.log('Host got room code:', welcome.code);
+
+            console.log('Connecting guest via code', welcome.code);
+            const guest = await connect(BASE + '/join/' + welcome.code + '?name=CI-Guest');
+            await waitFor(guest, 'welcome');
+
+            const hostLobby = await waitForMatch(host, 'lobby', (m) => m.players.length === 2);
+            console.log('Host sees players:', hostLobby.players.map((p) => p.name).join(', '));
+
+            host.send(JSON.stringify({ type: 'start' }));
+            const hostStart = await waitFor(host, 'start');
+            await waitFor(guest, 'start');
+            console.log('Game started, board', hostStart.cols + 'x' + hostStart.rows);
+
+            await waitFor(host, 'state');
+            await waitFor(guest, 'state');
+            console.log('Both clients received live game state from the server.');
+
+            host.close();
+            guest.close();
+            console.log('SUCCESS: real create -> join -> start -> state round-trip over the internet worked.');
+          }
+
+          main().catch((e) => {
+            console.error('FAILURE:', e.message);
+            process.exit(1);
+          });
+          "

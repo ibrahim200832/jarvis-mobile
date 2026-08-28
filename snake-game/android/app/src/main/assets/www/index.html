@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Snake</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="wrap">
+    <div class="title">
+      <img class="logo" src="icon.svg" alt="" width="40" height="40">
+      <h1>Snake</h1>
+    </div>
+
+    <section id="lobby" class="lobby screen">
+      <p class="lobby-highscore">Highscore: <strong id="lobby-highscore">0</strong></p>
+
+      <div class="option-group">
+        <span class="option-label">Schwierigkeit</span>
+        <div class="option-buttons" data-option="difficulty">
+          <button class="option-btn" data-value="easy">Leicht</button>
+          <button class="option-btn selected" data-value="normal">Normal</button>
+          <button class="option-btn" data-value="hard">Schwer</button>
+        </div>
+      </div>
+
+      <div class="option-group">
+        <span class="option-label">Feldgröße</span>
+        <div class="option-buttons" data-option="size">
+          <button class="option-btn" data-value="small">Klein</button>
+          <button class="option-btn selected" data-value="medium">Mittel</button>
+          <button class="option-btn" data-value="large">Groß</button>
+        </div>
+      </div>
+
+      <button id="start-btn" class="primary-btn">Spiel starten</button>
+      <button id="mp-open-btn" class="secondary-btn">Multiplayer</button>
+    </section>
+
+    <section id="mp-menu" class="lobby screen hidden">
+      <p class="screen-title">Multiplayer</p>
+      <button id="mp-show-create-btn" class="primary-btn">Raum erstellen</button>
+      <button id="mp-show-join-btn" class="secondary-btn">Raum beitreten</button>
+      <button class="link-btn back-to-lobby">Zurück</button>
+    </section>
+
+    <section id="mp-create" class="lobby screen hidden">
+      <p class="screen-title">Raum erstellen</p>
+      <label class="field-label" for="mp-create-name">Dein Name</label>
+      <input id="mp-create-name" class="text-field" type="text" maxlength="16" placeholder="Spieler">
+
+      <div class="option-group">
+        <span class="option-label">Max. Spieler</span>
+        <div class="stepper">
+          <button id="mp-max-minus" class="stepper-btn">−</button>
+          <span id="mp-max-value" class="stepper-value">4</span>
+          <button id="mp-max-plus" class="stepper-btn">+</button>
+        </div>
+      </div>
+
+      <button id="mp-create-btn" class="primary-btn">Erstellen</button>
+      <p id="mp-create-error" class="error-text hidden"></p>
+      <button class="link-btn back-to-mp-menu">Zurück</button>
+    </section>
+
+    <section id="mp-join" class="lobby screen hidden">
+      <p class="screen-title">Raum beitreten</p>
+      <label class="field-label" for="mp-join-name">Dein Name</label>
+      <input id="mp-join-name" class="text-field" type="text" maxlength="16" placeholder="Spieler">
+      <label class="field-label" for="mp-join-code">Raum-Code</label>
+      <input id="mp-join-code" class="text-field code-field" type="text" maxlength="5" placeholder="ABCDE">
+
+      <button id="mp-join-btn" class="primary-btn">Beitreten</button>
+      <p id="mp-join-error" class="error-text hidden"></p>
+      <button class="link-btn back-to-mp-menu">Zurück</button>
+    </section>
+
+    <section id="mp-room" class="lobby screen hidden">
+      <p class="screen-title">Warteraum</p>
+      <div class="room-code-box">
+        <span class="room-code-label">Code</span>
+        <span id="mp-room-code" class="room-code">------</span>
+      </div>
+      <p class="hint">Diesen Code an Mitspieler weitergeben.</p>
+
+      <p id="mp-player-count" class="option-label">Spieler 0/0</p>
+      <ul id="mp-player-list" class="player-list"></ul>
+
+      <div id="mp-host-controls" class="hidden">
+        <button id="mp-start-btn" class="primary-btn" disabled>Spiel starten</button>
+      </div>
+      <p id="mp-waiting-text" class="hint hidden">Warte auf Host …</p>
+
+      <button id="mp-leave-btn" class="link-btn">Raum verlassen</button>
+    </section>
+
+    <section id="mp-game" class="game screen hidden">
+      <div id="mp-scoreboard" class="scoreboard"></div>
+
+      <div class="board-wrap">
+        <canvas id="mp-board" width="450" height="600"></canvas>
+        <div id="mp-status" class="mp-status hidden"></div>
+        <div id="mp-overlay" class="overlay hidden">
+          <p id="mp-overlay-title">Runde beendet</p>
+          <ol id="mp-results" class="results-list"></ol>
+          <div class="overlay-actions">
+            <button id="mp-rematch-btn" class="hidden">Neue Runde</button>
+            <button id="mp-leave-game-btn">Zur Lobby</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="dpad" aria-hidden="true">
+        <button class="dpad-btn mp-dpad-up" data-dir="up">&#9650;</button>
+        <div class="dpad-row">
+          <button class="dpad-btn mp-dpad-left" data-dir="left">&#9664;</button>
+          <button class="dpad-btn mp-dpad-right" data-dir="right">&#9654;</button>
+        </div>
+        <button class="dpad-btn mp-dpad-down" data-dir="down">&#9660;</button>
+      </div>
+
+      <p class="hint">Pfeiltasten/WASD, Wischen oder die Buttons zum Steuern.</p>
+    </section>
+
+    <section id="game" class="game screen hidden">
+      <div class="hud">
+        <span>Punkte: <strong id="score">0</strong></span>
+        <span>Level: <strong id="level">1</strong></span>
+        <span>Highscore: <strong id="highscore">0</strong></span>
+      </div>
+
+      <div class="board-wrap">
+        <canvas id="board" width="450" height="600"></canvas>
+        <div id="level-toast" class="level-toast"></div>
+        <div id="overlay" class="overlay hidden">
+          <p id="overlay-title">Game Over</p>
+          <p id="overlay-score"></p>
+          <div class="overlay-actions">
+            <button id="restart-btn">Neu starten</button>
+            <button id="lobby-btn">Zur Lobby</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="dpad" aria-hidden="true">
+        <button class="dpad-btn dpad-up" data-dir="up">&#9650;</button>
+        <div class="dpad-row">
+          <button class="dpad-btn dpad-left" data-dir="left">&#9664;</button>
+          <button class="dpad-btn dpad-right" data-dir="right">&#9654;</button>
+        </div>
+        <button class="dpad-btn dpad-down" data-dir="down">&#9660;</button>
+      </div>
+
+      <p class="hint">Pfeiltasten/WASD, Wischen oder die Buttons zum Steuern.</p>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+  <script src="multiplayer.js"></script>
+</body>
+</html>

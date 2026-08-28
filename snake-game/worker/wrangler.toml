@@ -1,0 +1,11 @@
+name = "snake-multiplayer"
+main = "multiplayer.js"
+compatibility_date = "2024-11-01"
+
+[[durable_objects.bindings]]
+name = "SNAKE_ROOM"
+class_name = "SnakeRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SnakeRoom"]
