@@ -44,12 +44,16 @@ zustandslos, es gibt keinen Gesprächsverlauf zwischen Aufrufen.
 
 In einem Sprachkanal sein, dann irgendwo auf dem Server:
 
-- `/frag text:<Frage>` — JARVIS tritt dem Sprachkanal bei (falls noch nicht dort) und liest die Antwort vor.
+- `/frag text:<Frage> stimme:<Auswahl>` — JARVIS tritt dem Sprachkanal bei (falls noch nicht dort) und liest die Antwort vor. `stimme` ist optional (Discord bietet dabei eine Auswahl an) — ohne Angabe wird die Standardstimme (Thorsten) verwendet.
 - `/verlasse` — JARVIS verlässt den Sprachkanal.
 
 Der Bot verlässt einen Sprachkanal auch automatisch nach 5 Minuten
 Inaktivität.
 
-## Andere Stimme verwenden
+## Weitere Stimmen hinzufügen
 
-Einfach eine andere `.onnx`-Datei von [huggingface.co/rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices) laden und `PIPER_MODEL` in `.env` darauf zeigen lassen — kein Code muss geändert werden. Bei einem Modell mit anderer Qualitätsstufe (`low`/`x_low`/`high` statt `medium`) ggf. `PIPER_SAMPLE_RATE` in `tts.js` an die native Rate des Modells anpassen (steht in dessen `.onnx.json`).
+`/frag` bietet standardmäßig vier deutsche Stimmen zur Auswahl (definiert in `voices.js`): **Thorsten** (männlich, Standard), **Kerstin**, **Eva K** und **Ramona** (alle weiblich). Nur die Stimme, die schon bei der Einrichtung heruntergeladen wurde, funktioniert sofort — wählt man im Dropdown eine noch nicht heruntergeladene Stimme, zeigt der Bot eine Anleitung dafür an.
+
+Zum Nachladen: die passende `.onnx`- und `.onnx.json`-Datei von [huggingface.co/rhasspy/piper-voices](https://huggingface.co/rhasspy/piper-voices/tree/main/de/de_DE) (den jeweiligen Stimmnamen-Unterordner öffnen) in denselben Ordner legen wie die bereits vorhandene Stimme (also z. B. neben `PIPER_MODEL` aus der `.env`-Datei) — keine weitere Konfiguration nötig.
+
+Um eine fünfte oder andere Stimme zur Auswahl hinzuzufügen: in `voices.js` einen neuen Eintrag ergänzen (Anzeigename, Dateiname, sowie die native Sample-Rate der Stimme — 16000 für `low`/`x_low`-Modelle, 22050 für `medium`/`high`-Modelle, steht auch in der jeweiligen `.onnx.json`) und danach `npm run deploy-commands` erneut ausführen, damit Discord die neue Auswahl anzeigt.

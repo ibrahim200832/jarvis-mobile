@@ -37,11 +37,12 @@ function resetIdleTimer(guildId, session) {
   }, IDLE_MS);
 }
 
-/** Joins `voiceChannel` if not already connected there, and speaks `text`. */
-export async function speakInChannel(voiceChannel, text) {
+/** Joins `voiceChannel` if not already connected there, and speaks `text`
+ * using the Piper voice at `modelPath` (native rate `sampleRate`). */
+export async function speakInChannel(voiceChannel, text, modelPath, sampleRate) {
   const session = getOrCreateSession(voiceChannel);
   await entersState(session.connection, VoiceConnectionStatus.Ready, 10_000);
-  const resource = createAudioResource(synthesize(text), { inputType: StreamType.Raw });
+  const resource = createAudioResource(synthesize(text, modelPath, sampleRate), { inputType: StreamType.Raw });
   session.player.play(resource);
   await entersState(session.player, AudioPlayerStatus.Playing, 10_000);
   resetIdleTimer(voiceChannel.guild.id, session);
