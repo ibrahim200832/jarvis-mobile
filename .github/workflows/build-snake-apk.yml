@@ -10,6 +10,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -32,3 +34,18 @@ jobs:
         with:
           name: snake-game-apk
           path: snake-game/android/app/build/outputs/apk/debug/app-debug.apk
+
+      # Actions artifacts live on Azure Blob Storage, which some sandboxed
+      # tooling can't reach directly, so also commit the APK straight into
+      # the repo for a plain git/raw-file download path.
+      - name: Publish built APK to repo
+        run: |
+          mkdir -p snake-game/android/dist
+          cp snake-game/android/app/build/outputs/apk/debug/app-debug.apk snake-game/android/dist/snake-game-debug.apk
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add snake-game/android/dist/snake-game-debug.apk
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: update built snake-game APK [skip ci]"
+            git push origin HEAD:${{ github.ref_name }}
+          fi
