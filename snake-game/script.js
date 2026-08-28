@@ -1,3 +1,14 @@
+// Shared top-level screen switcher, used by both script.js (single-player)
+// and multiplayer.js so the two files don't need to know about each other's
+// internals — just the shared set of full-page <section> ids.
+const SnakeUI = (() => {
+  const SCREENS = ["lobby", "mp-menu", "mp-create", "mp-join", "mp-room", "mp-game", "game"];
+  function showScreen(id) {
+    SCREENS.forEach((s) => document.getElementById(s).classList.toggle("hidden", s !== id));
+  }
+  return { showScreen };
+})();
+
 (() => {
   "use strict";
 
@@ -19,8 +30,6 @@
     hard: { startTick: 180, decrement: 6, minTick: 60, levelBonus: 14 },
   };
 
-  const lobby = document.getElementById("lobby");
-  const gameSection = document.getElementById("game");
   const startBtn = document.getElementById("start-btn");
   const lobbyHighscoreEl = document.getElementById("lobby-highscore");
   const optionGroups = document.querySelectorAll(".option-buttons");
@@ -36,7 +45,7 @@
   const overlayScore = document.getElementById("overlay-score");
   const restartBtn = document.getElementById("restart-btn");
   const lobbyBtn = document.getElementById("lobby-btn");
-  const dpadButtons = document.querySelectorAll(".dpad-btn");
+  const dpadButtons = document.querySelectorAll("#game .dpad-btn");
 
   const colors = {
     body: "#e3a552",
@@ -271,18 +280,12 @@
 
   function showLobby() {
     stopLoop();
-    gameSection.classList.add("hidden");
-    lobby.classList.remove("hidden");
+    SnakeUI.showScreen("lobby");
     updateHighscoreDisplays(loadHighscore());
   }
 
-  function showGame() {
-    lobby.classList.add("hidden");
-    gameSection.classList.remove("hidden");
-  }
-
   startBtn.addEventListener("click", () => {
-    showGame();
+    SnakeUI.showScreen("game");
     startGame();
   });
 
