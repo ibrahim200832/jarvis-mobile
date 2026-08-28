@@ -6,6 +6,7 @@ import '../services/settings_service.dart';
 import '../services/spotify_service.dart';
 import '../services/tiktok_upload_service.dart';
 import 'changelog_screen.dart';
+import 'game_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
@@ -346,6 +347,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             icon: const Icon(Icons.history),
             label: const Text('Änderungsverlauf'),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const GameScreen()),
+            ),
+            icon: const Icon(Icons.videogame_asset_outlined),
+            label: const Text('Snake spielen'),
           ),
           const SizedBox(height: 12),
           Center(
