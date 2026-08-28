@@ -2,7 +2,7 @@ name: Deploy Snake Multiplayer Worker
 
 on:
   push:
-    branches: [main, claude/game-code-pyet6p] # TEMP: also this branch for the initial manual deploy; reverted right after
+    branches: [main]
     paths:
       - 'snake-game/worker/**'
       - '.github/workflows/deploy-snake-multiplayer.yml'
