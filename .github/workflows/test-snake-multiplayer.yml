@@ -62,6 +62,20 @@ jobs:
             return ws.waitFor(type, timeoutMs);
           }
 
+          // The server broadcasts a fresh 'lobby' message on every join, so
+          // the first one we see may be stale (e.g. the 1-player lobby sent
+          // right after the host itself connects, before the guest joins).
+          // Keep consuming 'lobby' messages until one actually matches.
+          async function waitForMatch(ws, type, predicate, timeoutMs = 8000) {
+            const deadline = Date.now() + timeoutMs;
+            for (;;) {
+              const remaining = deadline - Date.now();
+              if (remaining <= 0) throw new Error('timeout waiting for matching ' + type);
+              const msg = await ws.waitFor(type, remaining);
+              if (predicate(msg)) return msg;
+            }
+          }
+
           async function main() {
             console.log('Connecting host to', BASE);
             const host = await connect(BASE + '/create?name=CI-Host&max=2');
@@ -72,9 +86,8 @@ jobs:
             const guest = await connect(BASE + '/join/' + welcome.code + '?name=CI-Guest');
             await waitFor(guest, 'welcome');
 
-            const hostLobby = await waitFor(host, 'lobby');
+            const hostLobby = await waitForMatch(host, 'lobby', (m) => m.players.length === 2);
             console.log('Host sees players:', hostLobby.players.map((p) => p.name).join(', '));
-            if (hostLobby.players.length !== 2) throw new Error('expected 2 players, got ' + hostLobby.players.length);
 
             host.send(JSON.stringify({ type: 'start' }));
             const hostStart = await waitFor(host, 'start');
