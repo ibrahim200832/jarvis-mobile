@@ -20,27 +20,46 @@ jobs:
           node --input-type=module -e "
           const BASE = 'wss://snake-multiplayer.ibrahimcool2818.workers.dev';
 
+          // A persistent per-socket message queue/waiter, attached once at
+          // connect time, so no broadcast sent between two waitFor() calls
+          // is ever missed (the naive attach-a-listener-per-await pattern
+          // has exactly that race: this server pushes a 'lobby' broadcast
+          // right after 'welcome', unprompted).
           function connect(url) {
             return new Promise((resolve, reject) => {
               const ws = new WebSocket(url);
+              const queue = [];
+              const waiters = [];
+              ws.addEventListener('message', (evt) => {
+                const msg = JSON.parse(evt.data);
+                const idx = waiters.findIndex((w) => w.type === msg.type);
+                if (idx !== -1) {
+                  const [waiter] = waiters.splice(idx, 1);
+                  waiter.resolve(msg);
+                } else {
+                  queue.push(msg);
+                }
+              });
+              ws.waitFor = (type, timeoutMs = 8000) => {
+                const qi = queue.findIndex((m) => m.type === type);
+                if (qi !== -1) return Promise.resolve(queue.splice(qi, 1)[0]);
+                return new Promise((res, rej) => {
+                  const timer = setTimeout(() => {
+                    const wi = waiters.findIndex((w) => w.resolve === wrapped);
+                    if (wi !== -1) waiters.splice(wi, 1);
+                    rej(new Error('timeout waiting for ' + type));
+                  }, timeoutMs);
+                  const wrapped = (m) => { clearTimeout(timer); res(m); };
+                  waiters.push({ type, resolve: wrapped });
+                });
+              };
               ws.addEventListener('open', () => resolve(ws));
               ws.addEventListener('error', () => reject(new Error('connection failed: ' + url)));
             });
           }
 
-          function waitFor(ws, type, timeoutMs = 8000) {
-            return new Promise((resolve, reject) => {
-              const timer = setTimeout(() => reject(new Error('timeout waiting for ' + type)), timeoutMs);
-              function handler(evt) {
-                const msg = JSON.parse(evt.data);
-                if (msg.type === type) {
-                  clearTimeout(timer);
-                  ws.removeEventListener('message', handler);
-                  resolve(msg);
-                }
-              }
-              ws.addEventListener('message', handler);
-            });
+          function waitFor(ws, type, timeoutMs) {
+            return ws.waitFor(type, timeoutMs);
           }
 
           async function main() {
