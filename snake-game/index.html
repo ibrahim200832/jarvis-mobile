@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Snake</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="wrap">
+    <h1>Snake</h1>
+    <div class="hud">
+      <span>Punkte: <strong id="score">0</strong></span>
+      <span>Highscore: <strong id="highscore">0</strong></span>
+    </div>
+
+    <div class="board-wrap">
+      <canvas id="board" width="450" height="600"></canvas>
+      <div id="overlay" class="overlay hidden">
+        <p id="overlay-title">Game Over</p>
+        <p id="overlay-score"></p>
+        <button id="restart-btn">Neu starten</button>
+      </div>
+    </div>
+
+    <div class="dpad" aria-hidden="true">
+      <button class="dpad-btn dpad-up" data-dir="up">&#9650;</button>
+      <div class="dpad-row">
+        <button class="dpad-btn dpad-left" data-dir="left">&#9664;</button>
+        <button class="dpad-btn dpad-right" data-dir="right">&#9654;</button>
+      </div>
+      <button class="dpad-btn dpad-down" data-dir="down">&#9660;</button>
+    </div>
+
+    <p class="hint">Pfeiltasten/WASD, Wischen oder die Buttons zum Steuern.</p>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
