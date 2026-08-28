@@ -101,6 +101,7 @@ jobs:
             host.close();
             guest.close();
             console.log('SUCCESS: real create -> join -> start -> state round-trip over the internet worked.');
+            process.exit(0);
           }
 
           main().catch((e) => {
