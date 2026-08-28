@@ -1,0 +1,34 @@
+name: Build Snake APK
+
+on:
+  workflow_dispatch: {}
+  push:
+    paths:
+      - 'snake-game/android/**'
+      - '.github/workflows/build-snake-apk.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.7
+
+      - name: Build debug APK
+        working-directory: snake-game/android
+        run: gradle assembleDebug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: snake-game-apk
+          path: snake-game/android/app/build/outputs/apk/debug/app-debug.apk
