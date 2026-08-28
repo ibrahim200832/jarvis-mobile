@@ -9,3 +9,17 @@ class_name = "SnakeRoom"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["SnakeRoom"]
+
+# Serves the game's static files (index.html, style.css, script.js,
+# multiplayer.js, auth-client.js, icon.svg) copied into ./public by the
+# deploy workflow (or manually for local `wrangler dev`) from snake-game/.
+[assets]
+directory = "public"
+binding = "ASSETS"
+
+# database_id is filled in by the deploy workflow (wrangler d1 create/list),
+# since it's only known once the database actually exists on the account.
+[[d1_databases]]
+binding = "DB"
+database_name = "snake-auth"
+database_id = "__D1_DATABASE_ID__"

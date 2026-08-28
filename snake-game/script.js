@@ -2,7 +2,7 @@
 // and multiplayer.js so the two files don't need to know about each other's
 // internals — just the shared set of full-page <section> ids.
 const SnakeUI = (() => {
-  const SCREENS = ["lobby", "mp-menu", "mp-create", "mp-join", "mp-room", "mp-game", "game"];
+  const SCREENS = ["lobby", "auth", "mp-menu", "mp-create", "mp-join", "mp-room", "mp-game", "game"];
   function showScreen(id) {
     SCREENS.forEach((s) => document.getElementById(s).classList.toggle("hidden", s !== id));
   }

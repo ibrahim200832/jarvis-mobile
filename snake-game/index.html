@@ -15,6 +15,12 @@
     </div>
 
     <section id="lobby" class="lobby screen">
+      <div class="account-bar">
+        <span id="account-status" class="account-status hidden"></span>
+        <button id="account-open-btn" class="secondary-btn">Anmelden</button>
+        <button id="account-logout-btn" class="link-btn hidden">Abmelden</button>
+      </div>
+
       <p class="lobby-highscore">Highscore: <strong id="lobby-highscore">0</strong></p>
 
       <div class="option-group">
@@ -37,6 +43,41 @@
 
       <button id="start-btn" class="primary-btn">Spiel starten</button>
       <button id="mp-open-btn" class="secondary-btn">Multiplayer</button>
+    </section>
+
+    <section id="auth" class="lobby screen hidden">
+      <p class="screen-title">Konto</p>
+
+      <div class="option-buttons" data-option="auth-tab">
+        <button class="option-btn selected" data-value="login">Anmelden</button>
+        <button class="option-btn" data-value="signup">Registrieren</button>
+      </div>
+
+      <div id="auth-login" class="auth-form">
+        <label class="field-label" for="login-email">E-Mail</label>
+        <input id="login-email" class="text-field" type="email" autocomplete="email">
+        <label class="field-label" for="login-password">Passwort</label>
+        <input id="login-password" class="text-field" type="password" autocomplete="current-password">
+        <button id="login-btn" class="primary-btn">Anmelden</button>
+      </div>
+
+      <div id="auth-signup" class="auth-form hidden">
+        <label class="field-label" for="signup-name">Anzeigename</label>
+        <input id="signup-name" class="text-field" type="text" maxlength="32">
+        <label class="field-label" for="signup-email">E-Mail</label>
+        <input id="signup-email" class="text-field" type="email" autocomplete="email">
+        <label class="field-label" for="signup-password">Passwort (mind. 8 Zeichen)</label>
+        <input id="signup-password" class="text-field" type="password" autocomplete="new-password">
+        <button id="signup-btn" class="primary-btn">Registrieren</button>
+      </div>
+
+      <p id="auth-error" class="error-text hidden"></p>
+      <p id="auth-info" class="hint hidden"></p>
+
+      <button id="google-login-btn" class="secondary-btn">Mit Google anmelden</button>
+      <p id="google-apk-hint" class="hint hidden">Google-Anmeldung ist im Browser verfügbar, nicht in der App.</p>
+
+      <button class="link-btn back-to-lobby">Zurück</button>
     </section>
 
     <section id="mp-menu" class="lobby screen hidden">
@@ -159,5 +200,6 @@
 
   <script src="script.js"></script>
   <script src="multiplayer.js"></script>
+  <script src="auth-client.js"></script>
 </body>
 </html>

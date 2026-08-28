@@ -2,6 +2,23 @@
 // One SnakeRoom Durable Object instance per room code — it holds the
 // authoritative game state and pushes it to every connected player over
 // WebSocket, so clients stay a "dumb" renderer with no local physics.
+//
+// This Worker also serves the game's static files (via the Assets binding)
+// and the account system (auth.js), all on one origin — needed so "Sign in
+// with Google" has an actual browser page to redirect back to (Google
+// blocks its sign-in flow inside the packaged app's embedded WebView, so
+// that flow only makes sense from a real page, not local APK assets).
+
+import {
+  handleCorsPreflight,
+  handleGoogleCallback,
+  handleGoogleStart,
+  handleLogin,
+  handleMe,
+  handleSignup,
+  handleUpdateHighscore,
+  handleVerify,
+} from "./auth.js";
 
 const DIRS = {
   up: { x: 0, y: -1 },
@@ -40,6 +57,23 @@ function clamp(v, min, max) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    const method = request.method;
+
+    if (method === "OPTIONS" && url.pathname.startsWith("/auth/")) return handleCorsPreflight();
+    if (method === "POST" && url.pathname === "/auth/signup") return handleSignup(request, env);
+    if (method === "GET" && url.pathname === "/auth/verify") return handleVerify(request, env);
+    if (method === "POST" && url.pathname === "/auth/login") return handleLogin(request, env);
+    if (method === "GET" && url.pathname === "/auth/google/start") return handleGoogleStart(request, env);
+    if (method === "GET" && url.pathname === "/auth/google/callback") return handleGoogleCallback(request, env);
+    if (method === "OPTIONS" && url.pathname === "/me") return handleCorsPreflight();
+    if (method === "GET" && url.pathname === "/me") return handleMe(request, env);
+    if (method === "POST" && url.pathname === "/me/highscore") return handleUpdateHighscore(request, env);
+
+    const isRoomRoute = url.pathname === "/create" || /^\/join\/[A-Z0-9]{4,8}$/i.test(url.pathname);
+    if (!isRoomRoute) {
+      // Not one of our API routes - serve the game's static files.
+      return env.ASSETS.fetch(request);
+    }
 
     if (request.headers.get("Upgrade") !== "websocket") {
       return new Response("Expected WebSocket upgrade", { status: 426 });
@@ -53,7 +87,6 @@ export default {
       isCreator = true;
     } else {
       const match = url.pathname.match(/^\/join\/([A-Z0-9]{4,8})$/i);
-      if (!match) return new Response("Not found", { status: 404 });
       code = match[1].toUpperCase();
     }
 
