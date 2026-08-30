@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -64,3 +66,19 @@ jobs:
         with:
           name: jarvis-mobile-apk
           path: build/app/outputs/flutter-apk/app-release.apk
+
+      # TEMPORARY: also commit the built APK straight into the repo so it
+      # can be fetched via a plain git pull, since Actions artifacts live on
+      # Azure Blob Storage which some sandboxed tooling can't reach. Revert
+      # this step once the APK has been retrieved.
+      - name: Publish built APK to repo
+        run: |
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk dist/jarvis-mobile-release.apk
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add dist/jarvis-mobile-release.apk
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: update built jarvis-mobile APK [skip ci]"
+            git push origin HEAD:${{ github.ref_name }}
+          fi
