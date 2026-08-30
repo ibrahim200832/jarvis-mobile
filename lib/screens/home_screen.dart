@@ -24,6 +24,7 @@ import '../services/notification_service.dart';
 import '../services/qr_service.dart';
 import '../services/random_fun_service.dart';
 import '../services/settings_service.dart';
+import '../services/soundboard_service.dart';
 import '../services/speech_service.dart';
 import '../services/spotify_service.dart';
 import '../services/tiktok_upload_service.dart';
@@ -109,6 +110,7 @@ class _HomeScreenState extends State<HomeScreen> {
       spotify: _spotify,
       webSearch: WebSearchService(),
       snippets: CodeSnippetService(),
+      soundboard: SoundboardService(),
     );
     _timer.onFire = _onTimerFired;
     _speech.init();

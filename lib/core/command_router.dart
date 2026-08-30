@@ -17,6 +17,7 @@ import '../services/notification_service.dart';
 import '../services/qr_service.dart';
 import '../services/random_fun_service.dart';
 import '../services/settings_service.dart';
+import '../services/soundboard_service.dart';
 import '../services/spotify_service.dart';
 import '../services/timer_service.dart';
 import '../services/weather_service.dart';
@@ -78,6 +79,7 @@ class CommandRouter {
     required this.spotify,
     required this.webSearch,
     required this.snippets,
+    required this.soundboard,
   });
 
   final WikipediaService wikipedia;
@@ -103,6 +105,7 @@ class CommandRouter {
   final SpotifyService spotify;
   final WebSearchService webSearch;
   final CodeSnippetService snippets;
+  final SoundboardService soundboard;
 
   /// Rolling window of past AI exchanges (user+assistant pairs), so a
   /// follow-up like "und morgen?" is understood in context instead of
@@ -139,6 +142,7 @@ Das kann ich für dich tun:
 • "wirf eine münze" / "würfle" / "zufallszahl zwischen 1 und 100"
 • "spiele <Song> auf spotify" / "spiele playlist <Name> auf spotify" (Spotify-Verbindung nötig, siehe Einstellungen)
 • "code snippet für <Flutter-Widget oder Git-Befehl>" (kopiert in die Zwischenablage) / "welche code snippets kennst du"
+• "spiel sound <Name>" (z.B. boot, scan, alarm) / "welche sounds hast du"
 • alles andere: frag mich einfach frei, ich antworte mit echter KI und kann
   dabei auch direkt anrufen, WhatsApp schreiben oder Apps öffnen
 ''';
@@ -331,6 +335,29 @@ Das kann ich für dich tun:
         }
         await snippets.copyToClipboard(entry.value.code);
         return CommandResult('${entry.value.title}: ${entry.value.explanation} Ich hab dir den Code in die Zwischenablage kopiert.');
+      }
+
+      if (_matchesAny(lower, ['welche sounds', 'verfügbare sounds', 'soundboard liste'])) {
+        return CommandResult('Diese Sounds kenne ich: ${soundboard.availableNames.join(', ')}.');
+      }
+
+      // Note: deliberately no "spiele sound ..." phrasing here — "spiele" is
+      // already claimed by the earlier YouTube-search trigger above and
+      // would shadow this block before it's ever reached.
+      final soundQuery = _extractAfter(lower, text, [
+        'spiel sound',
+        'soundboard',
+        'sound abspielen',
+        'spiel den sound',
+      ]);
+      if (soundQuery != null) {
+        if (!soundboard.has(soundQuery)) {
+          return CommandResult(
+            'Den Sound kenne ich nicht. Verfügbar sind z.B.: ${soundboard.availableNames.take(6).join(', ')}.',
+          );
+        }
+        await soundboard.play(soundQuery);
+        return CommandResult('Sound „$soundQuery" wird abgespielt.');
       }
 
       if (_matchesAny(lower, ['meine ip', 'ip adresse', 'ip-adresse', 'my ip'])) {

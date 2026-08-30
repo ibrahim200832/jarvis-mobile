@@ -17,6 +17,7 @@ import 'package:jarvis_mobile/services/notification_service.dart';
 import 'package:jarvis_mobile/services/qr_service.dart';
 import 'package:jarvis_mobile/services/random_fun_service.dart';
 import 'package:jarvis_mobile/services/settings_service.dart';
+import 'package:jarvis_mobile/services/soundboard_service.dart';
 import 'package:jarvis_mobile/services/spotify_service.dart';
 import 'package:jarvis_mobile/services/timer_service.dart';
 import 'package:jarvis_mobile/services/weather_service.dart';
@@ -217,6 +218,17 @@ class FakeCodeSnippetService extends CodeSnippetService {
   }
 }
 
+class FakeSoundboardService extends SoundboardService {
+  int playCalls = 0;
+  String? lastPlayed;
+
+  @override
+  Future<void> play(String name) async {
+    playCalls++;
+    lastPlayed = name;
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -234,6 +246,7 @@ void main() {
   late FakeWebSearchService webSearch;
   late FakeSettingsService settings;
   late FakeCodeSnippetService snippets;
+  late FakeSoundboardService soundboard;
   late CommandRouter router;
 
   setUp(() {
@@ -252,6 +265,7 @@ void main() {
     webSearch = FakeWebSearchService();
     settings = FakeSettingsService();
     snippets = FakeCodeSnippetService();
+    soundboard = FakeSoundboardService();
 
     router = CommandRouter(
       wikipedia: wikipedia,
@@ -277,6 +291,7 @@ void main() {
       spotify: spotify,
       webSearch: webSearch,
       snippets: snippets,
+      soundboard: soundboard,
     );
   });
 
@@ -536,6 +551,27 @@ void main() {
       final result = await router.handle('welche code snippets kennst du');
       expect(result.reply, contains('StatefulWidget'));
       expect(result.reply, contains('Git: Commit erstellen'));
+    });
+  });
+
+  group('Soundboard', () {
+    test('spiel sound boot plays the matching effect', () async {
+      final result = await router.handle('spiel sound boot');
+      expect(soundboard.playCalls, 1);
+      expect(soundboard.lastPlayed, 'boot');
+      expect(result.reply, contains('boot'));
+    });
+
+    test('unknown sound name suggests available ones instead of playing', () async {
+      final result = await router.handle('spiel sound dieswirdsnie');
+      expect(soundboard.playCalls, 0);
+      expect(result.reply, contains('kenne ich nicht'));
+    });
+
+    test('welche sounds hast du lists the available names', () async {
+      final result = await router.handle('welche sounds hast du');
+      expect(result.reply, contains('click'));
+      expect(result.reply, contains('boot'));
     });
   });
 
