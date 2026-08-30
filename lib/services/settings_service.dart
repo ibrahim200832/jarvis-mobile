@@ -1,7 +1,20 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'secure_storage_service.dart';
+
 /// Persists user configuration (API keys, assistant name) on-device.
+///
+/// Genuinely sensitive values (API keys, tokens, the HMAC request-signing
+/// secret) are backed by [SecureStorageService] — AES-256/Keystore-encrypted
+/// storage — instead of SharedPreferences' plaintext file; see
+/// [_secureGet]/[_secureSet]. Non-secret configuration (names, toggles,
+/// public OAuth client IDs, server URLs) stays in plain SharedPreferences,
+/// unchanged.
 class SettingsService {
+  SettingsService({SecureStorageService? secureStorage}) : _secure = secureStorage ?? SecureStorageService();
+
+  final SecureStorageService _secure;
+
   static const _keyNewsApi = 'news_api_key';
   static const _keyWeatherApi = 'weather_api_key';
   static const _keyUserName = 'user_name';
@@ -25,26 +38,39 @@ class SettingsService {
   static const _keyEveningJournalEnabled = 'evening_journal_enabled';
   static const _keyNightAlertEnabled = 'night_alert_enabled';
   static const _keySecurityBreachEnabled = 'security_breach_enabled';
+  static const _keyAiHmacSecret = 'ai_hmac_secret';
 
-  Future<String?> getNewsApiKey() async {
+  /// Reads a secret from secure (AES-256) storage. If it hasn't been
+  /// migrated yet, transparently pulls a legacy plaintext SharedPreferences
+  /// value (saved before secure storage was introduced) once, moves it into
+  /// secure storage, and removes the plaintext copy — so nobody's
+  /// already-saved keys get silently lost by this change.
+  Future<String?> _secureGet(String key) async {
+    final secure = await _secure.read(key);
+    if (secure != null) return secure;
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_keyNewsApi);
+    final legacy = prefs.getString(key);
+    if (legacy == null) return null;
+    await _secure.write(key, legacy);
+    await prefs.remove(key);
+    return legacy;
   }
 
-  Future<void> setNewsApiKey(String value) async {
+  Future<void> _secureSet(String key, String value) async {
+    await _secure.write(key, value);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keyNewsApi, value);
+    // In case an old plaintext copy is still lingering from before secure
+    // storage existed.
+    if (prefs.containsKey(key)) await prefs.remove(key);
   }
 
-  Future<String?> getWeatherApiKey() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_keyWeatherApi);
-  }
+  Future<String?> getNewsApiKey() => _secureGet(_keyNewsApi);
 
-  Future<void> setWeatherApiKey(String value) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keyWeatherApi, value);
-  }
+  Future<void> setNewsApiKey(String value) => _secureSet(_keyNewsApi, value);
+
+  Future<String?> getWeatherApiKey() => _secureGet(_keyWeatherApi);
+
+  Future<void> setWeatherApiKey(String value) => _secureSet(_keyWeatherApi, value);
 
   Future<String> getUserName() async {
     final prefs = await SharedPreferences.getInstance();
@@ -212,14 +238,23 @@ class SettingsService {
     await prefs.setString(_keyHomeAssistantUrl, value);
   }
 
-  Future<String?> getHomeAssistantToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_keyHomeAssistantToken);
-  }
+  Future<String?> getHomeAssistantToken() => _secureGet(_keyHomeAssistantToken);
 
-  Future<void> setHomeAssistantToken(String value) async {
+  Future<void> setHomeAssistantToken(String value) => _secureSet(_keyHomeAssistantToken, value);
+
+  /// Shared secret for signing requests to the user's own AI backend Worker
+  /// with an HMAC (see request_signing_service.dart) — proves a request
+  /// really came from this app install and wasn't forged/replayed. Optional:
+  /// null means requests to the backend go out unsigned (the Worker itself
+  /// decides whether that's still accepted, see worker/ai-proxy.js).
+  Future<String?> getAiHmacSecret() => _secureGet(_keyAiHmacSecret);
+
+  Future<void> setAiHmacSecret(String value) => _secureSet(_keyAiHmacSecret, value);
+
+  Future<void> clearAiHmacSecret() async {
+    await _secure.delete(_keyAiHmacSecret);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keyHomeAssistantToken, value);
+    if (prefs.containsKey(_keyAiHmacSecret)) await prefs.remove(_keyAiHmacSecret);
   }
 
   /// Which fixed JARVIS persona is active: 'standard', 'drill_sergeant',

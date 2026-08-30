@@ -8,6 +8,8 @@ import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'secure_storage_service.dart';
+
 /// The custom URL scheme TikTok redirects back into the app with after login
 /// on mobile/desktop — must exactly match a Redirect URI configured in the
 /// user's own TikTok Developer app, and the <activity> registered for it in
@@ -50,16 +52,33 @@ class TikTokCreatorInfo {
 /// what's selected here — a TikTok platform restriction, not something this
 /// app can work around.
 class TikTokUploadService {
+  TikTokUploadService({SecureStorageService? secureStorage}) : _secure = secureStorage ?? SecureStorageService();
+
+  final SecureStorageService _secure;
+
   static const _keyAccessToken = 'tiktok_access_token';
   static const _keyRefreshToken = 'tiktok_refresh_token';
   static const _keyExpiresAt = 'tiktok_expires_at';
 
-  Future<bool> isConnected() async {
+  /// Migrates a legacy plaintext SharedPreferences token (saved before AES-256
+  /// secure storage was introduced) into secure storage on first read, same
+  /// pattern as SettingsService._secureGet.
+  Future<String?> _secureGet(String key) async {
+    final secure = await _secure.read(key);
+    if (secure != null) return secure;
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_keyRefreshToken) != null;
+    final legacy = prefs.getString(key);
+    if (legacy == null) return null;
+    await _secure.write(key, legacy);
+    await prefs.remove(key);
+    return legacy;
   }
 
+  Future<bool> isConnected() async => await _secureGet(_keyRefreshToken) != null;
+
   Future<void> disconnect() async {
+    await _secure.delete(_keyAccessToken);
+    await _secure.delete(_keyRefreshToken);
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_keyAccessToken);
     await prefs.remove(_keyRefreshToken);
@@ -107,12 +126,12 @@ class TikTokUploadService {
   }
 
   Future<bool> _storeTokens(Map<String, dynamic> json) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keyAccessToken, json['access_token'] as String);
+    await _secure.write(_keyAccessToken, json['access_token'] as String);
     final refreshToken = json['refresh_token'] as String?;
-    if (refreshToken != null) await prefs.setString(_keyRefreshToken, refreshToken);
+    if (refreshToken != null) await _secure.write(_keyRefreshToken, refreshToken);
     final expiresIn = json['expires_in'] as int? ?? 3600;
     final expiresAt = DateTime.now().add(Duration(seconds: expiresIn - 60));
+    final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_keyExpiresAt, expiresAt.millisecondsSinceEpoch);
     return true;
   }
@@ -122,12 +141,12 @@ class TikTokUploadService {
   Future<String?> _validAccessToken(String backendUrl) async {
     final prefs = await SharedPreferences.getInstance();
     final expiresAt = prefs.getInt(_keyExpiresAt);
-    final accessToken = prefs.getString(_keyAccessToken);
+    final accessToken = await _secureGet(_keyAccessToken);
     if (accessToken != null && expiresAt != null && DateTime.now().millisecondsSinceEpoch < expiresAt) {
       return accessToken;
     }
 
-    final refreshToken = prefs.getString(_keyRefreshToken);
+    final refreshToken = await _secureGet(_keyRefreshToken);
     if (refreshToken == null || backendUrl.trim().isEmpty) return null;
     final res = await http.post(
       Uri.parse(backendUrl.trim()).replace(path: '/tiktok/refresh'),
@@ -136,7 +155,7 @@ class TikTokUploadService {
     );
     if (res.statusCode != 200) return null;
     final ok = await _storeTokens(jsonDecode(res.body) as Map<String, dynamic>);
-    return ok ? prefs.getString(_keyAccessToken) : null;
+    return ok ? _secure.read(_keyAccessToken) : null;
   }
 
   /// Fetches the connected creator's nickname, available privacy options and

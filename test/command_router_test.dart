@@ -29,6 +29,7 @@ import 'package:jarvis_mobile/services/notification_service.dart';
 import 'package:jarvis_mobile/services/qr_service.dart';
 import 'package:jarvis_mobile/services/random_fun_service.dart';
 import 'package:jarvis_mobile/services/rpg_service.dart';
+import 'package:jarvis_mobile/services/secure_storage_service.dart';
 import 'package:jarvis_mobile/services/security_breach_service.dart';
 import 'package:jarvis_mobile/services/settings_service.dart';
 import 'package:jarvis_mobile/services/soundboard_service.dart';
@@ -176,7 +177,25 @@ class FakeContactsService extends ContactsService {
   Future<Contact?> find(String name) async => contactToReturn;
 }
 
+/// In-memory stand-in for flutter_secure_storage, which has no platform
+/// channel available in `flutter test` — used wherever a *Service reads
+/// through SecureStorageService, so real plugin code is never touched.
+class FakeSecureStorageService extends SecureStorageService {
+  final _values = <String, String>{};
+
+  @override
+  Future<String?> read(String key) async => _values[key];
+
+  @override
+  Future<void> write(String key, String value) async => _values[key] = value;
+
+  @override
+  Future<void> delete(String key) async => _values.remove(key);
+}
+
 class FakeSettingsService extends SettingsService {
+  FakeSettingsService() : super(secureStorage: FakeSecureStorageService());
+
   String? weatherApiKey = 'test-key';
   String? newsApiKey = 'test-key';
   String? aiBackendUrl = '';
