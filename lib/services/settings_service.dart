@@ -17,6 +17,8 @@ class SettingsService {
   static const _keySarcasmLevel = 'sarcasm_level';
   static const _keyMorningBriefingEnabled = 'morning_briefing_enabled';
   static const _keyEveningSummaryEnabled = 'evening_summary_enabled';
+  static const _keyHomeAssistantUrl = 'home_assistant_url';
+  static const _keyHomeAssistantToken = 'home_assistant_token';
 
   Future<String?> getNewsApiKey() async {
     final prefs = await SharedPreferences.getInstance();
@@ -192,5 +194,25 @@ class SettingsService {
   Future<void> setEveningSummaryEnabled(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyEveningSummaryEnabled, value);
+  }
+
+  Future<String?> getHomeAssistantUrl() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyHomeAssistantUrl);
+  }
+
+  Future<void> setHomeAssistantUrl(String value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyHomeAssistantUrl, value);
+  }
+
+  Future<String?> getHomeAssistantToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyHomeAssistantToken);
+  }
+
+  Future<void> setHomeAssistantToken(String value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyHomeAssistantToken, value);
   }
 }

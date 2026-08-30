@@ -9,6 +9,7 @@ import '../services/contacts_service.dart';
 import '../services/device_info_service.dart';
 import '../services/email_service.dart';
 import '../services/gamification_service.dart';
+import '../services/home_assistant_service.dart';
 import '../services/ip_service.dart';
 import '../services/joke_service.dart';
 import '../services/location_service.dart';
@@ -86,6 +87,7 @@ class CommandRouter {
     required this.gamification,
     required this.musicDj,
     required this.briefing,
+    required this.homeAssistant,
   });
 
   final WikipediaService wikipedia;
@@ -115,6 +117,7 @@ class CommandRouter {
   final GamificationService gamification;
   final MusicDjService musicDj;
   final ProactiveBriefingService briefing;
+  final HomeAssistantService homeAssistant;
 
   /// Rolling window of past AI exchanges (user+assistant pairs), so a
   /// follow-up like "und morgen?" is understood in context instead of
@@ -171,6 +174,7 @@ Das kann ich für dich tun:
 • "mein level" / "meine xp" / "meine erfolge" (Notizen, Timer und Commits geben XP) / "commit gemacht" (loggt einen Code-Commit)
 • "musik zum <Stimmung>" (z.B. fokus, entspannen, workout, party) / "passende musik" (nach Tageszeit) (Spotify-Verbindung nötig)
 • "morgen-briefing" / "abend-zusammenfassung" (Vorschau jetzt; automatischer täglicher Versand als Benachrichtigung ist in Einstellungen aktivierbar)
+• "licht <Name> an" / "licht <Name> aus" / "status von <Gerät>" (Home Assistant, URL+Token in Einstellungen nötig)
 • alles andere: frag mich einfach frei, ich antworte mit echter KI und kann
   dabei auch direkt anrufen, WhatsApp schreiben oder Apps öffnen
 ''';
@@ -533,6 +537,25 @@ Das kann ich für dich tun:
         return CommandResult(await briefing.buildEveningSummary());
       }
 
+      final lightOnMatch = RegExp(
+        r'^(?:schalte |mach )?(?:das |die )?licht(?:er)?\s+(.+?)\s+an\b',
+      ).firstMatch(lower);
+      if (lightOnMatch != null) {
+        return CommandResult(await _setHomeAssistantLight(lightOnMatch.group(1)!.trim(), turnOn: true));
+      }
+
+      final lightOffMatch = RegExp(
+        r'^(?:schalte |mach )?(?:das |die )?licht(?:er)?\s+(.+?)\s+aus\b',
+      ).firstMatch(lower);
+      if (lightOffMatch != null) {
+        return CommandResult(await _setHomeAssistantLight(lightOffMatch.group(1)!.trim(), turnOn: false));
+      }
+
+      final deviceStatusQuery = _extractAfter(lower, text, ['status von', 'wie ist der status von', 'gerätestatus von']);
+      if (deviceStatusQuery != null) {
+        return CommandResult(await _homeAssistantStatus(deviceStatusQuery));
+      }
+
       if (_matchesAny(lower, ['commit gemacht', 'ich habe committet', 'logge einen commit', 'trage einen commit ein'])) {
         final xp = await gamification.logCommit();
         return CommandResult('Commit geloggt.${xp.toSuffix()}');
@@ -765,6 +788,29 @@ Das kann ich für dich tun:
   Future<WeatherResult> _weatherAtCurrentLocation(String key) async {
     final loc = await location.current();
     return weather.byCoordinates(key, loc.latitude, loc.longitude);
+  }
+
+  Future<(String, String)?> _homeAssistantCredentials() async {
+    final url = await settings.getHomeAssistantUrl();
+    final token = await settings.getHomeAssistantToken();
+    if (url == null || url.isEmpty || token == null || token.isEmpty) return null;
+    return (url, token);
+  }
+
+  Future<String> _setHomeAssistantLight(String name, {required bool turnOn}) async {
+    final creds = await _homeAssistantCredentials();
+    if (creds == null) {
+      return 'Home Assistant ist nicht eingerichtet. Bitte URL und Token in den Einstellungen eintragen.';
+    }
+    return homeAssistant.setLight(creds.$1, creds.$2, name, turnOn: turnOn);
+  }
+
+  Future<String> _homeAssistantStatus(String name) async {
+    final creds = await _homeAssistantCredentials();
+    if (creds == null) {
+      return 'Home Assistant ist nicht eingerichtet. Bitte URL und Token in den Einstellungen eintragen.';
+    }
+    return homeAssistant.status(creds.$1, creds.$2, name);
   }
 
   Future<String> _playMoodOnSpotify(MoodPick pick) async {

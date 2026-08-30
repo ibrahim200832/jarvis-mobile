@@ -9,6 +9,7 @@ import 'package:jarvis_mobile/services/contacts_service.dart';
 import 'package:jarvis_mobile/services/device_info_service.dart';
 import 'package:jarvis_mobile/services/email_service.dart';
 import 'package:jarvis_mobile/services/gamification_service.dart';
+import 'package:jarvis_mobile/services/home_assistant_service.dart';
 import 'package:jarvis_mobile/services/ip_service.dart';
 import 'package:jarvis_mobile/services/joke_service.dart';
 import 'package:jarvis_mobile/services/location_service.dart';
@@ -338,6 +339,7 @@ void main() {
       gamification: gamification,
       musicDj: MusicDjService(),
       briefing: briefing,
+      homeAssistant: HomeAssistantService(),
     );
     // Pre-claim today's gamification bonus so it doesn't prepend a "🎉
     // Tages-Bonus" line to the very first handle() call in each test —
@@ -721,6 +723,7 @@ void main() {
         gamification: freshGamification,
         musicDj: MusicDjService(),
         briefing: briefing,
+        homeAssistant: HomeAssistantService(),
       );
 
       final first = await freshRouter.handle('hilfe');
@@ -761,6 +764,23 @@ void main() {
       final result = await router.handle('abend-zusammenfassung');
       expect(result.reply, contains('Guten Abend'));
       expect(result.reply, contains('Level'));
+    });
+  });
+
+  group('Smart-Home (Home Assistant)', () {
+    test('licht wohnzimmer an reports not set up (no URL/token in test settings)', () async {
+      final result = await router.handle('licht wohnzimmer an');
+      expect(result.reply, contains('Home Assistant ist nicht eingerichtet'));
+    });
+
+    test('schalte das licht küche aus reports not set up', () async {
+      final result = await router.handle('schalte das licht küche aus');
+      expect(result.reply, contains('Home Assistant ist nicht eingerichtet'));
+    });
+
+    test('status von heizung reports not set up', () async {
+      final result = await router.handle('status von heizung');
+      expect(result.reply, contains('Home Assistant ist nicht eingerichtet'));
     });
   });
 

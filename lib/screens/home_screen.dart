@@ -16,6 +16,7 @@ import '../services/contacts_service.dart';
 import '../services/device_info_service.dart';
 import '../services/email_service.dart';
 import '../services/gamification_service.dart';
+import '../services/home_assistant_service.dart';
 import '../services/ip_service.dart';
 import '../services/joke_service.dart';
 import '../services/location_service.dart';
@@ -126,6 +127,7 @@ class _HomeScreenState extends State<HomeScreen> {
       gamification: GamificationService(),
       musicDj: MusicDjService(),
       briefing: _briefing,
+      homeAssistant: HomeAssistantService(),
     );
     _timer.onFire = _onTimerFired;
     _speech.init();
@@ -608,6 +610,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       tiktok: _tiktok,
                       tts: _tts,
                       briefing: _briefing,
+                      homeAssistant: HomeAssistantService(),
                     ),
                   ),
                 ),

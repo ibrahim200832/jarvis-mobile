@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../services/contacts_service.dart';
+import '../services/home_assistant_service.dart';
 import '../services/proactive_briefing_service.dart';
 import '../services/settings_service.dart';
 import '../services/spotify_service.dart';
@@ -18,6 +19,7 @@ class SettingsScreen extends StatefulWidget {
     required this.tiktok,
     required this.tts,
     required this.briefing,
+    required this.homeAssistant,
   });
 
   final SettingsService settings;
@@ -26,6 +28,7 @@ class SettingsScreen extends StatefulWidget {
   final TikTokUploadService tiktok;
   final TtsService tts;
   final ProactiveBriefingService briefing;
+  final HomeAssistantService homeAssistant;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -39,6 +42,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _youtubeClientIdCtrl = TextEditingController();
   final _spotifyClientIdCtrl = TextEditingController();
   final _tiktokClientKeyCtrl = TextEditingController();
+  final _homeAssistantUrlCtrl = TextEditingController();
+  final _homeAssistantTokenCtrl = TextEditingController();
   List<Contact> _contacts = [];
   String _appVersion = '';
   String _aiModel = 'openai';
@@ -54,6 +59,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   double _sarcasmLevel = 0.3;
   bool _morningBriefingEnabled = false;
   bool _eveningSummaryEnabled = false;
+  bool _testingHomeAssistant = false;
 
   static const _aiModels = {
     'openai': 'ChatGPT (Standard)',
@@ -89,6 +95,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _youtubeClientIdCtrl.text = await widget.settings.getYoutubeClientId() ?? '';
     _spotifyClientIdCtrl.text = await widget.settings.getSpotifyClientId() ?? '';
     _tiktokClientKeyCtrl.text = await widget.settings.getTiktokClientKey() ?? '';
+    _homeAssistantUrlCtrl.text = await widget.settings.getHomeAssistantUrl() ?? '';
+    _homeAssistantTokenCtrl.text = await widget.settings.getHomeAssistantToken() ?? '';
     _aiModel = await widget.settings.getAiModel();
     _contacts = await widget.contacts.all();
     _spotifyConnected = await widget.spotify.isConnected();
@@ -138,6 +146,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await widget.settings.setYoutubeClientId(_youtubeClientIdCtrl.text.trim());
     await widget.settings.setSpotifyClientId(_spotifyClientIdCtrl.text.trim());
     await widget.settings.setTiktokClientKey(_tiktokClientKeyCtrl.text.trim());
+    await widget.settings.setHomeAssistantUrl(_homeAssistantUrlCtrl.text.trim());
+    await widget.settings.setHomeAssistantToken(_homeAssistantTokenCtrl.text.trim());
     await widget.settings.setAiModel(_aiModel);
     final voice = _selectedVoiceKey == _defaultVoiceKey || _selectedVoiceKey == null
         ? null
@@ -183,6 +193,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _disconnectSpotify() async {
     await widget.spotify.disconnect();
     if (mounted) setState(() => _spotifyConnected = false);
+  }
+
+  Future<void> _testHomeAssistant() async {
+    final url = _homeAssistantUrlCtrl.text.trim();
+    final token = _homeAssistantTokenCtrl.text.trim();
+    if (url.isEmpty || token.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Bitte zuerst URL und Token eintragen.')));
+      return;
+    }
+    setState(() => _testingHomeAssistant = true);
+    final ok = await widget.homeAssistant.testConnection(url, token);
+    if (!mounted) return;
+    setState(() => _testingHomeAssistant = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(ok ? 'Verbindung zu Home Assistant erfolgreich.' : 'Verbindung fehlgeschlagen.')),
+    );
   }
 
   Future<void> _connectTiktok() async {
@@ -352,6 +380,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: const Text('Abend-Zusammenfassung (21:00 Uhr)'),
             value: _eveningSummaryEnabled,
             onChanged: (value) => setState(() => _eveningSummaryEnabled = value),
+          ),
+          const SizedBox(height: 24),
+          Text('Smart-Home (Home Assistant)', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _homeAssistantUrlCtrl,
+            decoration: const InputDecoration(
+              labelText: 'Home Assistant URL',
+              helperText: 'z.B. http://192.168.1.50:8123 — nur im eigenen (Heim-)Netzwerk erreichbar',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _homeAssistantTokenCtrl,
+            decoration: const InputDecoration(
+              labelText: 'Home Assistant Long-Lived Access Token',
+              helperText: 'Profil → Sicherheit → Long-Lived Access Tokens in Home Assistant erstellen',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _testingHomeAssistant ? null : _testHomeAssistant,
+            icon: _testingHomeAssistant
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.home_outlined),
+            label: const Text('Verbindung testen'),
           ),
           const SizedBox(height: 16),
           TextField(
