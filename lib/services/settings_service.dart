@@ -14,6 +14,7 @@ class SettingsService {
   static const _keyTtsVoiceLocale = 'tts_voice_locale';
   static const _keyTtsPitch = 'tts_pitch';
   static const _keyTtsSpeechRate = 'tts_speech_rate';
+  static const _keySarcasmLevel = 'sarcasm_level';
 
   Future<String?> getNewsApiKey() async {
     final prefs = await SharedPreferences.getInstance();
@@ -156,5 +157,18 @@ class SettingsService {
   Future<void> setTtsSpeechRate(double value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_keyTtsSpeechRate, value);
+  }
+
+  /// 0.0 (hyper-höflich) .. 1.0 (voll sarkastisch, Tony-Stark-Stil). Default
+  /// matches JARVIS's original personality (fröhlich, Schuss Humor, nie
+  /// sarkastisch).
+  Future<double> getSarcasmLevel() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getDouble(_keySarcasmLevel) ?? 0.3;
+  }
+
+  Future<void> setSarcasmLevel(double value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_keySarcasmLevel, value);
   }
 }

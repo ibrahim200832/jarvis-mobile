@@ -403,7 +403,14 @@ Das kann ich für dich tun:
 
       final backendUrl = await settings.getAiBackendUrl();
       final aiModel = await settings.getAiModel();
-      final aiResult = await aiChat.ask(backendUrl ?? '', text, model: aiModel, history: List.unmodifiable(_aiHistory));
+      final sarcasm = await settings.getSarcasmLevel();
+      final aiResult = await aiChat.ask(
+        backendUrl ?? '',
+        text,
+        model: aiModel,
+        history: List.unmodifiable(_aiHistory),
+        sarcasm: sarcasm,
+      );
       _aiHistory.add(AiTurn(role: 'user', content: text));
       _aiHistory.add(AiTurn(role: 'assistant', content: aiResult.reply));
       while (_aiHistory.length > _maxHistoryTurns * 2) {

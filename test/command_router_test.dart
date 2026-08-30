@@ -170,6 +170,7 @@ class FakeAiChatService extends AiChatService {
     String message, {
     String model = 'openai',
     List<AiTurn> history = const [],
+    double sarcasm = 0.3,
   }) async {
     lastMessage = message;
     lastHistory = history;

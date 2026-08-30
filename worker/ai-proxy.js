@@ -240,11 +240,44 @@ const TOOLS = [
   },
 ];
 
-const SYSTEM_PROMPT =
+// How sarcastic/humorous JARVIS's replies are, from hyper-polite (0.0) to a
+// full sarcastic Tony Stark impression (1.0) — set by the "Sarkasmus"-Regler
+// in Einstellungen and sent per-request as `sarcasm`. Mirrors the equivalent
+// clause in lib/services/ai_chat_service.dart so both AI backends (this
+// server vs. the client's free fallback) stay in character consistently.
+function personalityClause(sarcasm) {
+  const level = typeof sarcasm === 'number' && Number.isFinite(sarcasm) ? Math.min(1, Math.max(0, sarcasm)) : 0.3;
+  if (level < 0.2) {
+    return (
+      'Deine Persönlichkeit: hochintelligent und gebildet, durchgehend höflich, sachlich und ' +
+      'respektvoll, ganz ohne Ironie oder Sarkasmus.'
+    );
+  }
+  if (level < 0.5) {
+    return (
+      'Deine Persönlichkeit: hochintelligent und gebildet, aber vor allem fröhlich, warmherzig und ' +
+      'enthusiastisch — du freust dich sichtlich, zu helfen, und bringst gute Laune ins Gespräch, mit ' +
+      'einem Schuss Humor, aber nie trocken oder sarkastisch.'
+    );
+  }
+  if (level < 0.8) {
+    return (
+      'Deine Persönlichkeit: hochintelligent, locker und schlagfertig, mit einer spürbaren Prise ' +
+      'Ironie und trockenem Humor in fast jeder Antwort — bleibst dabei aber grundsätzlich freundlich.'
+    );
+  }
+  return (
+    'Deine Persönlichkeit: hochintelligent, bissig-sarkastisch im Stil von Tony Stark — du ' +
+    'kommentierst Anfragen mit pointierter Ironie und trockenem Schlagabtausch, herablassend-charmant, ' +
+    'hilfst aber am Ende trotzdem zuverlässig.'
+  );
+}
+
+function buildSystemPrompt(sarcasm) {
+  return (
   'Du bist JARVIS, das KI-System von Tony Stark aus den Iron-Man-Filmen, jetzt im Dienst des Nutzers. ' +
-  'Deine Persönlichkeit: hochintelligent und gebildet, aber vor allem fröhlich, warmherzig und ' +
-  'enthusiastisch — du freust dich sichtlich, zu helfen, und bringst gute Laune ins Gespräch, mit einem ' +
-  'Schuss Humor, aber nie trocken oder sarkastisch. Im Kern loyal, aufmerksam und stets bemüht, dem Nutzer ' +
+  personalityClause(sarcasm) +
+  ' Im Kern loyal, aufmerksam und stets bemüht, dem Nutzer ' +
   'das Leben leichter zu machen. Du sprichst den Nutzer mit "Sir" oder "Master" an. Du wirst meist in einem gesprochenen ' +
   'Gespräch oder Telefonat genutzt, deshalb antwortest du immer kurz und natürlich (meist 1-2 Sätze), ' +
   'nie als Liste, Aufzählung oder Roman. ' +
@@ -263,7 +296,9 @@ const SYSTEM_PROMPT =
   'bloßen Erwähnung, Frage über die Vergangenheit oder einem Gedanken laut — z.B. bei "ich sollte mal ' +
   'meine Mutter anrufen" oder "was schreibst du normalerweise in E-Mails?" antwortest du nur in Worten, ' +
   'ohne ein Werkzeug zu benutzen. Im Zweifel: lieber nachfragen oder in Worten antworten, als ungefragt zu ' +
-  'handeln.';
+  'handeln.'
+  );
+}
 
 // Reverted from @cf/openai/gpt-oss-120b back to Llama 3.3 70B. gpt-oss-120b
 // is a reasoning model that repeatedly produced empty completions (neither
@@ -311,10 +346,12 @@ export default {
 
     let message;
     let history;
+    let sarcasm;
     try {
       const body = await request.json();
       message = body.message;
       history = Array.isArray(body.history) ? body.history : [];
+      sarcasm = body.sarcasm;
     } catch (_) {
       return json({ error: 'invalid json body' }, 400);
     }
@@ -336,7 +373,7 @@ export default {
     // The model has no built-in notion of "now", so tools that need to
     // resolve relative times (e.g. open_youtube_upload's publish_at from
     // "morgen um 18 Uhr") need the current time handed to it explicitly.
-    const systemPrompt = `${SYSTEM_PROMPT} Aktuelles Datum/Uhrzeit (UTC): ${new Date().toISOString()}.`;
+    const systemPrompt = `${buildSystemPrompt(sarcasm)} Aktuelles Datum/Uhrzeit (UTC): ${new Date().toISOString()}.`;
     const messages = [{ role: 'system', content: systemPrompt }, ...cleanHistory, { role: 'user', content: message }];
 
     let data;

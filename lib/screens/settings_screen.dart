@@ -48,6 +48,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? _selectedVoiceKey;
   double _ttsPitch = 1.0;
   double _ttsSpeechRate = 0.5;
+  double _sarcasmLevel = 0.3;
 
   static const _aiModels = {
     'openai': 'ChatGPT (Standard)',
@@ -58,6 +59,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   static const _defaultVoiceKey = 'default';
 
   String _voiceKey(String name, String locale) => '$name|$locale';
+
+  /// Mirrors the sarcasm bands in ai_chat_service.dart / worker/ai-proxy.js
+  /// so the label the user sees matches how JARVIS will actually behave.
+  String _sarcasmDescription(double level) {
+    if (level < 0.2) return 'Höflich';
+    if (level < 0.5) return 'Ausgewogen (Standard)';
+    if (level < 0.8) return 'Frech';
+    return 'Sarkastisch';
+  }
 
   @override
   void initState() {
@@ -81,6 +91,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _voices = await widget.tts.getGermanVoices();
     _ttsPitch = await widget.settings.getTtsPitch();
     _ttsSpeechRate = await widget.settings.getTtsSpeechRate();
+    _sarcasmLevel = await widget.settings.getSarcasmLevel();
     final savedVoiceName = await widget.settings.getTtsVoiceName();
     final savedVoiceLocale = await widget.settings.getTtsVoiceLocale();
     if (savedVoiceName != null && savedVoiceLocale != null) {
@@ -127,6 +138,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await widget.settings.setTtsVoice(voice?['name'], voice?['locale']);
     await widget.settings.setTtsPitch(_ttsPitch);
     await widget.settings.setTtsSpeechRate(_ttsSpeechRate);
+    await widget.settings.setSarcasmLevel(_sarcasmLevel);
     await widget.tts.applyVoiceSettings(
       voiceName: voice?['name'],
       voiceLocale: voice?['locale'],
@@ -294,6 +306,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onPressed: _previewVoice,
             icon: const Icon(Icons.volume_up_outlined),
             label: const Text('Stimme testen'),
+          ),
+          const SizedBox(height: 24),
+          Text('Persönlichkeit', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 4),
+          Text('Sarkasmus: ${_sarcasmDescription(_sarcasmLevel)}'),
+          Slider(
+            value: _sarcasmLevel,
+            divisions: 10,
+            onChanged: (value) => setState(() => _sarcasmLevel = value),
+          ),
+          const Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Höflich', style: TextStyle(fontSize: 12)),
+              Text('Sarkastisch (Tony Stark)', style: TextStyle(fontSize: 12)),
+            ],
           ),
           const SizedBox(height: 16),
           TextField(
