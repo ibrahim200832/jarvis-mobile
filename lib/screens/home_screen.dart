@@ -25,6 +25,7 @@ import '../services/joke_service.dart';
 import '../services/journal_service.dart';
 import '../services/late_night_tease_service.dart';
 import '../services/location_service.dart';
+import '../services/mood_capture_service.dart';
 import '../services/music_dj_service.dart';
 import '../services/news_service.dart';
 import '../services/notes_service.dart';
@@ -146,6 +147,7 @@ class _HomeScreenState extends State<HomeScreen> {
       rpg: RpgService(),
       journal: JournalService(),
       ambient: _ambient,
+      moodCapture: MoodCaptureService(),
     );
     _timer.onFire = _onTimerFired;
     _speech.init();
@@ -382,23 +384,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _scrollToBottom();
 
     final result = await _router.handle(trimmed);
-
-    setState(() {
-      _processing = false;
-      _messages.add(ChatMessage(result.reply, fromUser: false));
-    });
-    _scrollToBottom();
-
-    if (_callActive) {
-      setState(() => _speaking = true);
-      await _tts.speakAndWait(result.reply);
-      if (mounted) setState(() => _speaking = false);
-      if (_callActive && mounted && !_muted) {
-        await _startListening();
-      }
-    } else {
-      unawaited(_tts.speak(result.reply));
-    }
+    await _deliverReply(result.reply);
 
     if (result.openCamera) {
       final status = await Permission.camera.request();
@@ -441,6 +427,51 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       }
     }
+
+    if (result.requestMoodCheck && mounted) {
+      await _runMoodCheck();
+    }
+  }
+
+  /// Shows [reply] as a new chat bubble and speaks it, call-mode aware —
+  /// shared by the normal command flow and the mood-check follow-up so
+  /// neither has to duplicate the speak/relisten tail.
+  Future<void> _deliverReply(String reply) async {
+    setState(() {
+      _processing = false;
+      _messages.add(ChatMessage(reply, fromUser: false));
+    });
+    _scrollToBottom();
+
+    if (_callActive) {
+      setState(() => _speaking = true);
+      await _tts.speakAndWait(reply);
+      if (mounted) setState(() => _speaking = false);
+      if (_callActive && mounted && !_muted) {
+        await _startListening();
+      }
+    } else {
+      unawaited(_tts.speak(reply));
+    }
+  }
+
+  /// Follow-up triggered by CommandResult.requestMoodCheck ("stimmungscheck"):
+  /// confirms mic permission (reusing the existing Permission.microphone
+  /// flow, same as _toggleListening/_toggleCall), stops any active
+  /// speech_to_text session first (mood capture must be sequential, not
+  /// concurrent — see MoodCaptureService), then runs the capture+analysis
+  /// and delivers the result like any other reply.
+  Future<void> _runMoodCheck() async {
+    final micStatus = await Permission.microphone.request();
+    if (!micStatus.isGranted) {
+      if (mounted) showAccessDeniedFlash(context);
+      _showSnack('Mikrofon-Berechtigung wird benötigt.');
+      return;
+    }
+    await _speech.stop();
+    if (mounted) setState(() => _processing = true);
+    final reply = await _router.runMoodCheck();
+    if (mounted) await _deliverReply(reply);
   }
 
   void _showQrDialog(String data) {

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:installed_apps/app_info.dart';
 import 'package:jarvis_mobile/core/command_router.dart';
@@ -18,6 +20,7 @@ import 'package:jarvis_mobile/services/joke_service.dart';
 import 'package:jarvis_mobile/services/journal_service.dart';
 import 'package:jarvis_mobile/services/late_night_tease_service.dart';
 import 'package:jarvis_mobile/services/location_service.dart';
+import 'package:jarvis_mobile/services/mood_capture_service.dart';
 import 'package:jarvis_mobile/services/music_dj_service.dart';
 import 'package:jarvis_mobile/services/news_service.dart';
 import 'package:jarvis_mobile/services/notes_service.dart';
@@ -38,6 +41,13 @@ import 'package:jarvis_mobile/services/youtube_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // --- Fakes: real network/platform calls are never touched by these tests. ---
+
+/// A loud, high-pitched, fast-alternating synthetic sample — deterministically
+/// classifies as VoiceMood.stressed (see mood_classifier_test.dart for the
+/// isolated classification logic; this is just a fixed fixture for
+/// CommandRouter-level wiring tests).
+Int16List _loudSquareWaveSample({int length = 4000}) =>
+    Int16List.fromList(List.generate(length, (i) => i.isEven ? 30000 : -30000));
 
 class FakeWikipediaService extends WikipediaService {
   String? lastQuery;
@@ -206,6 +216,7 @@ class FakeAiChatService extends AiChatService {
   List<AiTurn>? lastStoryHistory;
   String? lastStoryGenre;
   String? lastPersona;
+  double? lastSarcasm;
   String? lastRpgMessage;
   List<AiTurn>? lastRpgHistory;
   String? lastRpgStatsSummary;
@@ -225,6 +236,7 @@ class FakeAiChatService extends AiChatService {
     lastMessage = message;
     lastHistory = history;
     lastPersona = persona;
+    lastSarcasm = sarcasm;
     return AiChatResult(reply: 'FAKE_AI:$message', action: nextAction);
   }
 
@@ -339,6 +351,17 @@ class FakeSoundboardService extends SoundboardService {
   }
 }
 
+class FakeMoodCaptureService extends MoodCaptureService {
+  Int16List? nextSample;
+  int captureCalls = 0;
+
+  @override
+  Future<Int16List?> captureSample() async {
+    captureCalls++;
+    return nextSample;
+  }
+}
+
 class FakeAmbientSoundService extends AmbientSoundService {
   int playCalls = 0;
   int stopCalls = 0;
@@ -382,6 +405,7 @@ void main() {
   late RpgService rpg;
   late JournalService journal;
   late FakeAmbientSoundService ambient;
+  late FakeMoodCaptureService moodCapture;
   late CommandRouter router;
 
   // Builds a CommandRouter from the shared setUp() fakes, with optional
@@ -427,6 +451,7 @@ void main() {
     rpg: rpg,
     journal: journal,
     ambient: ambient,
+    moodCapture: moodCapture,
   );
 
   setUp(() async {
@@ -463,6 +488,7 @@ void main() {
     rpg = RpgService();
     journal = JournalService();
     ambient = FakeAmbientSoundService();
+    moodCapture = FakeMoodCaptureService()..nextSample = _loudSquareWaveSample();
 
     router = buildRouter();
     // Pre-claim today's gamification bonus so it doesn't prepend a "🎉
@@ -1142,6 +1168,45 @@ void main() {
       final result = await router.handle('welche geräuschkulissen');
       expect(result.reply, contains('regen'));
       expect(result.reply, contains('lofi'));
+    });
+  });
+
+  group('Echte Audio-Tonanalyse (Mood-Check)', () {
+    test('stimmungscheck sets requestMoodCheck without capturing (two-phase split)', () async {
+      final result = await router.handle('stimmungscheck');
+      expect(result.requestMoodCheck, isTrue);
+      expect(moodCapture.captureCalls, 0);
+    });
+
+    test('runMoodCheck() actually captures and returns a mood description', () async {
+      final reply = await router.runMoodCheck();
+      expect(moodCapture.captureCalls, 1);
+      expect(reply, contains('gestresst'));
+    });
+
+    test('a null capture degrades gracefully', () async {
+      moodCapture.nextSample = null;
+      final reply = await router.runMoodCheck();
+      expect(reply, contains('konnte deine Stimme'));
+    });
+
+    test('the sarcasm nudge is not applied to the ask() call during the mood check itself', () async {
+      await router.runMoodCheck();
+      expect(aiChat.lastSarcasm, isNull);
+    });
+
+    test('the sarcasm nudge shows up on the NEXT ask() call after a mood check', () async {
+      await router.runMoodCheck();
+      await router.handle('freie frage an die ki');
+      // Default sarcasm is 0.3; a stressed reading nudges it down by 0.3.
+      expect(aiChat.lastSarcasm, closeTo(0.0, 0.001));
+    });
+
+    test('disabling the auto-adjust toggle leaves sarcasm unaffected', () async {
+      await settings.setMoodAutoAdjustEnabled(false);
+      await router.runMoodCheck();
+      await router.handle('freie frage an die ki');
+      expect(aiChat.lastSarcasm, closeTo(0.3, 0.001));
     });
   });
 

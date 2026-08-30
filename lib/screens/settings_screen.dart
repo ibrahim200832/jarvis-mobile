@@ -62,6 +62,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _eveningSummaryEnabled = false;
   bool _eveningJournalEnabled = false;
   bool _hudEffectsEnabled = true;
+  bool _moodAutoAdjustEnabled = true;
   bool _testingHomeAssistant = false;
 
   static const _aiModels = {
@@ -120,6 +121,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _eveningSummaryEnabled = await widget.settings.getEveningSummaryEnabled();
     _eveningJournalEnabled = await widget.settings.getEveningJournalEnabled();
     _hudEffectsEnabled = await widget.settings.getHudEffectsEnabled();
+    _moodAutoAdjustEnabled = await widget.settings.getMoodAutoAdjustEnabled();
     final savedVoiceName = await widget.settings.getTtsVoiceName();
     final savedVoiceLocale = await widget.settings.getTtsVoiceLocale();
     if (savedVoiceName != null && savedVoiceLocale != null) {
@@ -180,6 +182,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await widget.settings.setEveningSummaryEnabled(_eveningSummaryEnabled);
     await widget.settings.setEveningJournalEnabled(_eveningJournalEnabled);
     await widget.settings.setHudEffectsEnabled(_hudEffectsEnabled);
+    await widget.settings.setMoodAutoAdjustEnabled(_moodAutoAdjustEnabled);
     await widget.briefing.rescheduleAll();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gespeichert.')));
@@ -390,6 +393,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Text('Höflich', style: TextStyle(fontSize: 12)),
               Text('Sarkastisch (Tony Stark)', style: TextStyle(fontSize: 12)),
             ],
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Automatische Sarkasmus-Anpassung nach Stimmung'),
+            subtitle: const Text(
+              'Nach einem "Stimmungscheck" darf JARVIS den Ton vorübergehend anpassen.',
+              style: TextStyle(fontSize: 12),
+            ),
+            value: _moodAutoAdjustEnabled,
+            onChanged: (value) => setState(() => _moodAutoAdjustEnabled = value),
           ),
           const SizedBox(height: 24),
           Text('Proaktive Nachrichten', style: Theme.of(context).textTheme.titleMedium),

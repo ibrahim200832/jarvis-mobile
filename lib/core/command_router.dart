@@ -18,6 +18,8 @@ import '../services/joke_service.dart';
 import '../services/journal_service.dart';
 import '../services/late_night_tease_service.dart';
 import '../services/location_service.dart';
+import '../services/mood_capture_service.dart';
+import '../services/mood_classifier.dart';
 import '../services/music_dj_service.dart';
 import '../services/news_service.dart';
 import '../services/notes_service.dart';
@@ -30,6 +32,7 @@ import '../services/settings_service.dart';
 import '../services/soundboard_service.dart';
 import '../services/spotify_service.dart';
 import '../services/timer_service.dart';
+import '../services/voice_tone_analyzer.dart';
 import '../services/weather_service.dart';
 import '../services/web_search_service.dart';
 import '../services/whatsapp_service.dart';
@@ -46,6 +49,7 @@ class CommandResult {
   final String? youtubePrivacy;
   final DateTime? youtubePublishAt;
   final bool openTiktokUpload;
+  final bool requestMoodCheck;
 
   CommandResult(
     this.reply, {
@@ -55,6 +59,7 @@ class CommandResult {
     this.youtubePrivacy,
     this.youtubePublishAt,
     this.openTiktokUpload = false,
+    this.requestMoodCheck = false,
   });
 }
 
@@ -100,6 +105,7 @@ class CommandRouter {
     required this.rpg,
     required this.journal,
     required this.ambient,
+    required this.moodCapture,
   });
 
   final WikipediaService wikipedia;
@@ -136,6 +142,13 @@ class CommandRouter {
   final RpgService rpg;
   final JournalService journal;
   final AmbientSoundService ambient;
+  final MoodCaptureService moodCapture;
+
+  /// Session-scoped, in-memory only (reset on cold start, like _storyMode/
+  /// _aiHistory — CommandRouter itself is rebuilt fresh on every app
+  /// launch). A stale mood reading from a previous session would be worse
+  /// than no reading at all.
+  VoiceMood? _sessionMood;
 
   /// Rolling window of past AI exchanges (user+assistant pairs), so a
   /// follow-up like "und morgen?" is understood in context instead of
@@ -224,6 +237,7 @@ Das kann ich für dich tun:
 • "morgen-briefing" / "abend-zusammenfassung" (Vorschau jetzt; automatischer täglicher Versand als Benachrichtigung ist in Einstellungen aktivierbar)
 • "licht <Name> an" / "licht <Name> aus" / "status von <Gerät>" (Home Assistant, URL+Token in Einstellungen nötig)
 • "wie war mein tag" / "mein tag war ..." (Abend-Tagebuch mit einfühlsamer KI-Reflexion) / "meine tagebucheinträge" / "letzter tagebucheintrag"
+• "stimmungscheck" (hört 4 Sekunden zu und schätzt Tonfall/Stimmung anhand echter Audioanalyse ein, passt bei Bedarf den Sarkasmus-Ton an)
 • alles andere: frag mich einfach frei, ich antworte mit echter KI und kann
   dabei auch direkt anrufen, WhatsApp schreiben oder Apps öffnen
 ''';
@@ -250,7 +264,29 @@ Das kann ich für dich tun:
       youtubePrivacy: result.youtubePrivacy,
       youtubePublishAt: result.youtubePublishAt,
       openTiktokUpload: result.openTiktokUpload,
+      requestMoodCheck: result.requestMoodCheck,
     );
+  }
+
+  /// Captures and analyzes a short voice sample (see MoodCaptureService),
+  /// classifies it heuristically, and — if enabled — nudges the session's
+  /// effective sarcasm for subsequent ask() calls. Only called by
+  /// home_screen.dart, and only AFTER it has confirmed mic permission and
+  /// stopped any active speech_to_text session (see MoodCaptureService's
+  /// doc comment on why capture must be sequential, not concurrent).
+  Future<String> runMoodCheck() async {
+    final samples = await moodCapture.captureSample();
+    if (samples == null) return 'Ich konnte deine Stimme gerade nicht erfassen.';
+
+    final metrics = VoiceToneAnalyzer.analyze(samples);
+    final mood = MoodClassifier.classify(metrics);
+    _sessionMood = mood;
+
+    final autoAdjust = await settings.getMoodAutoAdjustEnabled();
+    final adjustNote = autoAdjust
+        ? ' Ich passe meinen Ton entsprechend an, bis du erneut einen Stimmungscheck machst.'
+        : '';
+    return 'Du klingst gerade ${mood.label}.$adjustNote';
   }
 
   Future<CommandResult> _handleRaw(String rawInput) async {
@@ -294,6 +330,16 @@ Das kann ich für dich tun:
       if (_matchesAny(lower, ['welche persona', 'aktuelle persona'])) {
         final current = await settings.getPersona();
         return CommandResult('Aktuelle Persona: ${_personaLabel(current)}.');
+      }
+
+      if (_matchesAny(lower, ['stimmungscheck', 'stimmungs-check', 'analysiere meine stimme', 'wie klinge ich gerade', 'wie ist meine stimmung'])) {
+        // Only sets a flag here — the actual mic capture needs a real
+        // Permission.microphone check first, which only home_screen.dart
+        // (with a BuildContext) can do; see CommandRouter.runMoodCheck().
+        return CommandResult(
+          'Einen Moment, ich höre kurz zu, um deine Stimmung einzuschätzen…',
+          requestMoodCheck: true,
+        );
       }
 
       final detectiveStart = _matchesAny(lower, [
@@ -733,12 +779,14 @@ Das kann ich für dich tun:
       final aiModel = await settings.getAiModel();
       final sarcasm = await settings.getSarcasmLevel();
       final persona = await settings.getPersona();
+      final moodDelta = (await settings.getMoodAutoAdjustEnabled()) ? (_sessionMood?.sarcasmDelta ?? 0.0) : 0.0;
+      final effectiveSarcasm = (sarcasm + moodDelta).clamp(0.0, 1.0);
       final aiResult = await aiChat.ask(
         backendUrl ?? '',
         text,
         model: aiModel,
         history: List.unmodifiable(_aiHistory),
-        sarcasm: sarcasm,
+        sarcasm: effectiveSarcasm,
         persona: persona,
       );
       _aiHistory.add(AiTurn(role: 'user', content: text));
