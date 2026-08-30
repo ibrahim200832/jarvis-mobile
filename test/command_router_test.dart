@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:installed_apps/app_info.dart';
 import 'package:jarvis_mobile/core/command_router.dart';
 import 'package:jarvis_mobile/services/ai_chat_service.dart';
+import 'package:jarvis_mobile/services/ambient_sound_service.dart';
 import 'package:jarvis_mobile/services/anime_service.dart';
 import 'package:jarvis_mobile/services/app_launcher_service.dart';
 import 'package:jarvis_mobile/services/call_service.dart';
@@ -338,6 +339,23 @@ class FakeSoundboardService extends SoundboardService {
   }
 }
 
+class FakeAmbientSoundService extends AmbientSoundService {
+  int playCalls = 0;
+  int stopCalls = 0;
+  String? lastPlayed;
+
+  @override
+  Future<void> play(String name) async {
+    playCalls++;
+    lastPlayed = name;
+  }
+
+  @override
+  Future<void> stop() async {
+    stopCalls++;
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -363,6 +381,7 @@ void main() {
   late ChallengeService challenges;
   late RpgService rpg;
   late JournalService journal;
+  late FakeAmbientSoundService ambient;
   late CommandRouter router;
 
   // Builds a CommandRouter from the shared setUp() fakes, with optional
@@ -407,6 +426,7 @@ void main() {
     challenges: challenges,
     rpg: rpg,
     journal: journal,
+    ambient: ambient,
   );
 
   setUp(() async {
@@ -442,6 +462,7 @@ void main() {
     lateNightTease = LateNightTeaseService();
     rpg = RpgService();
     journal = JournalService();
+    ambient = FakeAmbientSoundService();
 
     router = buildRouter();
     // Pre-claim today's gamification bonus so it doesn't prepend a "🎉
@@ -1089,6 +1110,38 @@ void main() {
     test('no entries yet reports that clearly', () async {
       final result = await router.handle('meine tagebucheinträge');
       expect(result.reply, contains('noch keine Tagebucheinträge'));
+    });
+  });
+
+  group('Ambiente Soundscapes', () {
+    test('ambient regen starts the rain soundscape', () async {
+      final result = await router.handle('ambient regen');
+      expect(ambient.playCalls, 1);
+      expect(ambient.lastPlayed, 'regen');
+      expect(result.reply, contains('regen'));
+    });
+
+    test('spiel café-geräusche starts the café soundscape', () async {
+      await router.handle('spiel café-geräusche');
+      expect(ambient.lastPlayed, 'café');
+    });
+
+    test('aktiviere lofi hintergrundmusik starts the lofi soundscape', () async {
+      await router.handle('aktiviere lofi hintergrundmusik');
+      expect(ambient.lastPlayed, 'lofi');
+    });
+
+    test('stoppe die geräuschkulisse stops playback', () async {
+      await router.handle('ambient regen');
+      final result = await router.handle('stoppe die geräuschkulisse');
+      expect(ambient.stopCalls, 1);
+      expect(result.reply, contains('gestoppt'));
+    });
+
+    test('welche geräuschkulissen lists available names', () async {
+      final result = await router.handle('welche geräuschkulissen');
+      expect(result.reply, contains('regen'));
+      expect(result.reply, contains('lofi'));
     });
   });
 

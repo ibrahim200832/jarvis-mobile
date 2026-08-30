@@ -1,6 +1,7 @@
 import 'package:intl/intl.dart';
 
 import '../services/ai_chat_service.dart';
+import '../services/ambient_sound_service.dart';
 import '../services/anime_service.dart';
 import '../services/app_launcher_service.dart';
 import '../services/calculator_service.dart';
@@ -98,6 +99,7 @@ class CommandRouter {
     required this.challenges,
     required this.rpg,
     required this.journal,
+    required this.ambient,
   });
 
   final WikipediaService wikipedia;
@@ -133,6 +135,7 @@ class CommandRouter {
   final ChallengeService challenges;
   final RpgService rpg;
   final JournalService journal;
+  final AmbientSoundService ambient;
 
   /// Rolling window of past AI exchanges (user+assistant pairs), so a
   /// follow-up like "und morgen?" is understood in context instead of
@@ -211,6 +214,7 @@ Das kann ich für dich tun:
 • "spiele <Song> auf spotify" / "spiele playlist <Name> auf spotify" (Spotify-Verbindung nötig, siehe Einstellungen)
 • "code snippet für <Flutter-Widget oder Git-Befehl>" (kopiert in die Zwischenablage) / "welche code snippets kennst du"
 • "spiel sound <Name>" (z.B. boot, scan, alarm) / "welche sounds hast du"
+• "ambient regen" / "ambient café" / "ambient lofi" (Hintergrund-Geräuschkulisse, läuft in einer Schleife) / "stoppe die geräuschkulisse" / "welche geräuschkulissen"
 • "starte ein sci-fi abenteuer" / "starte eine detektivgeschichte" (interaktives Textadventure, "beende das abenteuer" zum Verlassen)
 • "starte das überlebens-rpg" (postapokalyptisches Survival-Rollenspiel mit echtem Spielstand: iss/trink/rasten/durchsuche/baue eine waffe/baue unterschlupf/status, "beende das überlebens-rpg" pausiert, "neues überlebens-rpg starten" setzt zurück)
 • "aktiviere den drill-trainer" / "aktiviere den gaming-kumpel" / "aktiviere die butler-persona" / "aktiviere jarvis standard" (Persona wechseln) / "welche persona"
@@ -546,6 +550,27 @@ Das kann ich für dich tun:
         }
         await soundboard.play(soundQuery);
         return CommandResult('Sound „$soundQuery" wird abgespielt.');
+      }
+
+      if (_matchesAny(lower, ['welche geräuschkulissen', 'welche ambient sounds'])) {
+        return CommandResult('Diese Soundscapes kenne ich: ${ambient.availableNames.join(', ')}.');
+      }
+
+      if (_matchesAny(lower, ['stoppe die geräuschkulisse', 'stoppe den hintergrundsound', 'beende die soundscape'])) {
+        await ambient.stop();
+        return CommandResult('Geräuschkulisse gestoppt.');
+      }
+
+      const ambientTriggers = {
+        'regen': ['aktiviere regengeräusche', 'spiel regengeräusche', 'ambient regen'],
+        'café': ['aktiviere café-geräusche', 'spiel café-geräusche', 'ambient café'],
+        'lofi': ['aktiviere lofi hintergrundmusik', 'spiel lofi hintergrundmusik', 'ambient lofi'],
+      };
+      for (final entry in ambientTriggers.entries) {
+        if (_matchesAny(lower, entry.value)) {
+          await ambient.play(entry.key);
+          return CommandResult('Geräuschkulisse „${entry.key}" läuft jetzt im Hintergrund.');
+        }
       }
 
       if (_matchesAny(lower, ['meine ip', 'ip adresse', 'ip-adresse', 'my ip'])) {

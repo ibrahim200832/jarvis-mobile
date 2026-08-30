@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../core/command_router.dart';
 import '../services/ai_chat_service.dart';
+import '../services/ambient_sound_service.dart';
 import '../services/anime_service.dart';
 import '../services/app_launcher_service.dart';
 import '../services/call_service.dart';
@@ -79,6 +80,7 @@ class _HomeScreenState extends State<HomeScreen> {
     settings: SettingsService(),
     challenges: ChallengeService(),
   );
+  final _ambient = AmbientSoundService();
   final _contacts = ContactsService();
   final _timer = TimerService();
   final _spotify = SpotifyService();
@@ -139,6 +141,7 @@ class _HomeScreenState extends State<HomeScreen> {
       challenges: ChallengeService(),
       rpg: RpgService(),
       journal: JournalService(),
+      ambient: _ambient,
     );
     _timer.onFire = _onTimerFired;
     _speech.init();
@@ -301,6 +304,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _showSnack('Mikrofon-Berechtigung wird benötigt.');
       return;
     }
+    await _ambient.stop();
     setState(() => _callActive = true);
     await _startListening();
   }
