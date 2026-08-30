@@ -14,6 +14,7 @@ import '../services/gamification_service.dart';
 import '../services/home_assistant_service.dart';
 import '../services/ip_service.dart';
 import '../services/joke_service.dart';
+import '../services/journal_service.dart';
 import '../services/late_night_tease_service.dart';
 import '../services/location_service.dart';
 import '../services/music_dj_service.dart';
@@ -96,6 +97,7 @@ class CommandRouter {
     required this.lateNightTease,
     required this.challenges,
     required this.rpg,
+    required this.journal,
   });
 
   final WikipediaService wikipedia;
@@ -130,6 +132,7 @@ class CommandRouter {
   final LateNightTeaseService lateNightTease;
   final ChallengeService challenges;
   final RpgService rpg;
+  final JournalService journal;
 
   /// Rolling window of past AI exchanges (user+assistant pairs), so a
   /// follow-up like "und morgen?" is understood in context instead of
@@ -216,6 +219,7 @@ Das kann ich für dich tun:
 • "musik zum <Stimmung>" (z.B. fokus, entspannen, workout, party) / "passende musik" (nach Tageszeit) (Spotify-Verbindung nötig)
 • "morgen-briefing" / "abend-zusammenfassung" (Vorschau jetzt; automatischer täglicher Versand als Benachrichtigung ist in Einstellungen aktivierbar)
 • "licht <Name> an" / "licht <Name> aus" / "status von <Gerät>" (Home Assistant, URL+Token in Einstellungen nötig)
+• "wie war mein tag" / "mein tag war ..." (Abend-Tagebuch mit einfühlsamer KI-Reflexion) / "meine tagebucheinträge" / "letzter tagebucheintrag"
 • alles andere: frag mich einfach frei, ich antworte mit echter KI und kann
   dabei auch direkt anrufen, WhatsApp schreiben oder Apps öffnen
 ''';
@@ -340,6 +344,21 @@ Das kann ich für dich tun:
       final mangaQuery = _extractAfter(lower, text, ['manga info zu', 'suche manga nach', 'manga ']);
       if (mangaQuery != null) {
         return CommandResult(await _lookupAnime(mangaQuery, isManga: true));
+      }
+
+      if (_matchesAny(lower, ['meine tagebucheinträge', 'letzter tagebucheintrag'])) {
+        return CommandResult(await _journalListing(latestOnly: lower.contains('letzter')));
+      }
+
+      final journalEntryText = _extractAfter(lower, text, ['mein tag war', 'heute war', 'tagebuch:', 'tagebucheintrag:']);
+      if (journalEntryText != null) {
+        return CommandResult(await _submitJournalEntry(journalEntryText));
+      }
+
+      if (_matchesAny(lower, ['wie war mein tag', 'tagebucheintrag', 'abend-check-in', 'lass uns über meinen tag reden'])) {
+        return CommandResult(
+          'Wie war dein Tag, Master? Erzähl mir kurz davon, z. B. "mein tag war ..." oder "heute war ...".',
+        );
       }
 
       final webSearchQuery = _extractAfter(lower, text, ['suche im internet nach', 'suche online nach', 'recherchiere']);
@@ -956,6 +975,28 @@ Das kann ich für dich tun:
     }
     return buffer.toString().trim();
   }
+
+  Future<String> _submitJournalEntry(String entryText) async {
+    final backendUrl = await settings.getAiBackendUrl();
+    final result = await aiChat.askJournal(backendUrl ?? '', entryText);
+    await journal.add(entryText, result.reply);
+    return result.reply;
+  }
+
+  Future<String> _journalListing({required bool latestOnly}) async {
+    if (latestOnly) {
+      final entry = await journal.latest();
+      if (entry == null) return 'Du hast noch keine Tagebucheinträge.';
+      return '${_formatJournalDate(entry.date)}: ${entry.text}\n\n${entry.reflection}';
+    }
+    final entries = await journal.list();
+    if (entries.isEmpty) return 'Du hast noch keine Tagebucheinträge.';
+    final recent = entries.length > 5 ? entries.sublist(entries.length - 5) : entries;
+    return recent.map((e) => '${_formatJournalDate(e.date)}: ${e.text}').join('\n');
+  }
+
+  String _formatJournalDate(DateTime date) =>
+      '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}';
 
   Future<String> _playMoodOnSpotify(MoodPick pick) async {
     final clientId = await settings.getSpotifyClientId();

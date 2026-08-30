@@ -139,6 +139,19 @@ String rpgSystemPrompt(String statsSummary) =>
     'Antworte ausschließlich als Erzähler in der Geschichte — keine Meta-Kommentare, keine Werkzeuge, keine '
     'Erklärungen außerhalb der Geschichte.';
 
+/// Persona for the evening journaling check-in ("Tägliches Journaling") — a
+/// single-shot reflective exchange, not a stateful multi-turn mode.
+/// Deliberately ignores persona/sarcasm and stays consistently empathetic
+/// regardless of the active JARVIS persona, same rationale as the
+/// story/RPG modes having their own fixed narrator voice.
+String journalSystemPrompt() =>
+    'Du bist ein einfühlsamer, aufmerksamer Zuhörer für einen kurzen Abend-Rückblick des Nutzers auf seinen '
+    'Tag. Der Nutzer erzählt dir kurz, wie sein Tag war. Antworte in 2-4 warmherzigen, natürlichen Sätzen auf '
+    'Deutsch: spiegle kurz wider, was du verstanden hast, spekuliere behutsam, was der wichtigste Moment des '
+    'Tages gewesen sein könnte (positiv oder herausfordernd), und schließe mit einer kurzen, echten '
+    'motivierenden Nachricht für morgen. Bleib immer warmherzig und unterstützend, unabhängig davon, wie der '
+    'Tag war — keine Ironie, kein Sarkasmus, keine Werkzeuge, keine Meta-Kommentare.';
+
 /// Sends free-form questions to an AI. If the user configured their own
 /// backend (see worker/ai-proxy.js) under Einstellungen, that's used — it
 /// holds a real API key server-side and supports phone actions (AiAction).
@@ -334,6 +347,49 @@ class AiChatService {
       failMsg: 'Ich hab das Überlebens-RPG gerade nicht weitererzählen können',
       timeoutMsg: 'Die Antwort hat zu lange gedauert. Versuch es gleich nochmal.',
       offlineMsg: 'Ich konnte das Überlebens-RPG gerade nicht weitererzählen. Prüf deine Internetverbindung.',
+    );
+  }
+
+  /// A single-shot evening journaling reflection on [dayText] (see
+  /// journalSystemPrompt). Deliberately stateless — no history parameter,
+  /// unlike ask()/askStory()/askRpg() — since this is a one-off exchange,
+  /// not an ongoing mode.
+  Future<AiChatResult> askJournal(String backendUrl, String dayText) async {
+    if (backendUrl.trim().isEmpty) {
+      return _askJournalFreeFallback(dayText);
+    }
+    try {
+      final res = await http
+          .post(
+            Uri.parse(backendUrl.trim()),
+            headers: {'content-type': 'application/json'},
+            body: jsonEncode({'message': dayText, 'history': const [], 'mode': 'journal'}),
+          )
+          .timeout(const Duration(seconds: 25));
+      if (res.statusCode != 200) {
+        return AiChatResult(reply: 'Der Tagesrückblick konnte nicht erstellt werden (Code ${res.statusCode}).');
+      }
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      final reply = data['reply'] as String?;
+      return AiChatResult(reply: (reply == null || reply.isEmpty) ? 'Ich habe keine Antwort erhalten.' : reply);
+    } catch (_) {
+      return AiChatResult(reply: 'Ich konnte den Tagesrückblick gerade nicht erstellen. Prüf deine Internetverbindung.');
+    }
+  }
+
+  Future<AiChatResult> _askJournalFreeFallback(String dayText) {
+    final prompt = '${journalSystemPrompt()}\n\nDer Nutzer erzählt: $dayText\n\nDeine Antwort:';
+    final uri = Uri(
+      scheme: 'https',
+      host: 'text.pollinations.ai',
+      pathSegments: [prompt],
+      queryParameters: {'model': 'openai'},
+    );
+    return _getWithRetry(
+      uri,
+      failMsg: 'Ich konnte gerade keinen Tagesrückblick erstellen',
+      timeoutMsg: 'Die Antwort hat zu lange gedauert. Versuch es gleich nochmal.',
+      offlineMsg: 'Ich konnte den Tagesrückblick gerade nicht erstellen. Prüf deine Internetverbindung.',
     );
   }
 

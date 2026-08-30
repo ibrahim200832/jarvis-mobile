@@ -21,6 +21,7 @@ import '../services/gamification_service.dart';
 import '../services/home_assistant_service.dart';
 import '../services/ip_service.dart';
 import '../services/joke_service.dart';
+import '../services/journal_service.dart';
 import '../services/late_night_tease_service.dart';
 import '../services/location_service.dart';
 import '../services/music_dj_service.dart';
@@ -137,6 +138,7 @@ class _HomeScreenState extends State<HomeScreen> {
       lateNightTease: LateNightTeaseService(),
       challenges: ChallengeService(),
       rpg: RpgService(),
+      journal: JournalService(),
     );
     _timer.onFire = _onTimerFired;
     _speech.init();

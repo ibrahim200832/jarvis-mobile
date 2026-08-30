@@ -380,6 +380,22 @@ function buildRpgSystemPrompt(statsSummary) {
   );
 }
 
+// Persona for the evening journaling check-in (mode: "journal") — a
+// single-shot reflective exchange, not a stateful mode. Deliberately
+// ignores persona/sarcasm and stays consistently empathetic. Mirrors
+// journalSystemPrompt in lib/services/ai_chat_service.dart.
+function buildJournalSystemPrompt() {
+  return (
+    'Du bist ein einfühlsamer, aufmerksamer Zuhörer für einen kurzen Abend-Rückblick des Nutzers auf ' +
+    'seinen Tag. Der Nutzer erzählt dir kurz, wie sein Tag war. Antworte in 2-4 warmherzigen, natürlichen ' +
+    'Sätzen auf Deutsch: spiegle kurz wider, was du verstanden hast, spekuliere behutsam, was der ' +
+    'wichtigste Moment des Tages gewesen sein könnte (positiv oder herausfordernd), und schließe mit ' +
+    'einer kurzen, echten motivierenden Nachricht für morgen. Bleib immer warmherzig und unterstützend, ' +
+    'unabhängig davon, wie der Tag war — keine Ironie, kein Sarkasmus, keine Werkzeuge, keine ' +
+    'Meta-Kommentare.'
+  );
+}
+
 // Reverted from @cf/openai/gpt-oss-120b back to Llama 3.3 70B. gpt-oss-120b
 // is a reasoning model that repeatedly produced empty completions (neither
 // `response` text nor a tool call — surfaced to the user as "Ich habe keine
@@ -458,11 +474,13 @@ export default {
       .slice(-MAX_HISTORY_MESSAGES)
       .map((m) => ({ role: m.role, content: m.content }));
 
-    // Interaktives Storytelling (mode: "story") and the Überlebens-RPG
-    // (mode: "rpg") each use a dedicated narrator persona with no tool use,
-    // instead of JARVIS's normal assistant character/actions.
+    // Interaktives Storytelling (mode: "story"), the Überlebens-RPG (mode:
+    // "rpg"), and the evening journaling check-in (mode: "journal") each
+    // use a dedicated persona with no tool use, instead of JARVIS's normal
+    // assistant character/actions.
     const isStory = mode === 'story';
     const isRpg = mode === 'rpg';
+    const isJournal = mode === 'journal';
     // The model has no built-in notion of "now", so tools that need to
     // resolve relative times (e.g. open_youtube_upload's publish_at from
     // "morgen um 18 Uhr") need the current time handed to it explicitly.
@@ -470,10 +488,12 @@ export default {
       ? buildStorySystemPrompt(genre)
       : isRpg
         ? buildRpgSystemPrompt(statsSummary)
-        : `${buildSystemPrompt(sarcasm, persona)} Aktuelles Datum/Uhrzeit (UTC): ${new Date().toISOString()}.`;
+        : isJournal
+          ? buildJournalSystemPrompt()
+          : `${buildSystemPrompt(sarcasm, persona)} Aktuelles Datum/Uhrzeit (UTC): ${new Date().toISOString()}.`;
     const messages = [{ role: 'system', content: systemPrompt }, ...cleanHistory, { role: 'user', content: message }];
 
-    const includeTools = !isStory && !isRpg;
+    const includeTools = !isStory && !isRpg && !isJournal;
     let data;
     let toolCall;
     let replyText;

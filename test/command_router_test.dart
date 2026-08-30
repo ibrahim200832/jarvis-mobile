@@ -14,6 +14,7 @@ import 'package:jarvis_mobile/services/gamification_service.dart';
 import 'package:jarvis_mobile/services/home_assistant_service.dart';
 import 'package:jarvis_mobile/services/ip_service.dart';
 import 'package:jarvis_mobile/services/joke_service.dart';
+import 'package:jarvis_mobile/services/journal_service.dart';
 import 'package:jarvis_mobile/services/late_night_tease_service.dart';
 import 'package:jarvis_mobile/services/location_service.dart';
 import 'package:jarvis_mobile/services/music_dj_service.dart';
@@ -208,6 +209,8 @@ class FakeAiChatService extends AiChatService {
   List<AiTurn>? lastRpgHistory;
   String? lastRpgStatsSummary;
   int askRpgCallCount = 0;
+  String? lastJournalDayText;
+  int askJournalCallCount = 0;
 
   @override
   Future<AiChatResult> ask(
@@ -249,6 +252,13 @@ class FakeAiChatService extends AiChatService {
     lastRpgHistory = history;
     lastRpgStatsSummary = statsSummary;
     return AiChatResult(reply: 'FAKE_RPG:$message');
+  }
+
+  @override
+  Future<AiChatResult> askJournal(String backendUrl, String dayText) async {
+    askJournalCallCount++;
+    lastJournalDayText = dayText;
+    return AiChatResult(reply: 'FAKE_JOURNAL:$dayText');
   }
 }
 
@@ -352,6 +362,7 @@ void main() {
   late LateNightTeaseService lateNightTease;
   late ChallengeService challenges;
   late RpgService rpg;
+  late JournalService journal;
   late CommandRouter router;
 
   // Builds a CommandRouter from the shared setUp() fakes, with optional
@@ -395,6 +406,7 @@ void main() {
     lateNightTease: lateNightTeaseOverride ?? lateNightTease,
     challenges: challenges,
     rpg: rpg,
+    journal: journal,
   );
 
   setUp(() async {
@@ -429,6 +441,7 @@ void main() {
     anime = FakeAnimeService();
     lateNightTease = LateNightTeaseService();
     rpg = RpgService();
+    journal = JournalService();
 
     router = buildRouter();
     // Pre-claim today's gamification bonus so it doesn't prepend a "🎉
@@ -1043,6 +1056,39 @@ void main() {
       await router.handle('starte das überlebens-rpg');
       expect(aiChat.lastStoryMessage, 'starte das überlebens-rpg');
       expect(aiChat.askRpgCallCount, 0);
+    });
+  });
+
+  group('Abend-Tagebuch', () {
+    test('wie war mein tag shows a static invitation without calling the AI', () async {
+      final result = await router.handle('wie war mein tag');
+      expect(result.reply, contains('Wie war dein Tag'));
+      expect(aiChat.askJournalCallCount, 0);
+    });
+
+    test('mein tag war ... submits an entry and returns the AI reflection', () async {
+      final result = await router.handle('mein tag war ziemlich stressig, aber am Ende gut ausgegangen');
+      expect(aiChat.askJournalCallCount, 1);
+      expect(aiChat.lastJournalDayText, 'ziemlich stressig, aber am Ende gut ausgegangen');
+      expect(result.reply, contains('FAKE_JOURNAL'));
+    });
+
+    test('submitted entries are persisted and listable', () async {
+      await router.handle('mein tag war produktiv');
+      final result = await router.handle('meine tagebucheinträge');
+      expect(result.reply, contains('produktiv'));
+    });
+
+    test('letzter tagebucheintrag shows the most recent entry with its reflection', () async {
+      await router.handle('mein tag war ruhig');
+      final result = await router.handle('letzter tagebucheintrag');
+      expect(result.reply, contains('ruhig'));
+      expect(result.reply, contains('FAKE_JOURNAL'));
+    });
+
+    test('no entries yet reports that clearly', () async {
+      final result = await router.handle('meine tagebucheinträge');
+      expect(result.reply, contains('noch keine Tagebucheinträge'));
     });
   });
 

@@ -17,8 +17,11 @@ import 'weather_service.dart';
 class ProactiveBriefingService {
   static const morningNotificationId = 9001;
   static const eveningNotificationId = 9002;
+  static const journalNotificationId = 9003;
   static const morningHour = 7;
   static const eveningHour = 21;
+  static const journalHour = 21;
+  static const journalMinute = 30;
 
   final NotificationService notifications;
   final WeatherService weather;
@@ -82,6 +85,11 @@ class ProactiveBriefingService {
     return 'Guten Abend! $status';
   }
 
+  /// Static invitation text (no AI call at scheduling time) — the user
+  /// replies via chat, which is where the actual reflection happens (see
+  /// CommandRouter's journal handling).
+  String buildJournalPrompt() => 'Wie war dein Tag? Erzähl mir kurz davon, wenn du magst.';
+
   /// Re-schedules both notifications based on the current Einstellungen
   /// (enabled/disabled) and freshest available data — call on app start and
   /// whenever the user changes the toggles.
@@ -108,6 +116,18 @@ class ProactiveBriefingService {
       );
     } else {
       await notifications.cancelDailyNotification(eveningNotificationId);
+    }
+
+    if (await settings.getEveningJournalEnabled()) {
+      await notifications.scheduleDailyNotification(
+        id: journalNotificationId,
+        title: 'J.A.R.V.I.S. Tagebuch',
+        body: buildJournalPrompt(),
+        hour: journalHour,
+        minute: journalMinute,
+      );
+    } else {
+      await notifications.cancelDailyNotification(journalNotificationId);
     }
   }
 }
