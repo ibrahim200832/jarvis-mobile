@@ -853,6 +853,27 @@ void main() {
       expect(result.reply, contains('Erfolg freigeschaltet: Erste Notiz'));
     });
 
+    test('öffne mein dashboard sets the openDashboard flag', () async {
+      final result = await router.handle('öffne mein dashboard');
+      expect(result.openDashboard, isTrue);
+    });
+
+    test('other commands do not set the openDashboard flag', () async {
+      final result = await router.handle('hilfe');
+      expect(result.openDashboard, isFalse);
+    });
+
+    test('ich habe X stunden geschlafen sets energy and confirms it', () async {
+      final result = await router.handle('ich habe 8 stunden geschlafen');
+      expect(result.reply, contains('8.0 Stunden Schlaf'));
+      expect(result.reply, contains('100%'));
+    });
+
+    test('sleep hours accepts a comma decimal', () async {
+      final result = await router.handle('ich habe 4,5 stunden geschlafen');
+      expect(result.reply, contains('4.5 Stunden Schlaf'));
+    });
+
     test('daily bonus is claimed once and folded into the next reply', () async {
       // Uses its own fresh service/prefs (the shared `gamification` from
       // setUp already pre-claimed today's bonus so router tests above

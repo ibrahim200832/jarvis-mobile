@@ -9,6 +9,7 @@ import '../services/spotify_service.dart';
 import '../services/tiktok_upload_service.dart';
 import '../services/tts_service.dart';
 import 'changelog_screen.dart';
+import 'dashboard_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
@@ -628,6 +629,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ),
           const Divider(height: 40),
+          OutlinedButton.icon(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => DashboardScreen(gamification: widget.briefing.gamification)),
+            ),
+            icon: const Icon(Icons.bar_chart),
+            label: const Text('Lebens-Dashboard'),
+          ),
+          const SizedBox(height: 12),
           OutlinedButton.icon(
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const ChangelogScreen()),

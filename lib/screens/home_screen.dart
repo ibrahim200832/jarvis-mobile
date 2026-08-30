@@ -56,6 +56,7 @@ import '../widgets/glass_container.dart';
 import '../widgets/scanline_overlay.dart';
 import '../widgets/voice_orb_overlay.dart';
 import 'camera_screen.dart';
+import 'dashboard_screen.dart';
 import 'gesture_screen.dart';
 import 'settings_screen.dart';
 import 'tiktok_upload_screen.dart';
@@ -447,6 +448,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (result.requestMoodCheck && mounted) {
       await _runMoodCheck();
+    }
+
+    if (result.openDashboard && mounted) {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => DashboardScreen(gamification: _router.gamification)),
+      );
     }
   }
 

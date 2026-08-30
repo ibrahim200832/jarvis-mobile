@@ -50,6 +50,7 @@ class CommandResult {
   final DateTime? youtubePublishAt;
   final bool openTiktokUpload;
   final bool requestMoodCheck;
+  final bool openDashboard;
 
   CommandResult(
     this.reply, {
@@ -60,6 +61,7 @@ class CommandResult {
     this.youtubePublishAt,
     this.openTiktokUpload = false,
     this.requestMoodCheck = false,
+    this.openDashboard = false,
   });
 }
 
@@ -232,6 +234,7 @@ Das kann ich für dich tun:
 • "starte das überlebens-rpg" (postapokalyptisches Survival-Rollenspiel mit echtem Spielstand: iss/trink/rasten/durchsuche/baue eine waffe/baue unterschlupf/status, "beende das überlebens-rpg" pausiert, "neues überlebens-rpg starten" setzt zurück)
 • "aktiviere den drill-trainer" / "aktiviere den gaming-kumpel" / "aktiviere die butler-persona" / "aktiviere jarvis standard" (Persona wechseln) / "welche persona"
 • "mein level" / "meine xp" / "meine erfolge" (Notizen, Timer und Commits geben XP) / "commit gemacht" (loggt einen Code-Commit)
+• "ich habe X stunden geschlafen" (setzt deine Energie) / "öffne mein dashboard" (visuelles Real-Life-RPG-Dashboard mit XP-/Energie-Leiste und taktischen Tipps)
 • "tägliche challenge" (heutige Mini-Herausforderung, erscheint auch im Morgen-Briefing) / "challenge erledigt"
 • "musik zum <Stimmung>" (z.B. fokus, entspannen, workout, party) / "passende musik" (nach Tageszeit) (Spotify-Verbindung nötig)
 • "morgen-briefing" / "abend-zusammenfassung" (Vorschau jetzt; automatischer täglicher Versand als Benachrichtigung ist in Einstellungen aktivierbar)
@@ -274,6 +277,7 @@ Das kann ich für dich tun:
       youtubePublishAt: result.youtubePublishAt,
       openTiktokUpload: result.openTiktokUpload,
       requestMoodCheck: result.requestMoodCheck,
+      openDashboard: result.openDashboard,
     );
   }
 
@@ -460,6 +464,10 @@ Das kann ich für dich tun:
               ? 'Deine Koordinaten: ${loc.latitude.toStringAsFixed(4)}, ${loc.longitude.toStringAsFixed(4)}'
               : 'Du befindest dich in $place (${loc.latitude.toStringAsFixed(4)}, ${loc.longitude.toStringAsFixed(4)}).',
         );
+      }
+
+      if (_matchesAny(lower, ['öffne mein dashboard', 'zeige mein lebens-dashboard', 'zeige mein dashboard', 'life dashboard'])) {
+        return CommandResult('Dashboard wird geöffnet.', openDashboard: true);
       }
 
       final appName = _extractAfter(lower, text, ['öffne', 'open']);
@@ -709,6 +717,15 @@ Das kann ich für dich tun:
 
       if (_matchesAny(lower, ['mein level', 'meine xp', 'mein rang', 'meine erfolge', 'meine achievements'])) {
         return CommandResult(await gamification.statusText());
+      }
+
+      final sleepMatch = RegExp(
+        r'ich habe\s+(\d+(?:[.,]\d+)?)\s*stunden?\s*geschlafen',
+      ).firstMatch(lower);
+      if (sleepMatch != null) {
+        final hours = double.parse(sleepMatch.group(1)!.replaceAll(',', '.'));
+        final energy = await gamification.setSleepHours(hours);
+        return CommandResult('Notiert: $hours Stunden Schlaf. Energie liegt jetzt bei $energy%.');
       }
 
       if (_matchesAny(lower, ['tägliche challenge', 'heutige challenge', 'meine challenge', 'challenge des tages'])) {
