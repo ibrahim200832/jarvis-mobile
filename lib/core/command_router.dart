@@ -28,6 +28,7 @@ import '../services/proactive_briefing_service.dart';
 import '../services/qr_service.dart';
 import '../services/random_fun_service.dart';
 import '../services/rpg_service.dart';
+import '../services/security_breach_service.dart';
 import '../services/settings_service.dart';
 import '../services/soundboard_service.dart';
 import '../services/spotify_service.dart';
@@ -108,6 +109,7 @@ class CommandRouter {
     required this.journal,
     required this.ambient,
     required this.moodCapture,
+    required this.securityBreach,
   });
 
   final WikipediaService wikipedia;
@@ -145,6 +147,7 @@ class CommandRouter {
   final JournalService journal;
   final AmbientSoundService ambient;
   final MoodCaptureService moodCapture;
+  final SecurityBreachService securityBreach;
 
   /// Session-scoped, in-memory only (reset on cold start, like _storyMode/
   /// _aiHistory — CommandRouter itself is rebuilt fresh on every app
@@ -200,6 +203,24 @@ class CommandRouter {
     'verlasse das überlebens-rpg',
   ];
 
+  /// Simulierter Sicherheitsbruch: single-turn mini-challenge (see
+  /// SecurityBreachService). While active, the very next input is treated as
+  /// the player's answer instead of going through the normal command ladder
+  /// — either a random per-app-open trigger (started externally via
+  /// [startBreachChallenge], called by home_screen.dart) or an explicit
+  /// on-demand chat command (see _breachStartPhrases below).
+  bool _breachMode = false;
+  SecurityBreachChallenge? _activeBreachChallenge;
+  static const _breachStartPhrases = [
+    'simuliere einen sicherheitsbruch',
+    'simuliere einen hack',
+    'starte einen sicherheitsbruch',
+    'sicherheitsbruch simulieren',
+    'teste die firewall',
+    'firewall test',
+  ];
+  static const _breachSkipPhrases = ['abbrechen', 'ignorieren', 'überspringen', 'skip'];
+
   static const helpText = '''
 Das kann ich für dich tun:
 • "wie spät ist es" / "welcher tag ist heute"
@@ -241,6 +262,7 @@ Das kann ich für dich tun:
 • "licht <Name> an" / "licht <Name> aus" / "status von <Gerät>" (Home Assistant, URL+Token in Einstellungen nötig)
 • "wie war mein tag" / "mein tag war ..." (Abend-Tagebuch mit einfühlsamer KI-Reflexion) / "meine tagebucheinträge" / "letzter tagebucheintrag"
 • "stimmungscheck" (hört 4 Sekunden zu und schätzt Tonfall/Stimmung anhand echter Audioanalyse ein, passt bei Bedarf den Sarkasmus-Ton an)
+• "simuliere einen sicherheitsbruch" / "teste die firewall" (Mini-Code-Challenge, verteidige die Firewall für XP; passiert auch gelegentlich zufällig beim App-Start, abschaltbar in Einstellungen)
 • alles andere: frag mich einfach frei, ich antworte mit echter KI und kann
   dabei auch direkt anrufen, WhatsApp schreiben oder Apps öffnen
 ''';
@@ -251,7 +273,7 @@ Das kann ich für dich tun:
   /// in the night — except while an interactive story or the Überlebens-RPG
   /// is running, where either would break the narration.
   Future<CommandResult> handle(String rawInput) async {
-    final inNarrativeMode = _storyMode || _rpgMode;
+    final inNarrativeMode = _storyMode || _rpgMode || _breachMode;
     final dailyBonus = inNarrativeMode ? null : await gamification.claimDailyBonusIfNeeded();
     final persona = await settings.getPersona();
     final tease = inNarrativeMode ? null : await lateNightTease.maybeTease(persona, rawInput.trim().toLowerCase());
@@ -302,6 +324,15 @@ Das kann ich für dich tun:
     return 'Du klingst gerade ${mood.label}.$adjustNote';
   }
 
+  /// Called by home_screen.dart when its own random-but-bounded roll (see
+  /// SecurityBreachService.maybeTriggerOnOpen, checked once per app open)
+  /// decides a breach challenge should appear. Puts the router into breach
+  /// mode so the next handle() call is treated as the player's answer.
+  void startBreachChallenge(SecurityBreachChallenge challenge) {
+    _breachMode = true;
+    _activeBreachChallenge = challenge;
+  }
+
   Future<CommandResult> _handleRaw(String rawInput) async {
     final text = rawInput.trim();
     final lower = text.toLowerCase();
@@ -315,6 +346,9 @@ Das kann ich für dich tun:
     if (_rpgMode) {
       return _handleRpgTurn(text, lower);
     }
+    if (_breachMode) {
+      return _handleBreachAnswer(text, lower);
+    }
 
     try {
       if (_matchesAny(lower, ['hilfe', 'was kannst du', 'help'])) {
@@ -326,6 +360,13 @@ Das kann ich für dich tun:
       }
       if (_matchesAny(lower, _rpgStartPhrases)) {
         return await _startRpg(reset: false);
+      }
+
+      if (_matchesAny(lower, _breachStartPhrases)) {
+        final challenge = securityBreach.triggerOnDemand();
+        _breachMode = true;
+        _activeBreachChallenge = challenge;
+        return CommandResult(challenge.prompt);
       }
 
       const personaTriggers = {
@@ -1318,5 +1359,26 @@ Das kann ich für dich tun:
     } catch (e) {
       return CommandResult('Fehler: ${e.toString().replaceFirst('Exception: ', '')}');
     }
+  }
+
+  /// The single turn after a breach challenge was shown: resolves the
+  /// challenge (correct/incorrect/skipped), always exits breach mode again —
+  /// this is intentionally a one-shot exchange, not a persistent mode.
+  Future<CommandResult> _handleBreachAnswer(String text, String lower) async {
+    final challenge = _activeBreachChallenge!;
+    _breachMode = false;
+    _activeBreachChallenge = null;
+
+    if (_matchesAny(lower, _breachSkipPhrases)) {
+      return CommandResult('Sicherheitsbruch-Simulation übersprungen. Es war ohnehin nur eine Übung, Master.');
+    }
+
+    if (challenge.isCorrect(text)) {
+      final xp = await gamification.awardForBreach();
+      return CommandResult('✅ Firewall erfolgreich verteidigt! ${challenge.explanation}${xp.toSuffix()}');
+    }
+    return CommandResult(
+      '❌ Firewall kompromittiert! ${challenge.explanation} Keine Sorge, Master — reine Simulation, alle echten Systeme sind unberührt.',
+    );
   }
 }

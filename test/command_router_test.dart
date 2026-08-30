@@ -29,6 +29,7 @@ import 'package:jarvis_mobile/services/notification_service.dart';
 import 'package:jarvis_mobile/services/qr_service.dart';
 import 'package:jarvis_mobile/services/random_fun_service.dart';
 import 'package:jarvis_mobile/services/rpg_service.dart';
+import 'package:jarvis_mobile/services/security_breach_service.dart';
 import 'package:jarvis_mobile/services/settings_service.dart';
 import 'package:jarvis_mobile/services/soundboard_service.dart';
 import 'package:jarvis_mobile/services/spotify_service.dart';
@@ -420,6 +421,7 @@ void main() {
   late JournalService journal;
   late FakeAmbientSoundService ambient;
   late FakeMoodCaptureService moodCapture;
+  late SecurityBreachService securityBreach;
   late CommandRouter router;
 
   // Builds a CommandRouter from the shared setUp() fakes, with optional
@@ -466,6 +468,7 @@ void main() {
     journal: journal,
     ambient: ambient,
     moodCapture: moodCapture,
+    securityBreach: securityBreach,
   );
 
   setUp(() async {
@@ -503,6 +506,7 @@ void main() {
     journal = JournalService();
     ambient = FakeAmbientSoundService();
     moodCapture = FakeMoodCaptureService()..nextSample = _loudSquareWaveSample();
+    securityBreach = SecurityBreachService();
 
     router = buildRouter();
     // Pre-claim today's gamification bonus so it doesn't prepend a "🎉
@@ -1308,6 +1312,52 @@ void main() {
       final freshRouter = buildRouter(lateNightTeaseOverride: fakeTease);
       await freshRouter.handle('erzähl mir einen witz');
       expect(notifications.immediateNotificationCalls, 0);
+    });
+  });
+
+  group('Simulierte Sicherheitsbrüche', () {
+    final ddosChallenge = SecurityBreachService.challenges.firstWhere((c) => c.id == 'ddos');
+
+    test('on-demand trigger shows a challenge prompt', () async {
+      final result = await router.handle('simuliere einen sicherheitsbruch');
+      expect(result.reply, contains('SICHERHEITSBRUCH ERKANNT'));
+    });
+
+    test('correct answer awards XP and confirms the firewall was defended', () async {
+      router.startBreachChallenge(ddosChallenge);
+      final result = await router.handle('a');
+      expect(result.reply, contains('Firewall erfolgreich verteidigt'));
+      expect(result.reply, contains('+${GamificationService.breachXp} XP'));
+    });
+
+    test('incorrect answer gives a harmless failure message and no XP', () async {
+      router.startBreachChallenge(ddosChallenge);
+      final result = await router.handle('b');
+      expect(result.reply, contains('Firewall kompromittiert'));
+      expect(result.reply, isNot(contains('XP')));
+    });
+
+    test('a skip phrase exits without scoring right or wrong', () async {
+      router.startBreachChallenge(ddosChallenge);
+      final result = await router.handle('überspringen');
+      expect(result.reply, contains('übersprungen'));
+      expect(result.reply, isNot(contains('Firewall')));
+    });
+
+    test('breach mode is single-turn: normal commands work again right after', () async {
+      router.startBreachChallenge(ddosChallenge);
+      await router.handle('a');
+      final result = await router.handle('hilfe');
+      expect(result.reply, contains('Das kann ich für dich tun'));
+    });
+
+    test('breach mode suppresses the daily bonus and late-night tease while active', () async {
+      final fakeTease = FakeLateNightTeaseService()..nextTease = 'Geh schlafen!';
+      final freshRouter = buildRouter(lateNightTeaseOverride: fakeTease);
+      freshRouter.startBreachChallenge(ddosChallenge);
+      final result = await freshRouter.handle('a');
+      expect(result.reply, isNot(contains('Geh schlafen!')));
+      expect(fakeTease.callCount, 0);
     });
   });
 

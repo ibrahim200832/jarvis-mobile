@@ -63,6 +63,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _eveningSummaryEnabled = false;
   bool _eveningJournalEnabled = false;
   bool _nightAlertEnabled = false;
+  bool _securityBreachEnabled = true;
   bool _hudEffectsEnabled = true;
   bool _moodAutoAdjustEnabled = true;
   bool _testingHomeAssistant = false;
@@ -123,6 +124,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _eveningSummaryEnabled = await widget.settings.getEveningSummaryEnabled();
     _eveningJournalEnabled = await widget.settings.getEveningJournalEnabled();
     _nightAlertEnabled = await widget.settings.getNightAlertEnabled();
+    _securityBreachEnabled = await widget.settings.getSecurityBreachEnabled();
     _hudEffectsEnabled = await widget.settings.getHudEffectsEnabled();
     _moodAutoAdjustEnabled = await widget.settings.getMoodAutoAdjustEnabled();
     final savedVoiceName = await widget.settings.getTtsVoiceName();
@@ -185,6 +187,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await widget.settings.setEveningSummaryEnabled(_eveningSummaryEnabled);
     await widget.settings.setEveningJournalEnabled(_eveningJournalEnabled);
     await widget.settings.setNightAlertEnabled(_nightAlertEnabled);
+    await widget.settings.setSecurityBreachEnabled(_securityBreachEnabled);
     await widget.settings.setHudEffectsEnabled(_hudEffectsEnabled);
     await widget.settings.setMoodAutoAdjustEnabled(_moodAutoAdjustEnabled);
     await widget.briefing.rescheduleAll();
@@ -443,6 +446,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             value: _nightAlertEnabled,
             onChanged: (value) => setState(() => _nightAlertEnabled = value),
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Simulierte Sicherheitsbrüche'),
+            subtitle: const Text(
+              'JARVIS zeigt beim App-Start gelegentlich (max. 1x/Tag, kleine Zufallschance) eine harmlose '
+              'Firewall-Mini-Challenge im Chat. Auch jederzeit manuell per "simuliere einen sicherheitsbruch".',
+              style: TextStyle(fontSize: 12),
+            ),
+            value: _securityBreachEnabled,
+            onChanged: (value) => setState(() => _securityBreachEnabled = value),
           ),
           const SizedBox(height: 24),
           Text('HUD-Optik', style: Theme.of(context).textTheme.titleMedium),

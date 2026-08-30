@@ -84,6 +84,7 @@ class GamificationService {
   static const timerXp = 5;
   static const commitXp = 15;
   static const challengeXp = 20;
+  static const breachXp = 25;
 
   /// How much virtual "Energie" (0-100) drains per day without a fresh
   /// "ich habe X stunden geschlafen" report — chosen so one skipped day is
@@ -101,6 +102,8 @@ class GamificationService {
     _AchievementDef('veteran', 'Veteran (Level 10)', (s, lvl) => lvl >= 10),
     _AchievementDef('erste_challenge', 'Erste Challenge', (s, lvl) => (s['challengesCompleted'] ?? 0) >= 1),
     _AchievementDef('challenge_serie', 'Challenge-Serie', (s, lvl) => (s['challengesCompleted'] ?? 0) >= 10),
+    _AchievementDef('firewall_verteidiger', 'Firewall-Verteidiger', (s, lvl) => (s['breachesDefended'] ?? 0) >= 1),
+    _AchievementDef('cyber_veteran', 'Cyber-Veteran', (s, lvl) => (s['breachesDefended'] ?? 0) >= 10),
   ];
 
   /// level = 1 + floor(sqrt(xp / 25)), so each level needs progressively
@@ -173,6 +176,7 @@ class GamificationService {
   Future<XpResult> awardForTimer() => _award(timerXp, statKey: 'timersSet');
   Future<XpResult> logCommit() => _award(commitXp, statKey: 'commitsLogged');
   Future<XpResult> awardForChallenge() => _award(challengeXp, statKey: 'challengesCompleted');
+  Future<XpResult> awardForBreach() => _award(breachXp, statKey: 'breachesDefended');
 
   /// Once per calendar day: a small "thanks for using JARVIS today" bonus.
   /// Returns null if already claimed today.

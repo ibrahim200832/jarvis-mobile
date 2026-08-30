@@ -34,6 +34,7 @@ import '../services/proactive_briefing_service.dart';
 import '../services/qr_service.dart';
 import '../services/random_fun_service.dart';
 import '../services/rpg_service.dart';
+import '../services/security_breach_service.dart';
 import '../services/settings_service.dart';
 import '../services/soundboard_service.dart';
 import '../services/speech_service.dart';
@@ -87,6 +88,7 @@ class _HomeScreenState extends State<HomeScreen> {
   );
   final _ambient = AmbientSoundService();
   final _soundboard = SoundboardService();
+  final _securityBreach = SecurityBreachService();
   final _contacts = ContactsService();
   final _timer = TimerService();
   final _spotify = SpotifyService();
@@ -150,6 +152,7 @@ class _HomeScreenState extends State<HomeScreen> {
       journal: JournalService(),
       ambient: _ambient,
       moodCapture: MoodCaptureService(),
+      securityBreach: _securityBreach,
     );
     _timer.onFire = _onTimerFired;
     _speech.init();
@@ -161,6 +164,7 @@ class _HomeScreenState extends State<HomeScreen> {
     // whenever the app is opened, in case Einstellungen enabled them.
     unawaited(_briefing.rescheduleAll());
     unawaited(_maybeDeliverMorningAudioBriefing());
+    unawaited(_maybeTriggerSecurityBreach());
   }
 
   /// If it's the first app-open at/after 7:00 today (and the morning
@@ -176,6 +180,22 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _messages.add(ChatMessage(briefingText, fromUser: false)));
     _scrollToBottom();
     unawaited(_tts.speak(briefingText));
+  }
+
+  /// Small, opt-out-able chance (checked once per app open, at most once a
+  /// day — see SecurityBreachService) of a simulated "security breach"
+  /// mini-challenge appearing in chat. Puts the router into breach mode so
+  /// the user's next message is treated as their answer.
+  Future<void> _maybeTriggerSecurityBreach() async {
+    if (!await _settings.getSecurityBreachEnabled()) return;
+    final challenge = await _securityBreach.maybeTriggerOnOpen();
+    if (challenge == null || !mounted) return;
+    _router.startBreachChallenge(challenge);
+    await _soundboard.play('alert');
+    if (!mounted) return;
+    setState(() => _messages.add(ChatMessage(challenge.prompt, fromUser: false)));
+    _scrollToBottom();
+    unawaited(_tts.speak(challenge.prompt));
   }
 
   Future<void> _loadHudEffectsEnabled() async {
