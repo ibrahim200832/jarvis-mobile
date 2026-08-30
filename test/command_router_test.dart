@@ -165,6 +165,9 @@ class FakeAiChatService extends AiChatService {
   String? lastMessage;
   List<AiTurn>? lastHistory;
   AiAction? nextAction;
+  String? lastStoryMessage;
+  List<AiTurn>? lastStoryHistory;
+  String? lastStoryGenre;
 
   @override
   Future<AiChatResult> ask(
@@ -177,6 +180,19 @@ class FakeAiChatService extends AiChatService {
     lastMessage = message;
     lastHistory = history;
     return AiChatResult(reply: 'FAKE_AI:$message', action: nextAction);
+  }
+
+  @override
+  Future<AiChatResult> askStory(
+    String backendUrl,
+    String message, {
+    required String genre,
+    List<AiTurn> history = const [],
+  }) async {
+    lastStoryMessage = message;
+    lastStoryHistory = history;
+    lastStoryGenre = genre;
+    return AiChatResult(reply: 'FAKE_STORY[$genre]:$message');
   }
 }
 
@@ -572,6 +588,37 @@ void main() {
       final result = await router.handle('welche sounds hast du');
       expect(result.reply, contains('click'));
       expect(result.reply, contains('boot'));
+    });
+  });
+
+  group('Interaktives Storytelling', () {
+    test('starte ein sci-fi abenteuer opens the story with the scifi genre', () async {
+      final result = await router.handle('starte ein sci-fi abenteuer');
+      expect(aiChat.lastStoryGenre, 'scifi');
+      expect(result.reply, contains('FAKE_STORY[scifi]'));
+      expect(result.reply, contains('beende das Abenteuer'));
+    });
+
+    test('starte eine detektivgeschichte opens the story with the detective genre', () async {
+      final result = await router.handle('starte eine detektivgeschichte');
+      expect(aiChat.lastStoryGenre, 'detective');
+      expect(result.reply, contains('FAKE_STORY[detective]'));
+    });
+
+    test('while in story mode, input that looks like another command is treated as a story action', () async {
+      await router.handle('starte ein sci-fi abenteuer');
+      final result = await router.handle('öffne die tür');
+      expect(aiChat.lastStoryMessage, 'öffne die tür');
+      expect(result.reply, contains('FAKE_STORY[scifi]:öffne die tür'));
+    });
+
+    test('beende das abenteuer exits story mode and normal commands work again', () async {
+      await router.handle('starte ein sci-fi abenteuer');
+      final exitResult = await router.handle('beende das abenteuer');
+      expect(exitResult.reply, contains('Willkommen zurück'));
+
+      final helpResult = await router.handle('hilfe');
+      expect(helpResult.reply, contains('Das kann ich für dich tun'));
     });
   });
 

@@ -300,6 +300,32 @@ function buildSystemPrompt(sarcasm) {
   );
 }
 
+// Narrator persona for the interactive text-adventure mode ("Interaktives
+// Storytelling", mode: "story"). Deliberately separate from
+// buildSystemPrompt: no tool use, no assistant framing — purely an
+// in-character narrator. Mirrors the equivalent clause in
+// lib/services/ai_chat_service.dart.
+function buildStorySystemPrompt(genre) {
+  const setting =
+    genre === 'detective'
+      ? 'Du erzählst eine spannende Detektivgeschichte in einer regnerischen Großstadt der 1940er-Jahre, ' +
+        'mit Verdächtigen, Hinweisen und einem ungelösten Fall.'
+      : 'Du erzählst ein spannendes Science-Fiction-Abenteuer an Bord eines Raumschiffs oder auf einem ' +
+        'fremden Planeten, mit Technologie, Gefahr und Entdeckung.';
+  return (
+    'Du bist der Erzähler eines interaktiven Text-Abenteuers für den Nutzer als Hauptfigur ("du"). ' +
+    setting +
+    ' ' +
+    'Beschreibe jede Szene lebendig und atmosphärisch in 3-5 Sätzen, auf Deutsch. Beende jede Antwort mit ' +
+    '2-3 konkreten Handlungsmöglichkeiten, nummeriert (1., 2., 3.), aber der Nutzer darf auch frei etwas ' +
+    'anderes vorschlagen — reagiere dann sinnvoll darauf statt stur bei den Optionen zu bleiben. Halte die ' +
+    'Geschichte konsistent mit dem bisherigen Verlauf. Keine Gewaltverherrlichung oder expliziten ' +
+    'Inhalte; baue bei riskanten Aktionen spannende, aber altersgerechte Konsequenzen ein. Antworte ' +
+    'ausschließlich als Erzähler in der Geschichte — keine Meta-Kommentare, keine Werkzeuge, keine ' +
+    'Erklärungen außerhalb der Geschichte.'
+  );
+}
+
 // Reverted from @cf/openai/gpt-oss-120b back to Llama 3.3 70B. gpt-oss-120b
 // is a reasoning model that repeatedly produced empty completions (neither
 // `response` text nor a tool call — surfaced to the user as "Ich habe keine
@@ -347,11 +373,15 @@ export default {
     let message;
     let history;
     let sarcasm;
+    let mode;
+    let genre;
     try {
       const body = await request.json();
       message = body.message;
       history = Array.isArray(body.history) ? body.history : [];
       sarcasm = body.sarcasm;
+      mode = body.mode;
+      genre = body.genre;
     } catch (_) {
       return json({ error: 'invalid json body' }, 400);
     }
@@ -370,18 +400,24 @@ export default {
       .slice(-MAX_HISTORY_MESSAGES)
       .map((m) => ({ role: m.role, content: m.content }));
 
+    // Interaktives Storytelling (mode: "story") uses a dedicated narrator
+    // persona with no tool use, instead of JARVIS's normal assistant
+    // character/actions.
+    const isStory = mode === 'story';
     // The model has no built-in notion of "now", so tools that need to
     // resolve relative times (e.g. open_youtube_upload's publish_at from
     // "morgen um 18 Uhr") need the current time handed to it explicitly.
-    const systemPrompt = `${buildSystemPrompt(sarcasm)} Aktuelles Datum/Uhrzeit (UTC): ${new Date().toISOString()}.`;
+    const systemPrompt = isStory
+      ? buildStorySystemPrompt(genre)
+      : `${buildSystemPrompt(sarcasm)} Aktuelles Datum/Uhrzeit (UTC): ${new Date().toISOString()}.`;
     const messages = [{ role: 'system', content: systemPrompt }, ...cleanHistory, { role: 'user', content: message }];
 
     let data;
     let toolCall;
     let replyText;
     try {
-      data = await runModel(env, messages, true);
-      toolCall = data.tool_calls?.[0];
+      data = await runModel(env, messages, !isStory);
+      toolCall = isStory ? undefined : data.tool_calls?.[0];
       replyText = (data.response ?? data.result?.response ?? '').toString().trim();
 
       // Belt-and-suspenders: retry once, without tools, if a call ever comes

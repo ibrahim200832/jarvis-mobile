@@ -66,6 +66,27 @@ String jarvisSystemPrompt(double sarcasm) =>
     'ausdrücklich darauf, statt die Nachricht isoliert zu behandeln. Wenn du eine Tatsache nicht sicher '
     'weißt, sag das ehrlich, statt sie zu erfinden.';
 
+/// Narrator persona for the interactive text-adventure mode ("Interaktives
+/// Storytelling"). Deliberately separate from jarvisSystemPrompt: no tool
+/// use, no assistant framing — purely an in-character narrator. Mirrors the
+/// equivalent clause in worker/ai-proxy.js.
+String storySystemPrompt(String genre) {
+  final setting = genre == 'detective'
+      ? 'Du erzählst eine spannende Detektivgeschichte in einer regnerischen Großstadt der 1940er-Jahre, '
+            'mit Verdächtigen, Hinweisen und einem ungelösten Fall.'
+      : 'Du erzählst ein spannendes Science-Fiction-Abenteuer an Bord eines Raumschiffs oder auf einem '
+            'fremden Planeten, mit Technologie, Gefahr und Entdeckung.';
+  return 'Du bist der Erzähler eines interaktiven Text-Abenteuers für den Nutzer als Hauptfigur ("du"). '
+      '$setting '
+      'Beschreibe jede Szene lebendig und atmosphärisch in 3-5 Sätzen, auf Deutsch. Beende jede Antwort mit '
+      '2-3 konkreten Handlungsmöglichkeiten, nummeriert (1., 2., 3.), aber der Nutzer darf auch frei etwas '
+      'anderes vorschlagen — reagiere dann sinnvoll darauf statt stur bei den Optionen zu bleiben. Halte die '
+      'Geschichte konsistent mit dem bisherigen Verlauf. Keine Gewaltverherrlichung oder expliziten '
+      'Inhalte; baue bei riskanten Aktionen spannende, aber altersgerechte Konsequenzen ein. Antworte '
+      'ausschließlich als Erzähler in der Geschichte — keine Meta-Kommentare, keine Werkzeuge, keine '
+      'Erklärungen außerhalb der Geschichte.';
+}
+
 /// Sends free-form questions to an AI. If the user configured their own
 /// backend (see worker/ai-proxy.js) under Einstellungen, that's used — it
 /// holds a real API key server-side and supports phone actions (AiAction).
@@ -132,12 +153,82 @@ class AiChatService {
     );
   }
 
+  Future<AiChatResult> _askFreeFallback(String message, String model, List<AiTurn> history, double sarcasm) {
+    return _getWithRetry(
+      _freeFallbackUri(message, model, history, sarcasm),
+      failMsg: 'Ich hab gerade keine Antwort bekommen, Master',
+      timeoutMsg: 'Die Antwort hat zu lange gedauert, Master. Versuch es gleich nochmal.',
+      offlineMsg: 'Ich konnte die KI gerade nicht erreichen, Master. Prüf deine Internetverbindung.',
+    );
+  }
+
+  /// One turn of an interactive text-adventure (see storySystemPrompt).
+  /// Deliberately separate from ask(): no tool use, dedicated narrator
+  /// persona, and its own conversation history kept by the caller.
+  Future<AiChatResult> askStory(
+    String backendUrl,
+    String message, {
+    required String genre,
+    List<AiTurn> history = const [],
+  }) async {
+    if (backendUrl.trim().isEmpty) {
+      return _askStoryFreeFallback(message, genre, history);
+    }
+    try {
+      final res = await http
+          .post(
+            Uri.parse(backendUrl.trim()),
+            headers: {'content-type': 'application/json'},
+            body: jsonEncode({
+              'message': message,
+              'history': history.map((t) => t.toJson()).toList(),
+              'mode': 'story',
+              'genre': genre,
+            }),
+          )
+          .timeout(const Duration(seconds: 25));
+      if (res.statusCode != 200) {
+        return AiChatResult(reply: 'Die Geschichte konnte nicht weitererzählt werden (Code ${res.statusCode}).');
+      }
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      final reply = data['reply'] as String?;
+      return AiChatResult(reply: (reply == null || reply.isEmpty) ? 'Ich habe keine Antwort erhalten.' : reply);
+    } catch (_) {
+      return AiChatResult(
+        reply: 'Ich konnte die Geschichte gerade nicht weitererzählen. Prüf deine Internetverbindung.',
+      );
+    }
+  }
+
+  Future<AiChatResult> _askStoryFreeFallback(String message, String genre, List<AiTurn> history) {
+    final transcript = history.map((t) => '${t.role == 'user' ? 'Spieler' : 'Erzähler'}: ${t.content}').join('\n');
+    final prompt = '${storySystemPrompt(genre)}'
+        '${transcript.isEmpty ? '' : '\n\nBisheriger Verlauf:\n$transcript'}'
+        '\n\nSpieler: $message\n\nErzähler:';
+    final uri = Uri(
+      scheme: 'https',
+      host: 'text.pollinations.ai',
+      pathSegments: [prompt],
+      queryParameters: {'model': 'openai'},
+    );
+    return _getWithRetry(
+      uri,
+      failMsg: 'Ich hab die Geschichte gerade nicht weitererzählen können',
+      timeoutMsg: 'Die Antwort hat zu lange gedauert. Versuch es gleich nochmal.',
+      offlineMsg: 'Ich konnte die Geschichte gerade nicht weitererzählen. Prüf deine Internetverbindung.',
+    );
+  }
+
   /// Retries once on a transient failure (timeout, bad status, empty body)
   /// before giving up — pollinations.ai is a free, unauthenticated public
   /// endpoint with no uptime guarantee, so a single blip shouldn't surface
   /// as an outright failure to the user.
-  Future<AiChatResult> _askFreeFallback(String message, String model, List<AiTurn> history, double sarcasm) async {
-    final uri = _freeFallbackUri(message, model, history, sarcasm);
+  Future<AiChatResult> _getWithRetry(
+    Uri uri, {
+    required String failMsg,
+    required String timeoutMsg,
+    required String offlineMsg,
+  }) async {
     for (var attempt = 0; attempt < 2; attempt++) {
       try {
         final res = await http.get(uri).timeout(const Duration(seconds: 25));
@@ -145,19 +236,15 @@ class AiChatService {
           return AiChatResult(reply: res.body.trim());
         }
         if (attempt == 0) continue;
-        return AiChatResult(
-          reply: 'Ich hab gerade keine Antwort bekommen, Master (Code ${res.statusCode}). Versuch es gleich nochmal.',
-        );
+        return AiChatResult(reply: '$failMsg (Code ${res.statusCode}). Versuch es gleich nochmal.');
       } on TimeoutException {
         if (attempt == 0) continue;
-        return AiChatResult(reply: 'Die Antwort hat zu lange gedauert, Master. Versuch es gleich nochmal.');
+        return AiChatResult(reply: timeoutMsg);
       } catch (_) {
         if (attempt == 0) continue;
-        return AiChatResult(
-          reply: 'Ich konnte die KI gerade nicht erreichen, Master. Prüf deine Internetverbindung.',
-        );
+        return AiChatResult(reply: offlineMsg);
       }
     }
-    return AiChatResult(reply: 'Ich hab gerade keine Antwort bekommen, Master.');
+    return AiChatResult(reply: '$failMsg.');
   }
 }

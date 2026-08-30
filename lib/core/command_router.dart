@@ -115,6 +115,21 @@ class CommandRouter {
   final _aiHistory = <AiTurn>[];
   static const _maxHistoryTurns = 8;
 
+  /// Interaktives Storytelling: while active, every input (except the exit
+  /// phrase) is treated as the player's story action instead of going
+  /// through the normal command ladder below.
+  bool _storyMode = false;
+  String _storyGenre = 'scifi';
+  final _storyHistory = <AiTurn>[];
+  static const _maxStoryTurns = 12;
+  static const _storyExitPhrases = [
+    'beende das abenteuer',
+    'abenteuer beenden',
+    'verlasse das abenteuer',
+    'story beenden',
+    'textabenteuer beenden',
+  ];
+
   static const helpText = '''
 Das kann ich für dich tun:
 • "wie spät ist es" / "welcher tag ist heute"
@@ -143,6 +158,7 @@ Das kann ich für dich tun:
 • "spiele <Song> auf spotify" / "spiele playlist <Name> auf spotify" (Spotify-Verbindung nötig, siehe Einstellungen)
 • "code snippet für <Flutter-Widget oder Git-Befehl>" (kopiert in die Zwischenablage) / "welche code snippets kennst du"
 • "spiel sound <Name>" (z.B. boot, scan, alarm) / "welche sounds hast du"
+• "starte ein sci-fi abenteuer" / "starte eine detektivgeschichte" (interaktives Textadventure, "beende das abenteuer" zum Verlassen)
 • alles andere: frag mich einfach frei, ich antworte mit echter KI und kann
   dabei auch direkt anrufen, WhatsApp schreiben oder Apps öffnen
 ''';
@@ -154,9 +170,30 @@ Das kann ich für dich tun:
       return CommandResult('Ich habe dich nicht verstanden.');
     }
 
+    if (_storyMode) {
+      return _handleStoryTurn(text, lower);
+    }
+
     try {
       if (_matchesAny(lower, ['hilfe', 'was kannst du', 'help'])) {
         return CommandResult(helpText);
+      }
+
+      final detectiveStart = _matchesAny(lower, [
+        'starte eine detektivgeschichte',
+        'starte ein detektiv-abenteuer',
+        'starte einen krimi',
+      ]);
+      final scifiStart = _matchesAny(lower, [
+        'starte ein sci-fi abenteuer',
+        'starte ein science-fiction abenteuer',
+        'starte ein textabenteuer',
+        'starte ein text-abenteuer',
+        'starte ein rollenspiel',
+        'starte ein interaktives abenteuer',
+      ]);
+      if (detectiveStart || scifiStart) {
+        return await _startStory(detectiveStart ? 'detective' : 'scifi');
       }
 
       if (_matchesAny(lower, ['wie spät', 'uhrzeit', 'what time'])) {
@@ -473,6 +510,47 @@ Das kann ich für dich tun:
         _aiHistory.removeAt(0);
       }
       return await _handleAiResult(aiResult);
+    } catch (e) {
+      return CommandResult('Fehler: ${e.toString().replaceFirst('Exception: ', '')}');
+    }
+  }
+
+  Future<CommandResult> _startStory(String genre) async {
+    try {
+      _storyGenre = genre;
+      _storyHistory.clear();
+      final backendUrl = await settings.getAiBackendUrl();
+      const kickoff = 'Starte die Geschichte mit einer packenden Eröffnungsszene.';
+      final result = await aiChat.askStory(backendUrl ?? '', kickoff, genre: genre, history: const []);
+      _storyHistory.add(AiTurn(role: 'user', content: kickoff));
+      _storyHistory.add(AiTurn(role: 'assistant', content: result.reply));
+      _storyMode = true;
+      return CommandResult('${result.reply}\n\n(Sag jederzeit "beende das Abenteuer", um auszusteigen.)');
+    } catch (e) {
+      return CommandResult('Fehler: ${e.toString().replaceFirst('Exception: ', '')}');
+    }
+  }
+
+  Future<CommandResult> _handleStoryTurn(String text, String lower) async {
+    if (_matchesAny(lower, _storyExitPhrases)) {
+      _storyMode = false;
+      _storyHistory.clear();
+      return CommandResult('Das Abenteuer endet hier. Willkommen zurück, Master.');
+    }
+    try {
+      final backendUrl = await settings.getAiBackendUrl();
+      final result = await aiChat.askStory(
+        backendUrl ?? '',
+        text,
+        genre: _storyGenre,
+        history: List.unmodifiable(_storyHistory),
+      );
+      _storyHistory.add(AiTurn(role: 'user', content: text));
+      _storyHistory.add(AiTurn(role: 'assistant', content: result.reply));
+      while (_storyHistory.length > _maxStoryTurns * 2) {
+        _storyHistory.removeAt(0);
+      }
+      return CommandResult(result.reply);
     } catch (e) {
       return CommandResult('Fehler: ${e.toString().replaceFirst('Exception: ', '')}');
     }
