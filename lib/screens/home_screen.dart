@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../core/command_router.dart';
 import '../services/ai_chat_service.dart';
+import '../services/anime_service.dart';
 import '../services/app_launcher_service.dart';
 import '../services/call_service.dart';
 import '../services/code_snippet_service.dart';
@@ -128,6 +129,7 @@ class _HomeScreenState extends State<HomeScreen> {
       musicDj: MusicDjService(),
       briefing: _briefing,
       homeAssistant: HomeAssistantService(),
+      anime: AnimeService(),
     );
     _timer.onFire = _onTimerFired;
     _speech.init();

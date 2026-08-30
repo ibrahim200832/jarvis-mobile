@@ -1,6 +1,7 @@
 import 'package:intl/intl.dart';
 
 import '../services/ai_chat_service.dart';
+import '../services/anime_service.dart';
 import '../services/app_launcher_service.dart';
 import '../services/calculator_service.dart';
 import '../services/call_service.dart';
@@ -88,6 +89,7 @@ class CommandRouter {
     required this.musicDj,
     required this.briefing,
     required this.homeAssistant,
+    required this.anime,
   });
 
   final WikipediaService wikipedia;
@@ -118,6 +120,7 @@ class CommandRouter {
   final MusicDjService musicDj;
   final ProactiveBriefingService briefing;
   final HomeAssistantService homeAssistant;
+  final AnimeService anime;
 
   /// Rolling window of past AI exchanges (user+assistant pairs), so a
   /// follow-up like "und morgen?" is understood in context instead of
@@ -147,6 +150,7 @@ Das kann ich für dich tun:
 • "wie spät ist es" / "welcher tag ist heute"
 • "erzähl mir einen witz"
 • "wikipedia <Thema>" oder "was ist <Thema>"
+• "anime <Titel>" / "manga <Titel>" (Infos über AniList, garantiert ohne 18+-Inhalte)
 • "suche im internet nach <Frage>" / "recherchiere <Thema>"
 • "nachrichten" (NewsAPI-Schlüssel in Einstellungen nötig)
 • "wetter" oder "wetter in <Stadt>" (OpenWeatherMap-Schlüssel nötig)
@@ -257,6 +261,16 @@ Das kann ich für dich tun:
       if (wikiQuery != null) {
         final result = await wikipedia.summary(wikiQuery);
         return CommandResult(result);
+      }
+
+      final animeQuery = _extractAfter(lower, text, ['anime info zu', 'suche anime nach', 'anime ']);
+      if (animeQuery != null) {
+        return CommandResult(await _lookupAnime(animeQuery, isManga: false));
+      }
+
+      final mangaQuery = _extractAfter(lower, text, ['manga info zu', 'suche manga nach', 'manga ']);
+      if (mangaQuery != null) {
+        return CommandResult(await _lookupAnime(mangaQuery, isManga: true));
       }
 
       final webSearchQuery = _extractAfter(lower, text, ['suche im internet nach', 'suche online nach', 'recherchiere']);
@@ -811,6 +825,24 @@ Das kann ich für dich tun:
       return 'Home Assistant ist nicht eingerichtet. Bitte URL und Token in den Einstellungen eintragen.';
     }
     return homeAssistant.status(creds.$1, creds.$2, name);
+  }
+
+  Future<String> _lookupAnime(String title, {required bool isManga}) async {
+    final result = isManga ? await anime.searchManga(title) : await anime.searchAnime(title);
+    if (result == null) return 'Ich konnte "$title" nicht finden.';
+
+    final buffer = StringBuffer(result.title);
+    if (result.year != null) buffer.write(' (${result.year})');
+    buffer.write('.');
+    if (result.genres.isNotEmpty) buffer.write(' Genres: ${result.genres.take(3).join(', ')}.');
+    if (result.averageScore != null) buffer.write(' Bewertung: ${result.averageScore}/100.');
+    final unit = isManga ? 'Kapitel' : 'Episoden';
+    if (result.episodesOrChapters != null) buffer.write(' $unit: ${result.episodesOrChapters}.');
+    if (result.description != null) {
+      final desc = result.description!.length > 300 ? '${result.description!.substring(0, 300)}…' : result.description!;
+      buffer.write(' $desc');
+    }
+    return buffer.toString().trim();
   }
 
   Future<String> _playMoodOnSpotify(MoodPick pick) async {

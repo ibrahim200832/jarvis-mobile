@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:installed_apps/app_info.dart';
 import 'package:jarvis_mobile/core/command_router.dart';
 import 'package:jarvis_mobile/services/ai_chat_service.dart';
+import 'package:jarvis_mobile/services/anime_service.dart';
 import 'package:jarvis_mobile/services/app_launcher_service.dart';
 import 'package:jarvis_mobile/services/call_service.dart';
 import 'package:jarvis_mobile/services/code_snippet_service.dart';
@@ -63,6 +64,24 @@ class FakeWeatherService extends WeatherService {
   @override
   Future<WeatherResult> byCoordinates(String apiKey, double lat, double lon) async =>
       WeatherResult(description: 'bewölkt', tempCelsius: 10.0, city: 'Irgendwo');
+}
+
+class FakeAnimeService extends AnimeService {
+  AnimeResult? nextResult = AnimeResult(
+    title: 'Hyouka',
+    description: 'Ein Mitglied des Klassik-Klubs löst kleine Alltagsrätsel.',
+    episodesOrChapters: 22,
+    status: 'FINISHED',
+    averageScore: 82,
+    genres: ['Mystery', 'Slice of Life'],
+    year: 2012,
+  );
+
+  @override
+  Future<AnimeResult?> searchAnime(String title) async => nextResult;
+
+  @override
+  Future<AnimeResult?> searchManga(String title) async => nextResult;
 }
 
 class FakeWebSearchService extends WebSearchService {
@@ -281,6 +300,7 @@ void main() {
   late FakeSoundboardService soundboard;
   late GamificationService gamification;
   late ProactiveBriefingService briefing;
+  late FakeAnimeService anime;
   late CommandRouter router;
 
   setUp(() async {
@@ -310,6 +330,7 @@ void main() {
       gamification: gamification,
       settings: settings,
     );
+    anime = FakeAnimeService();
 
     router = CommandRouter(
       wikipedia: wikipedia,
@@ -340,6 +361,7 @@ void main() {
       musicDj: MusicDjService(),
       briefing: briefing,
       homeAssistant: HomeAssistantService(),
+      anime: anime,
     );
     // Pre-claim today's gamification bonus so it doesn't prepend a "🎉
     // Tages-Bonus" line to the very first handle() call in each test —
@@ -724,6 +746,7 @@ void main() {
         musicDj: MusicDjService(),
         briefing: briefing,
         homeAssistant: HomeAssistantService(),
+        anime: anime,
       );
 
       final first = await freshRouter.handle('hilfe');
@@ -781,6 +804,26 @@ void main() {
     test('status von heizung reports not set up', () async {
       final result = await router.handle('status von heizung');
       expect(result.reply, contains('Home Assistant ist nicht eingerichtet'));
+    });
+  });
+
+  group('Anime & Manga (AniList)', () {
+    test('anime <Titel> reports the looked-up info', () async {
+      final result = await router.handle('anime hyouka');
+      expect(result.reply, contains('Hyouka'));
+      expect(result.reply, contains('2012'));
+      expect(result.reply, contains('Episoden: 22'));
+    });
+
+    test('manga <Titel> uses "Kapitel" instead of "Episoden"', () async {
+      final result = await router.handle('manga hyouka');
+      expect(result.reply, contains('Kapitel: 22'));
+    });
+
+    test('unknown title reports not found', () async {
+      anime.nextResult = null;
+      final result = await router.handle('anime dieswirdsnie existieren');
+      expect(result.reply, contains('nicht finden'));
     });
   });
 
