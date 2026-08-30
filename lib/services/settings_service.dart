@@ -23,6 +23,8 @@ class SettingsService {
   static const _keyHudEffectsEnabled = 'hud_effects_enabled';
   static const _keyMoodAutoAdjustEnabled = 'mood_auto_adjust_enabled';
   static const _keyEveningJournalEnabled = 'evening_journal_enabled';
+  static const _keyNightAlertEnabled = 'night_alert_enabled';
+  static const _keySecurityBreachEnabled = 'security_breach_enabled';
 
   Future<String?> getNewsApiKey() async {
     final prefs = await SharedPreferences.getInstance();
@@ -248,6 +250,31 @@ class SettingsService {
   Future<bool> getMoodAutoAdjustEnabled() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(_keyMoodAutoAdjustEnabled) ?? true;
+  }
+
+  /// Opt-in: whether the late-night coding tease also fires as a real OS
+  /// push notification (in addition to the in-chat line, which always
+  /// appears regardless of this setting).
+  Future<bool> getNightAlertEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyNightAlertEnabled) ?? false;
+  }
+
+  Future<void> setNightAlertEnabled(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyNightAlertEnabled, value);
+  }
+
+  /// Opt-out: whether JARVIS may occasionally simulate a "security breach"
+  /// mini-challenge on app open (see security_breach_service.dart).
+  Future<bool> getSecurityBreachEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keySecurityBreachEnabled) ?? true;
+  }
+
+  Future<void> setSecurityBreachEnabled(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keySecurityBreachEnabled, value);
   }
 
   Future<void> setMoodAutoAdjustEnabled(bool value) async {

@@ -29,6 +29,18 @@ class LateNightTeaseService {
         'lieber den Notarzt rufen?',
   };
 
+  /// Distinct, more "emergency alert"-flavored lines for the OS push
+  /// notification (see NotificationService.showImmediateNotification) that
+  /// fires alongside the in-chat tease — separate wording since a push
+  /// notification is seen out of context, without the surrounding chat.
+  static const _emergencyLines = {
+    'drill_sergeant': 'SOLDAT! Kaffeevorrat kritisch. Sofortiger Rückzug ins Bett angeordnet!',
+    'gaming_buddy': 'Alter, dein Kaffeevorrat ist im roten Bereich. Feierabend, Zocker.',
+    'butler': 'Verzeihung, gnädiger Herr — der Kaffeevorrat ist kritisch. Eine Systemabschaltung wird '
+        'dringend empfohlen.',
+    'standard': '🚨 SYSTEMWARNUNG: Kaffeevorrat kritisch. Soll ich das System herunterfahren, Master?',
+  };
+
   bool isLateNight([DateTime? now]) {
     final hour = (now ?? DateTime.now()).hour;
     return hour >= 23 || hour < 5;
@@ -56,4 +68,6 @@ class LateNightTeaseService {
 
     return _teaseLines[persona] ?? _teaseLines['standard']!;
   }
+
+  String emergencyNotificationBody(String persona) => _emergencyLines[persona] ?? _emergencyLines['standard']!;
 }

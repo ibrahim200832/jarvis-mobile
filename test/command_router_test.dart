@@ -317,6 +317,15 @@ class FakeNotificationService extends NotificationService {
 
   @override
   Future<List<String>> pendingReminderBodies() async => reminderBodies;
+
+  int immediateNotificationCalls = 0;
+  String? lastImmediateNotificationBody;
+
+  @override
+  Future<void> showImmediateNotification({required int id, required String title, required String body}) async {
+    immediateNotificationCalls++;
+    lastImmediateNotificationBody = body;
+  }
 }
 
 class FakeCodeSnippetService extends CodeSnippetService {
@@ -1254,6 +1263,30 @@ void main() {
       final result = await freshRouter.handle('ich öffne die Tür');
       expect(result.reply, isNot(contains('Geh schlafen!')));
       expect(fakeTease.callCount, callsBefore);
+    });
+
+    test('no push notification by default, even when a tease fires', () async {
+      final fakeTease = FakeLateNightTeaseService()..nextTease = 'Geh schlafen!';
+      final freshRouter = buildRouter(lateNightTeaseOverride: fakeTease);
+      await freshRouter.handle('erzähl mir einen witz');
+      expect(notifications.immediateNotificationCalls, 0);
+    });
+
+    test('push notification fires when night-alert setting is enabled', () async {
+      await settings.setNightAlertEnabled(true);
+      final fakeTease = FakeLateNightTeaseService()..nextTease = 'Geh schlafen!';
+      final freshRouter = buildRouter(lateNightTeaseOverride: fakeTease);
+      await freshRouter.handle('erzähl mir einen witz');
+      expect(notifications.immediateNotificationCalls, 1);
+      expect(notifications.lastImmediateNotificationBody, contains('Kaffeevorrat'));
+    });
+
+    test('no push notification when no tease fires, even if the setting is enabled', () async {
+      await settings.setNightAlertEnabled(true);
+      final fakeTease = FakeLateNightTeaseService();
+      final freshRouter = buildRouter(lateNightTeaseOverride: fakeTease);
+      await freshRouter.handle('erzähl mir einen witz');
+      expect(notifications.immediateNotificationCalls, 0);
     });
   });
 

@@ -61,6 +61,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _morningBriefingEnabled = false;
   bool _eveningSummaryEnabled = false;
   bool _eveningJournalEnabled = false;
+  bool _nightAlertEnabled = false;
   bool _hudEffectsEnabled = true;
   bool _moodAutoAdjustEnabled = true;
   bool _testingHomeAssistant = false;
@@ -120,6 +121,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _morningBriefingEnabled = await widget.settings.getMorningBriefingEnabled();
     _eveningSummaryEnabled = await widget.settings.getEveningSummaryEnabled();
     _eveningJournalEnabled = await widget.settings.getEveningJournalEnabled();
+    _nightAlertEnabled = await widget.settings.getNightAlertEnabled();
     _hudEffectsEnabled = await widget.settings.getHudEffectsEnabled();
     _moodAutoAdjustEnabled = await widget.settings.getMoodAutoAdjustEnabled();
     final savedVoiceName = await widget.settings.getTtsVoiceName();
@@ -181,6 +183,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await widget.settings.setMorningBriefingEnabled(_morningBriefingEnabled);
     await widget.settings.setEveningSummaryEnabled(_eveningSummaryEnabled);
     await widget.settings.setEveningJournalEnabled(_eveningJournalEnabled);
+    await widget.settings.setNightAlertEnabled(_nightAlertEnabled);
     await widget.settings.setHudEffectsEnabled(_hudEffectsEnabled);
     await widget.settings.setMoodAutoAdjustEnabled(_moodAutoAdjustEnabled);
     await widget.briefing.rescheduleAll();
@@ -429,6 +432,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: const Text('Abend-Tagebuch (21:30 Uhr)'),
             value: _eveningJournalEnabled,
             onChanged: (value) => setState(() => _eveningJournalEnabled = value),
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Sarkastische Notfall-Warnungen'),
+            subtitle: const Text(
+              'Zusätzliche Push-Benachrichtigung, wenn JARVIS dich spätnachts noch beim Programmieren erwischt.',
+              style: TextStyle(fontSize: 12),
+            ),
+            value: _nightAlertEnabled,
+            onChanged: (value) => setState(() => _nightAlertEnabled = value),
           ),
           const SizedBox(height: 24),
           Text('HUD-Optik', style: Theme.of(context).textTheme.titleMedium),

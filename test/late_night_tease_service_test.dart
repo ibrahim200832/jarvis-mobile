@@ -84,4 +84,21 @@ void main() {
       expect(result, isNotNull);
     });
   });
+
+  group('emergencyNotificationBody', () {
+    test('returns a persona-specific line', () {
+      expect(service.emergencyNotificationBody('drill_sergeant'), contains('SOLDAT'));
+    });
+
+    test('falls back to the standard line for an unknown persona', () {
+      final result = service.emergencyNotificationBody('unknown');
+      expect(result, isNotEmpty);
+      expect(result, contains('Kaffeevorrat'));
+    });
+
+    test('is distinct from the in-chat tease line for the same persona', () {
+      final tease = service.emergencyNotificationBody('standard');
+      expect(tease, isNot(service.emergencyNotificationBody('drill_sergeant')));
+    });
+  });
 }

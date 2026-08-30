@@ -123,4 +123,28 @@ class NotificationService {
         .where((b) => b.isNotEmpty)
         .toList();
   }
+
+  /// Shows a notification immediately (not scheduled) — used for the
+  /// sarcastic late-night emergency warnings, which need to fire the
+  /// moment the condition is detected, not at a fixed daily time.
+  Future<void> showImmediateNotification({required int id, required String title, required String body}) async {
+    await _ensureInitialized();
+    final status = await Permission.notification.request();
+    if (!status.isGranted) return;
+
+    await _plugin.show(
+      id: id,
+      title: title,
+      body: body,
+      notificationDetails: const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'jarvis_alerts',
+          'Notfall-Warnungen',
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+        iOS: DarwinNotificationDetails(),
+      ),
+    );
+  }
 }

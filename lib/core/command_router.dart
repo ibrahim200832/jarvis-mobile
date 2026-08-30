@@ -254,7 +254,16 @@ Das kann ich für dich tun:
     final tease = inNarrativeMode ? null : await lateNightTease.maybeTease(persona, rawInput.trim().toLowerCase());
     final result = await _handleRaw(rawInput);
     var reply = result.reply;
-    if (tease != null) reply = '$reply\n\n$tease';
+    if (tease != null) {
+      reply = '$reply\n\n$tease';
+      if (await settings.getNightAlertEnabled()) {
+        await notifications.showImmediateNotification(
+          id: 9004,
+          title: 'J.A.R.V.I.S. Notfall-Warnung',
+          body: lateNightTease.emergencyNotificationBody(persona),
+        );
+      }
+    }
     if (dailyBonus != null) reply = '🎉 Tages-Bonus${dailyBonus.toSuffix()}\n\n$reply';
     return CommandResult(
       reply,
