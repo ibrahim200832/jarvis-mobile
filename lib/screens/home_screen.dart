@@ -111,6 +111,23 @@ class _HomeScreenState extends State<HomeScreen> {
     _timer.onFire = _onTimerFired;
     _speech.init();
     unawaited(_checkForUpdate());
+    unawaited(_applyStoredTtsSettings());
+  }
+
+  /// Loads the saved TTS voice/pitch/speech-rate (Einstellungen) so JARVIS
+  /// speaks with them from the very first utterance, not just after the
+  /// user opens Einstellungen once.
+  Future<void> _applyStoredTtsSettings() async {
+    final voiceName = await _settings.getTtsVoiceName();
+    final voiceLocale = await _settings.getTtsVoiceLocale();
+    final pitch = await _settings.getTtsPitch();
+    final speechRate = await _settings.getTtsSpeechRate();
+    await _tts.applyVoiceSettings(
+      voiceName: voiceName,
+      voiceLocale: voiceLocale,
+      pitch: pitch,
+      speechRate: speechRate,
+    );
   }
 
   /// Announces a fired timer the same way any other JARVIS reply is shown:
@@ -566,6 +583,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       contacts: _contacts,
                       spotify: _spotify,
                       tiktok: _tiktok,
+                      tts: _tts,
                     ),
                   ),
                 ),

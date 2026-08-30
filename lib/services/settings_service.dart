@@ -10,6 +10,10 @@ class SettingsService {
   static const _keyAiModel = 'ai_model';
   static const _keySpotifyClientId = 'spotify_client_id';
   static const _keyTiktokClientKey = 'tiktok_client_key';
+  static const _keyTtsVoiceName = 'tts_voice_name';
+  static const _keyTtsVoiceLocale = 'tts_voice_locale';
+  static const _keyTtsPitch = 'tts_pitch';
+  static const _keyTtsSpeechRate = 'tts_speech_rate';
 
   Future<String?> getNewsApiKey() async {
     final prefs = await SharedPreferences.getInstance();
@@ -110,5 +114,47 @@ class SettingsService {
   Future<void> setTiktokClientKey(String value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyTiktokClientKey, value);
+  }
+
+  Future<String?> getTtsVoiceName() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyTtsVoiceName);
+  }
+
+  Future<String?> getTtsVoiceLocale() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyTtsVoiceLocale);
+  }
+
+  /// Pass null/null to reset back to the system default voice.
+  Future<void> setTtsVoice(String? name, String? locale) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (name == null || locale == null) {
+      await prefs.remove(_keyTtsVoiceName);
+      await prefs.remove(_keyTtsVoiceLocale);
+    } else {
+      await prefs.setString(_keyTtsVoiceName, name);
+      await prefs.setString(_keyTtsVoiceLocale, locale);
+    }
+  }
+
+  Future<double> getTtsPitch() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getDouble(_keyTtsPitch) ?? 1.0;
+  }
+
+  Future<void> setTtsPitch(double value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_keyTtsPitch, value);
+  }
+
+  Future<double> getTtsSpeechRate() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getDouble(_keyTtsSpeechRate) ?? 0.5;
+  }
+
+  Future<void> setTtsSpeechRate(double value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_keyTtsSpeechRate, value);
   }
 }

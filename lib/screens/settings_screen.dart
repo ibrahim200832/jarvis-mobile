@@ -5,6 +5,7 @@ import '../services/contacts_service.dart';
 import '../services/settings_service.dart';
 import '../services/spotify_service.dart';
 import '../services/tiktok_upload_service.dart';
+import '../services/tts_service.dart';
 import 'changelog_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -14,12 +15,14 @@ class SettingsScreen extends StatefulWidget {
     required this.contacts,
     required this.spotify,
     required this.tiktok,
+    required this.tts,
   });
 
   final SettingsService settings;
   final ContactsService contacts;
   final SpotifyService spotify;
   final TikTokUploadService tiktok;
+  final TtsService tts;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -41,12 +44,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _connectingSpotify = false;
   bool _tiktokConnected = false;
   bool _connectingTiktok = false;
+  List<Map<String, String>> _voices = [];
+  String? _selectedVoiceKey;
+  double _ttsPitch = 1.0;
+  double _ttsSpeechRate = 0.5;
 
   static const _aiModels = {
     'openai': 'ChatGPT (Standard)',
     'mistral': 'Mistral',
     'llama': 'Llama',
   };
+
+  static const _defaultVoiceKey = 'default';
+
+  String _voiceKey(String name, String locale) => '$name|$locale';
 
   @override
   void initState() {
@@ -67,7 +78,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _contacts = await widget.contacts.all();
     _spotifyConnected = await widget.spotify.isConnected();
     _tiktokConnected = await widget.tiktok.isConnected();
+    _voices = await widget.tts.getGermanVoices();
+    _ttsPitch = await widget.settings.getTtsPitch();
+    _ttsSpeechRate = await widget.settings.getTtsSpeechRate();
+    final savedVoiceName = await widget.settings.getTtsVoiceName();
+    final savedVoiceLocale = await widget.settings.getTtsVoiceLocale();
+    if (savedVoiceName != null && savedVoiceLocale != null) {
+      final key = _voiceKey(savedVoiceName, savedVoiceLocale);
+      _selectedVoiceKey = _voices.any((v) => _voiceKey(v['name']!, v['locale']!) == key) ? key : _defaultVoiceKey;
+    } else {
+      _selectedVoiceKey = _defaultVoiceKey;
+    }
     if (mounted) setState(() {});
+  }
+
+  /// Speaks the current (possibly unsaved) voice/pitch/rate picker state so
+  /// the user can preview it before hitting "Speichern".
+  Future<void> _previewVoice() async {
+    final voice = _selectedVoiceKey == _defaultVoiceKey
+        ? null
+        : _voices.firstWhere((v) => _voiceKey(v['name']!, v['locale']!) == _selectedVoiceKey);
+    await widget.tts.applyVoiceSettings(
+      voiceName: voice?['name'],
+      voiceLocale: voice?['locale'],
+      pitch: _ttsPitch,
+      speechRate: _ttsSpeechRate,
+    );
+    await widget.tts.speak('Hallo, ich bin JARVIS. So klinge ich jetzt.');
   }
 
   Future<void> _loadVersion() async {
@@ -84,6 +121,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await widget.settings.setSpotifyClientId(_spotifyClientIdCtrl.text.trim());
     await widget.settings.setTiktokClientKey(_tiktokClientKeyCtrl.text.trim());
     await widget.settings.setAiModel(_aiModel);
+    final voice = _selectedVoiceKey == _defaultVoiceKey || _selectedVoiceKey == null
+        ? null
+        : _voices.firstWhere((v) => _voiceKey(v['name']!, v['locale']!) == _selectedVoiceKey);
+    await widget.settings.setTtsVoice(voice?['name'], voice?['locale']);
+    await widget.settings.setTtsPitch(_ttsPitch);
+    await widget.settings.setTtsSpeechRate(_ttsSpeechRate);
+    await widget.tts.applyVoiceSettings(
+      voiceName: voice?['name'],
+      voiceLocale: voice?['locale'],
+      pitch: _ttsPitch,
+      speechRate: _ttsSpeechRate,
+    );
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gespeichert.')));
   }
@@ -195,6 +244,56 @@ class _SettingsScreenState extends State<SettingsScreen> {
           TextField(
             controller: _nameCtrl,
             decoration: const InputDecoration(labelText: 'Dein Name', border: OutlineInputBorder()),
+          ),
+          const SizedBox(height: 24),
+          Text('JARVIS-Stimme', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          if (_voices.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 8),
+              child: Text(
+                'Keine zusätzlichen Stimmen auf diesem Gerät gefunden. Tonhöhe und '
+                'Sprechgeschwindigkeit funktionieren trotzdem.',
+                style: TextStyle(fontSize: 12),
+              ),
+            )
+          else
+            DropdownButtonFormField<String>(
+              initialValue: _selectedVoiceKey ?? _defaultVoiceKey,
+              decoration: const InputDecoration(labelText: 'Stimme', border: OutlineInputBorder()),
+              items: [
+                const DropdownMenuItem(value: _defaultVoiceKey, child: Text('Systemstandard')),
+                ..._voices.map(
+                  (v) => DropdownMenuItem(
+                    value: _voiceKey(v['name']!, v['locale']!),
+                    child: Text(v['name']!, overflow: TextOverflow.ellipsis),
+                  ),
+                ),
+              ],
+              onChanged: (value) => setState(() => _selectedVoiceKey = value),
+            ),
+          const SizedBox(height: 8),
+          Text('Tonhöhe: ${_ttsPitch.toStringAsFixed(2)}'),
+          Slider(
+            value: _ttsPitch,
+            min: 0.5,
+            max: 2.0,
+            divisions: 15,
+            onChanged: (value) => setState(() => _ttsPitch = value),
+          ),
+          Text('Sprechgeschwindigkeit: ${_ttsSpeechRate.toStringAsFixed(2)}'),
+          Slider(
+            value: _ttsSpeechRate,
+            min: 0.25,
+            max: 1.0,
+            divisions: 15,
+            onChanged: (value) => setState(() => _ttsSpeechRate = value),
+          ),
+          const SizedBox(height: 4),
+          OutlinedButton.icon(
+            onPressed: _previewVoice,
+            icon: const Icon(Icons.volume_up_outlined),
+            label: const Text('Stimme testen'),
           ),
           const SizedBox(height: 16),
           TextField(
