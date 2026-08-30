@@ -359,6 +359,27 @@ function buildStorySystemPrompt(genre) {
   );
 }
 
+// Narrator persona for the Überlebens-RPG mode (mode: "rpg") — a persistent
+// post-apocalyptic survival RPG. statsSummary is the single,
+// code-authoritative source of truth for the game's numbers; the model is
+// explicitly instructed never to invent or change them, only to narrate
+// their consequences. Mirrors rpgSystemPrompt in
+// lib/services/ai_chat_service.dart.
+function buildRpgSystemPrompt(statsSummary) {
+  return (
+    'Du bist der Erzähler eines postapokalyptischen Überlebens-Rollenspiels für den Nutzer als ' +
+    'Hauptfigur ("du"), der in einer verwüsteten, gefährlichen Welt ums Überleben kämpft — knappe ' +
+    'Ressourcen, Gefahren, verlassene Ruinen zum Durchsuchen. ' +
+    `Aktueller, exakter Spielzustand (die einzige Wahrheit über Werte/Ressourcen): ${statsSummary}. ` +
+    'Wichtig: Du erfindest, änderst oder nennst niemals eigene Zahlen für Leben, Hunger, Durst, Energie, ' +
+    'Nahrung, Wasser oder Schrott — du beschreibst ausschließlich, atmosphärisch und in 2-4 Sätzen, die ' +
+    'Konsequenzen der oben exakt gegebenen Werte, ohne sie zu wiederholen oder aufzulisten. Halte die ' +
+    'Geschichte konsistent mit dem bisherigen Verlauf. Keine Gewaltverherrlichung oder expliziten Inhalte. ' +
+    'Antworte ausschließlich als Erzähler in der Geschichte — keine Meta-Kommentare, keine Werkzeuge, ' +
+    'keine Erklärungen außerhalb der Geschichte.'
+  );
+}
+
 // Reverted from @cf/openai/gpt-oss-120b back to Llama 3.3 70B. gpt-oss-120b
 // is a reasoning model that repeatedly produced empty completions (neither
 // `response` text nor a tool call — surfaced to the user as "Ich habe keine
@@ -409,6 +430,7 @@ export default {
     let persona;
     let mode;
     let genre;
+    let statsSummary;
     try {
       const body = await request.json();
       message = body.message;
@@ -417,6 +439,7 @@ export default {
       persona = body.persona;
       mode = body.mode;
       genre = body.genre;
+      statsSummary = body.statsSummary;
     } catch (_) {
       return json({ error: 'invalid json body' }, 400);
     }
@@ -435,24 +458,28 @@ export default {
       .slice(-MAX_HISTORY_MESSAGES)
       .map((m) => ({ role: m.role, content: m.content }));
 
-    // Interaktives Storytelling (mode: "story") uses a dedicated narrator
-    // persona with no tool use, instead of JARVIS's normal assistant
-    // character/actions.
+    // Interaktives Storytelling (mode: "story") and the Überlebens-RPG
+    // (mode: "rpg") each use a dedicated narrator persona with no tool use,
+    // instead of JARVIS's normal assistant character/actions.
     const isStory = mode === 'story';
+    const isRpg = mode === 'rpg';
     // The model has no built-in notion of "now", so tools that need to
     // resolve relative times (e.g. open_youtube_upload's publish_at from
     // "morgen um 18 Uhr") need the current time handed to it explicitly.
     const systemPrompt = isStory
       ? buildStorySystemPrompt(genre)
-      : `${buildSystemPrompt(sarcasm, persona)} Aktuelles Datum/Uhrzeit (UTC): ${new Date().toISOString()}.`;
+      : isRpg
+        ? buildRpgSystemPrompt(statsSummary)
+        : `${buildSystemPrompt(sarcasm, persona)} Aktuelles Datum/Uhrzeit (UTC): ${new Date().toISOString()}.`;
     const messages = [{ role: 'system', content: systemPrompt }, ...cleanHistory, { role: 'user', content: message }];
 
+    const includeTools = !isStory && !isRpg;
     let data;
     let toolCall;
     let replyText;
     try {
-      data = await runModel(env, messages, !isStory);
-      toolCall = isStory ? undefined : data.tool_calls?.[0];
+      data = await runModel(env, messages, includeTools);
+      toolCall = includeTools ? data.tool_calls?.[0] : undefined;
       replyText = (data.response ?? data.result?.response ?? '').toString().trim();
 
       // Belt-and-suspenders: retry once, without tools, if a call ever comes

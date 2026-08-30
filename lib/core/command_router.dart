@@ -23,6 +23,7 @@ import '../services/notification_service.dart';
 import '../services/proactive_briefing_service.dart';
 import '../services/qr_service.dart';
 import '../services/random_fun_service.dart';
+import '../services/rpg_service.dart';
 import '../services/settings_service.dart';
 import '../services/soundboard_service.dart';
 import '../services/spotify_service.dart';
@@ -94,6 +95,7 @@ class CommandRouter {
     required this.anime,
     required this.lateNightTease,
     required this.challenges,
+    required this.rpg,
   });
 
   final WikipediaService wikipedia;
@@ -127,6 +129,7 @@ class CommandRouter {
   final AnimeService anime;
   final LateNightTeaseService lateNightTease;
   final ChallengeService challenges;
+  final RpgService rpg;
 
   /// Rolling window of past AI exchanges (user+assistant pairs), so a
   /// follow-up like "und morgen?" is understood in context instead of
@@ -149,6 +152,31 @@ class CommandRouter {
     'verlasse das abenteuer',
     'story beenden',
     'textabenteuer beenden',
+  ];
+
+  /// Überlebens-RPG: a separate, persistent-state survival mode (distinct
+  /// from the free-form story mode above) — while active, every input
+  /// (except reset/exit) is treated as an RPG action or narration prompt.
+  /// Mutually exclusive with _storyMode (checked first, see _handleRaw).
+  bool _rpgMode = false;
+  final _rpgHistory = <AiTurn>[];
+  static const _maxRpgTurns = 12;
+  static const _rpgStartPhrases = [
+    'starte das überlebens-rpg',
+    'starte die postapokalypse',
+    'starte das endlos-rpg',
+    'starte survival modus',
+    'setze das überlebens-rpg fort',
+  ];
+  static const _rpgResetPhrases = [
+    'neues überlebens-rpg starten',
+    'überlebens-rpg neu starten',
+    'rpg von vorne starten',
+  ];
+  static const _rpgExitPhrases = [
+    'beende das überlebens-rpg',
+    'pausiere das überlebens-rpg',
+    'verlasse das überlebens-rpg',
   ];
 
   static const helpText = '''
@@ -181,6 +209,7 @@ Das kann ich für dich tun:
 • "code snippet für <Flutter-Widget oder Git-Befehl>" (kopiert in die Zwischenablage) / "welche code snippets kennst du"
 • "spiel sound <Name>" (z.B. boot, scan, alarm) / "welche sounds hast du"
 • "starte ein sci-fi abenteuer" / "starte eine detektivgeschichte" (interaktives Textadventure, "beende das abenteuer" zum Verlassen)
+• "starte das überlebens-rpg" (postapokalyptisches Survival-Rollenspiel mit echtem Spielstand: iss/trink/rasten/durchsuche/baue eine waffe/baue unterschlupf/status, "beende das überlebens-rpg" pausiert, "neues überlebens-rpg starten" setzt zurück)
 • "aktiviere den drill-trainer" / "aktiviere den gaming-kumpel" / "aktiviere die butler-persona" / "aktiviere jarvis standard" (Persona wechseln) / "welche persona"
 • "mein level" / "meine xp" / "meine erfolge" (Notizen, Timer und Commits geben XP) / "commit gemacht" (loggt einen Code-Commit)
 • "tägliche challenge" (heutige Mini-Herausforderung, erscheint auch im Morgen-Briefing) / "challenge erledigt"
@@ -194,13 +223,13 @@ Das kann ich für dich tun:
   /// Public entry point: claims the once-per-day XP bonus (if not already
   /// claimed today) and prepends a short note about it, and appends a
   /// once-per-night humorous tease if the user is clearly still coding deep
-  /// in the night — except while an interactive story is running, where
-  /// either would break the narration.
+  /// in the night — except while an interactive story or the Überlebens-RPG
+  /// is running, where either would break the narration.
   Future<CommandResult> handle(String rawInput) async {
-    final wasStoryMode = _storyMode;
-    final dailyBonus = wasStoryMode ? null : await gamification.claimDailyBonusIfNeeded();
+    final inNarrativeMode = _storyMode || _rpgMode;
+    final dailyBonus = inNarrativeMode ? null : await gamification.claimDailyBonusIfNeeded();
     final persona = await settings.getPersona();
-    final tease = wasStoryMode ? null : await lateNightTease.maybeTease(persona, rawInput.trim().toLowerCase());
+    final tease = inNarrativeMode ? null : await lateNightTease.maybeTease(persona, rawInput.trim().toLowerCase());
     final result = await _handleRaw(rawInput);
     var reply = result.reply;
     if (tease != null) reply = '$reply\n\n$tease';
@@ -226,10 +255,20 @@ Das kann ich für dich tun:
     if (_storyMode) {
       return _handleStoryTurn(text, lower);
     }
+    if (_rpgMode) {
+      return _handleRpgTurn(text, lower);
+    }
 
     try {
       if (_matchesAny(lower, ['hilfe', 'was kannst du', 'help'])) {
         return CommandResult(helpText);
+      }
+
+      if (_matchesAny(lower, _rpgResetPhrases)) {
+        return await _startRpg(reset: true);
+      }
+      if (_matchesAny(lower, _rpgStartPhrases)) {
+        return await _startRpg(reset: false);
       }
 
       const personaTriggers = {
@@ -973,6 +1012,26 @@ Das kann ich für dich tun:
 
   bool _isWordChar(String ch) => _wordCharPattern.hasMatch(ch);
 
+  /// Like _matchesAny but requires the phrase not be glued to another
+  /// letter/digit on either side — needed for short RPG action keywords
+  /// (e.g. "iss") where a bare contains() would false-positive inside an
+  /// unrelated word (e.g. "wissen").
+  bool _matchesWholeWord(String lower, List<String> phrases) {
+    for (final phrase in phrases) {
+      var searchStart = 0;
+      while (true) {
+        final idx = lower.indexOf(phrase, searchStart);
+        if (idx == -1) break;
+        final leftOk = idx == 0 || !_isWordChar(lower[idx - 1]);
+        final endIdx = idx + phrase.length;
+        final rightOk = endIdx >= lower.length || !_isWordChar(lower[endIdx]);
+        if (leftOk && rightOk) return true;
+        searchStart = idx + 1;
+      }
+    }
+    return false;
+  }
+
   /// Finds the first *word-boundary* match of any prefix keyword and returns
   /// the remaining text after it (trimmed), or null if none match. Plain
   /// substring search would let e.g. "ruf" misfire inside "anrufen" and chop
@@ -996,5 +1055,128 @@ Das kann ich für dich tun:
       }
     }
     return null;
+  }
+
+  static const _rpgStatusPhrases = ['status', 'meine werte', 'wie geht es mir', 'rpg status'];
+  static const _rpgEatPhrases = ['iss', 'esse', 'nahrung zu mir'];
+  static const _rpgDrinkPhrases = ['trink', 'trinke'];
+  static const _rpgRestPhrases = ['ruh dich aus', 'ruhe dich aus', 'rasten', 'schlafen'];
+  static const _rpgScavengePhrases = ['durchsuche', 'plündere', 'suche nach beute'];
+  static const _rpgCraftWeaponPhrases = ['baue eine waffe', 'crafte eine waffe', 'waffe bauen'];
+  static const _rpgBuildShelterPhrases = ['baue unterschlupf', 'unterschlupf bauen', 'baue ein lager'];
+
+  /// Starts a fresh run (if none exists yet, or [reset] is true) or resumes
+  /// an existing alive one. A previously-dead save re-enters the locked
+  /// "you died" state instead of silently starting over — the player must
+  /// use a reset phrase explicitly to discard it.
+  Future<CommandResult> _startRpg({required bool reset}) async {
+    try {
+      final existing = reset ? null : await rpg.loadStats();
+      if (existing != null && existing.alive && !reset) {
+        _rpgHistory
+          ..clear()
+          ..addAll(await rpg.loadHistory());
+        _rpgMode = true;
+        return CommandResult('Überlebens-RPG fortgesetzt.\n\n${existing.summary()}');
+      }
+      if (existing != null && !existing.alive && !reset) {
+        _rpgMode = true;
+        return CommandResult(_rpgDeathMessage(existing));
+      }
+
+      final stats = await rpg.startNewRun();
+      _rpgHistory.clear();
+      final backendUrl = await settings.getAiBackendUrl();
+      const kickoff = 'Starte das Überlebens-RPG mit einer packenden Eröffnungsszene der Apokalypse.';
+      final result = await aiChat.askRpg(backendUrl ?? '', kickoff, statsSummary: stats.summary(), history: const []);
+      _rpgHistory.add(AiTurn(role: 'user', content: kickoff));
+      _rpgHistory.add(AiTurn(role: 'assistant', content: result.reply));
+      await rpg.saveHistory(_rpgHistory);
+      _rpgMode = true;
+      return CommandResult(
+        '${result.reply}\n\n(Befehle: iss, trink, rasten, durchsuche, baue eine waffe, baue unterschlupf, status. '
+        '"beende das überlebens-rpg" pausiert.)',
+      );
+    } catch (e) {
+      return CommandResult('Fehler: ${e.toString().replaceFirst('Exception: ', '')}');
+    }
+  }
+
+  String _rpgDeathMessage(RpgStats stats) =>
+      'Du bist an Tag ${stats.day} gestorben. Sag "neues überlebens-rpg starten", um von vorne zu beginnen, '
+      'oder "beende das überlebens-rpg", um auszusteigen.';
+
+  Future<CommandResult> _handleRpgTurn(String text, String lower) async {
+    if (_matchesAny(lower, _rpgExitPhrases)) {
+      _rpgMode = false;
+      return CommandResult('Das Überlebens-RPG pausiert. Dein Fortschritt bleibt gespeichert, Master.');
+    }
+    if (_matchesAny(lower, _rpgResetPhrases)) {
+      return await _startRpg(reset: true);
+    }
+
+    try {
+      var stats = await rpg.loadStats() ?? RpgStats.initial();
+
+      if (!stats.alive) {
+        return CommandResult(_rpgDeathMessage(stats));
+      }
+
+      if (_matchesWholeWord(lower, _rpgStatusPhrases)) {
+        return CommandResult(stats.summary());
+      }
+
+      String? actionMessage;
+      if (_matchesWholeWord(lower, _rpgEatPhrases)) {
+        final r = RpgService.eat(stats);
+        stats = r.stats;
+        actionMessage = r.message;
+      } else if (_matchesWholeWord(lower, _rpgDrinkPhrases)) {
+        final r = RpgService.drink(stats);
+        stats = r.stats;
+        actionMessage = r.message;
+      } else if (_matchesWholeWord(lower, _rpgRestPhrases)) {
+        final r = RpgService.rest(stats);
+        stats = r.stats;
+        actionMessage = r.message;
+      } else if (_matchesWholeWord(lower, _rpgScavengePhrases)) {
+        final r = RpgService.scavenge(stats);
+        stats = r.stats;
+        actionMessage = r.message;
+      } else if (_matchesWholeWord(lower, _rpgCraftWeaponPhrases)) {
+        final r = RpgService.craftWeapon(stats);
+        stats = r.stats;
+        actionMessage = r.message;
+      } else if (_matchesWholeWord(lower, _rpgBuildShelterPhrases)) {
+        final r = RpgService.buildShelter(stats);
+        stats = r.stats;
+        actionMessage = r.message;
+      }
+
+      stats = RpgService.advanceDay(stats);
+      await rpg.saveStats(stats);
+
+      final backendUrl = await settings.getAiBackendUrl();
+      final aiMessage = actionMessage == null ? text : '$text\n\n(Ergebnis: $actionMessage)';
+      final result = await aiChat.askRpg(
+        backendUrl ?? '',
+        aiMessage,
+        statsSummary: stats.summary(),
+        history: List.unmodifiable(_rpgHistory),
+      );
+      _rpgHistory.add(AiTurn(role: 'user', content: text));
+      _rpgHistory.add(AiTurn(role: 'assistant', content: result.reply));
+      while (_rpgHistory.length > _maxRpgTurns * 2) {
+        _rpgHistory.removeAt(0);
+      }
+      await rpg.saveHistory(_rpgHistory);
+
+      if (!stats.alive) {
+        return CommandResult('${result.reply}\n\n☠️ ${_rpgDeathMessage(stats)}');
+      }
+      return CommandResult(result.reply);
+    } catch (e) {
+      return CommandResult('Fehler: ${e.toString().replaceFirst('Exception: ', '')}');
+    }
   }
 }

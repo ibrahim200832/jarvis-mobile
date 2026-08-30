@@ -120,6 +120,25 @@ String storySystemPrompt(String genre) {
       'Erklärungen außerhalb der Geschichte.';
 }
 
+/// Narrator persona for the Überlebens-RPG mode ("Interaktive Mini-Spiele" /
+/// "Textbasierte Quests") — a persistent post-apocalyptic survival RPG. The
+/// [statsSummary] (see RpgStats.summary()) is the single, code-authoritative
+/// source of truth for the game's numbers; the AI is explicitly instructed
+/// never to invent or change them, only to narrate their consequences. No
+/// tool use, no assistant framing — mirrors storySystemPrompt/
+/// buildStorySystemPrompt structurally but is a distinct, separate mode.
+String rpgSystemPrompt(String statsSummary) =>
+    'Du bist der Erzähler eines postapokalyptischen Überlebens-Rollenspiels für den Nutzer als '
+    'Hauptfigur ("du"), der in einer verwüsteten, gefährlichen Welt ums Überleben kämpft — knappe '
+    'Ressourcen, Gefahren, verlassene Ruinen zum Durchsuchen. '
+    'Aktueller, exakter Spielzustand (die einzige Wahrheit über Werte/Ressourcen): $statsSummary. '
+    'Wichtig: Du erfindest, änderst oder nennst niemals eigene Zahlen für Leben, Hunger, Durst, Energie, '
+    'Nahrung, Wasser oder Schrott — du beschreibst ausschließlich, atmosphärisch und in 2-4 Sätzen, die '
+    'Konsequenzen der oben exakt gegebenen Werte, ohne sie zu wiederholen oder aufzulisten. Halte die '
+    'Geschichte konsistent mit dem bisherigen Verlauf. Keine Gewaltverherrlichung oder expliziten Inhalte. '
+    'Antworte ausschließlich als Erzähler in der Geschichte — keine Meta-Kommentare, keine Werkzeuge, keine '
+    'Erklärungen außerhalb der Geschichte.';
+
 /// Sends free-form questions to an AI. If the user configured their own
 /// backend (see worker/ai-proxy.js) under Einstellungen, that's used — it
 /// holds a real API key server-side and supports phone actions (AiAction).
@@ -257,6 +276,64 @@ class AiChatService {
       failMsg: 'Ich hab die Geschichte gerade nicht weitererzählen können',
       timeoutMsg: 'Die Antwort hat zu lange gedauert. Versuch es gleich nochmal.',
       offlineMsg: 'Ich konnte die Geschichte gerade nicht weitererzählen. Prüf deine Internetverbindung.',
+    );
+  }
+
+  /// One turn of the Überlebens-RPG (see rpgSystemPrompt). Deliberately
+  /// separate from ask()/askStory(): no tool use, its own narrator persona,
+  /// its own conversation history — [statsSummary] is the authoritative
+  /// game state the AI narrates around but never alters.
+  Future<AiChatResult> askRpg(
+    String backendUrl,
+    String message, {
+    required String statsSummary,
+    List<AiTurn> history = const [],
+  }) async {
+    if (backendUrl.trim().isEmpty) {
+      return _askRpgFreeFallback(message, statsSummary, history);
+    }
+    try {
+      final res = await http
+          .post(
+            Uri.parse(backendUrl.trim()),
+            headers: {'content-type': 'application/json'},
+            body: jsonEncode({
+              'message': message,
+              'history': history.map((t) => t.toJson()).toList(),
+              'mode': 'rpg',
+              'statsSummary': statsSummary,
+            }),
+          )
+          .timeout(const Duration(seconds: 25));
+      if (res.statusCode != 200) {
+        return AiChatResult(reply: 'Das Überlebens-RPG konnte nicht weitererzählt werden (Code ${res.statusCode}).');
+      }
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      final reply = data['reply'] as String?;
+      return AiChatResult(reply: (reply == null || reply.isEmpty) ? 'Ich habe keine Antwort erhalten.' : reply);
+    } catch (_) {
+      return AiChatResult(
+        reply: 'Ich konnte das Überlebens-RPG gerade nicht weitererzählen. Prüf deine Internetverbindung.',
+      );
+    }
+  }
+
+  Future<AiChatResult> _askRpgFreeFallback(String message, String statsSummary, List<AiTurn> history) {
+    final transcript = history.map((t) => '${t.role == 'user' ? 'Spieler' : 'Erzähler'}: ${t.content}').join('\n');
+    final prompt = '${rpgSystemPrompt(statsSummary)}'
+        '${transcript.isEmpty ? '' : '\n\nBisheriger Verlauf:\n$transcript'}'
+        '\n\nSpieler: $message\n\nErzähler:';
+    final uri = Uri(
+      scheme: 'https',
+      host: 'text.pollinations.ai',
+      pathSegments: [prompt],
+      queryParameters: {'model': 'openai'},
+    );
+    return _getWithRetry(
+      uri,
+      failMsg: 'Ich hab das Überlebens-RPG gerade nicht weitererzählen können',
+      timeoutMsg: 'Die Antwort hat zu lange gedauert. Versuch es gleich nochmal.',
+      offlineMsg: 'Ich konnte das Überlebens-RPG gerade nicht weitererzählen. Prüf deine Internetverbindung.',
     );
   }
 

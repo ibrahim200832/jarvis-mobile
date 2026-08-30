@@ -30,6 +30,7 @@ import '../services/notification_service.dart';
 import '../services/proactive_briefing_service.dart';
 import '../services/qr_service.dart';
 import '../services/random_fun_service.dart';
+import '../services/rpg_service.dart';
 import '../services/settings_service.dart';
 import '../services/soundboard_service.dart';
 import '../services/speech_service.dart';
@@ -135,6 +136,7 @@ class _HomeScreenState extends State<HomeScreen> {
       anime: AnimeService(),
       lateNightTease: LateNightTeaseService(),
       challenges: ChallengeService(),
+      rpg: RpgService(),
     );
     _timer.onFire = _onTimerFired;
     _speech.init();

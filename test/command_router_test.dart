@@ -23,6 +23,7 @@ import 'package:jarvis_mobile/services/proactive_briefing_service.dart';
 import 'package:jarvis_mobile/services/notification_service.dart';
 import 'package:jarvis_mobile/services/qr_service.dart';
 import 'package:jarvis_mobile/services/random_fun_service.dart';
+import 'package:jarvis_mobile/services/rpg_service.dart';
 import 'package:jarvis_mobile/services/settings_service.dart';
 import 'package:jarvis_mobile/services/soundboard_service.dart';
 import 'package:jarvis_mobile/services/spotify_service.dart';
@@ -203,6 +204,10 @@ class FakeAiChatService extends AiChatService {
   List<AiTurn>? lastStoryHistory;
   String? lastStoryGenre;
   String? lastPersona;
+  String? lastRpgMessage;
+  List<AiTurn>? lastRpgHistory;
+  String? lastRpgStatsSummary;
+  int askRpgCallCount = 0;
 
   @override
   Future<AiChatResult> ask(
@@ -230,6 +235,20 @@ class FakeAiChatService extends AiChatService {
     lastStoryHistory = history;
     lastStoryGenre = genre;
     return AiChatResult(reply: 'FAKE_STORY[$genre]:$message');
+  }
+
+  @override
+  Future<AiChatResult> askRpg(
+    String backendUrl,
+    String message, {
+    required String statsSummary,
+    List<AiTurn> history = const [],
+  }) async {
+    askRpgCallCount++;
+    lastRpgMessage = message;
+    lastRpgHistory = history;
+    lastRpgStatsSummary = statsSummary;
+    return AiChatResult(reply: 'FAKE_RPG:$message');
   }
 }
 
@@ -332,6 +351,7 @@ void main() {
   late FakeAnimeService anime;
   late LateNightTeaseService lateNightTease;
   late ChallengeService challenges;
+  late RpgService rpg;
   late CommandRouter router;
 
   // Builds a CommandRouter from the shared setUp() fakes, with optional
@@ -374,6 +394,7 @@ void main() {
     anime: anime,
     lateNightTease: lateNightTeaseOverride ?? lateNightTease,
     challenges: challenges,
+    rpg: rpg,
   );
 
   setUp(() async {
@@ -407,6 +428,7 @@ void main() {
     );
     anime = FakeAnimeService();
     lateNightTease = LateNightTeaseService();
+    rpg = RpgService();
 
     router = buildRouter();
     // Pre-claim today's gamification bonus so it doesn't prepend a "🎉
@@ -907,6 +929,120 @@ void main() {
       await router.handle('challenge erledigt');
       final result = await router.handle('heutige challenge');
       expect(result.reply, contains('schon erledigt'));
+    });
+  });
+
+  group('Überlebens-RPG', () {
+    test('starte das überlebens-rpg creates a fresh run and calls the AI once', () async {
+      final result = await router.handle('starte das überlebens-rpg');
+      expect(aiChat.askRpgCallCount, 1);
+      final stats = await rpg.loadStats();
+      expect(stats, isNotNull);
+      expect(stats!.day, 1);
+      expect(stats.alive, isTrue);
+      expect(result.reply, contains('FAKE_RPG'));
+    });
+
+    test('status query returns stats without calling the AI', () async {
+      await router.handle('starte das überlebens-rpg');
+      final before = aiChat.askRpgCallCount;
+      final result = await router.handle('status');
+      expect(result.reply, contains('Tag'));
+      expect(aiChat.askRpgCallCount, before);
+    });
+
+    test('iss consumes one food unit', () async {
+      await router.handle('starte das überlebens-rpg');
+      final before = await rpg.loadStats();
+      await router.handle('iss');
+      final after = await rpg.loadStats();
+      expect(after!.food, before!.food - 1);
+    });
+
+    test('trink consumes one water unit', () async {
+      await router.handle('starte das überlebens-rpg');
+      final before = await rpg.loadStats();
+      await router.handle('trink');
+      final after = await rpg.loadStats();
+      expect(after!.water, before!.water - 1);
+    });
+
+    test('free-form text containing "wissen" does not accidentally trigger eating', () async {
+      await router.handle('starte das überlebens-rpg');
+      final before = await rpg.loadStats();
+      await router.handle('ich möchte mehr darüber wissen');
+      final after = await rpg.loadStats();
+      expect(after!.food, before!.food);
+    });
+
+    test('death is reported and locks the mode from further AI calls', () async {
+      await router.handle('starte das überlebens-rpg');
+      await rpg.saveStats(
+        const RpgStats(
+          day: 5,
+          health: 1,
+          hunger: 0,
+          thirst: 0,
+          energy: 50,
+          food: 0,
+          water: 0,
+          scrap: 0,
+          hasWeapon: false,
+          hasShelter: false,
+          alive: true,
+        ),
+      );
+      final deathResult = await router.handle('ich schaue mich um');
+      expect(deathResult.reply, contains('☠️'));
+      final stats = await rpg.loadStats();
+      expect(stats!.alive, isFalse);
+
+      final callsAfterDeath = aiChat.askRpgCallCount;
+      final lockedResult = await router.handle('ich schaue mich um');
+      expect(lockedResult.reply, contains('gestorben'));
+      expect(aiChat.askRpgCallCount, callsAfterDeath);
+    });
+
+    test('neues überlebens-rpg starten resets after death', () async {
+      await router.handle('starte das überlebens-rpg');
+      await rpg.saveStats(
+        const RpgStats(
+          day: 5,
+          health: 0,
+          hunger: 0,
+          thirst: 0,
+          energy: 0,
+          food: 0,
+          water: 0,
+          scrap: 0,
+          hasWeapon: false,
+          hasShelter: false,
+          alive: false,
+        ),
+      );
+      await router.handle('ich schaue mich um');
+      await router.handle('neues überlebens-rpg starten');
+      final stats = await rpg.loadStats();
+      expect(stats!.alive, isTrue);
+      expect(stats.day, 1);
+    });
+
+    test('pausing then resuming preserves stats instead of resetting', () async {
+      await router.handle('starte das überlebens-rpg');
+      await router.handle('iss');
+      final statsAfterPause0 = await rpg.loadStats();
+      await router.handle('beende das überlebens-rpg');
+      final resumeResult = await router.handle('starte das überlebens-rpg');
+      expect(resumeResult.reply, contains('fortgesetzt'));
+      final statsAfterResume = await rpg.loadStats();
+      expect(statsAfterResume!.food, statsAfterPause0!.food);
+    });
+
+    test('RPG trigger is swallowed as a story action while story mode is active', () async {
+      await router.handle('starte ein sci-fi abenteuer');
+      await router.handle('starte das überlebens-rpg');
+      expect(aiChat.lastStoryMessage, 'starte das überlebens-rpg');
+      expect(aiChat.askRpgCallCount, 0);
     });
   });
 
