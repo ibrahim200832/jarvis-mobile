@@ -4,6 +4,7 @@ import '../services/ai_chat_service.dart';
 import '../services/app_launcher_service.dart';
 import '../services/calculator_service.dart';
 import '../services/call_service.dart';
+import '../services/code_snippet_service.dart';
 import '../services/contacts_service.dart';
 import '../services/device_info_service.dart';
 import '../services/email_service.dart';
@@ -76,6 +77,7 @@ class CommandRouter {
     required this.notifications,
     required this.spotify,
     required this.webSearch,
+    required this.snippets,
   });
 
   final WikipediaService wikipedia;
@@ -100,6 +102,7 @@ class CommandRouter {
   final NotificationService notifications;
   final SpotifyService spotify;
   final WebSearchService webSearch;
+  final CodeSnippetService snippets;
 
   /// Rolling window of past AI exchanges (user+assistant pairs), so a
   /// follow-up like "und morgen?" is understood in context instead of
@@ -135,6 +138,7 @@ Das kann ich für dich tun:
 • "notiz <Text>" / "meine notizen" / "lösche notiz <Nummer>"
 • "wirf eine münze" / "würfle" / "zufallszahl zwischen 1 und 100"
 • "spiele <Song> auf spotify" / "spiele playlist <Name> auf spotify" (Spotify-Verbindung nötig, siehe Einstellungen)
+• "code snippet für <Flutter-Widget oder Git-Befehl>" (kopiert in die Zwischenablage) / "welche code snippets kennst du"
 • alles andere: frag mich einfach frei, ich antworte mit echter KI und kann
   dabei auch direkt anrufen, WhatsApp schreiben oder Apps öffnen
 ''';
@@ -302,6 +306,31 @@ Das kann ich für dich tun:
       if (qrText != null) {
         final data = qr.normalize(qrText);
         return CommandResult('Hier ist dein QR-Code.', qrData: data);
+      }
+
+      if (_matchesAny(lower, ['welche code snippets', 'verfügbare snippets', 'code snippets liste', 'code-snippets liste'])) {
+        return CommandResult('Diese Code-Snippets kenne ich: ${snippets.availableTitles.join(', ')}.');
+      }
+
+      final snippetQuery = _extractAfter(lower, text, [
+        'code snippet für',
+        'code-snippet für',
+        'code snippet',
+        'code-snippet',
+        'quick ref für',
+        'quick reference für',
+        'git befehl für',
+        'zeig mir den code für',
+      ]);
+      if (snippetQuery != null) {
+        final entry = snippets.find(snippetQuery);
+        if (entry == null) {
+          return CommandResult(
+            'Das kenne ich nicht. Verfügbar sind z.B.: ${snippets.availableTitles.take(6).join(', ')}.',
+          );
+        }
+        await snippets.copyToClipboard(entry.value.code);
+        return CommandResult('${entry.value.title}: ${entry.value.explanation} Ich hab dir den Code in die Zwischenablage kopiert.');
       }
 
       if (_matchesAny(lower, ['meine ip', 'ip adresse', 'ip-adresse', 'my ip'])) {

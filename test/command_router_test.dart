@@ -4,6 +4,7 @@ import 'package:jarvis_mobile/core/command_router.dart';
 import 'package:jarvis_mobile/services/ai_chat_service.dart';
 import 'package:jarvis_mobile/services/app_launcher_service.dart';
 import 'package:jarvis_mobile/services/call_service.dart';
+import 'package:jarvis_mobile/services/code_snippet_service.dart';
 import 'package:jarvis_mobile/services/contacts_service.dart';
 import 'package:jarvis_mobile/services/device_info_service.dart';
 import 'package:jarvis_mobile/services/email_service.dart';
@@ -205,6 +206,17 @@ class FakeNotificationService extends NotificationService {
   }
 }
 
+class FakeCodeSnippetService extends CodeSnippetService {
+  int copyCalls = 0;
+  String? lastCopied;
+
+  @override
+  Future<void> copyToClipboard(String code) async {
+    copyCalls++;
+    lastCopied = code;
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -221,6 +233,7 @@ void main() {
   late FakeSpotifyService spotify;
   late FakeWebSearchService webSearch;
   late FakeSettingsService settings;
+  late FakeCodeSnippetService snippets;
   late CommandRouter router;
 
   setUp(() {
@@ -238,6 +251,7 @@ void main() {
     spotify = FakeSpotifyService();
     webSearch = FakeWebSearchService();
     settings = FakeSettingsService();
+    snippets = FakeCodeSnippetService();
 
     router = CommandRouter(
       wikipedia: wikipedia,
@@ -262,6 +276,7 @@ void main() {
       notifications: notifications,
       spotify: spotify,
       webSearch: webSearch,
+      snippets: snippets,
     );
   });
 
@@ -499,6 +514,28 @@ void main() {
       final result = await router.handle('zufallszahl zwischen 5 und 10');
       final value = int.parse(result.reply.trim());
       expect(value, inInclusiveRange(5, 10));
+    });
+  });
+
+  group('Code-Snippets', () {
+    test('code snippet für git commit copies the snippet to the clipboard', () async {
+      final result = await router.handle('code snippet für git commit');
+      expect(snippets.copyCalls, 1);
+      expect(snippets.lastCopied, contains('git commit'));
+      expect(result.reply, contains('Git: Commit erstellen'));
+      expect(result.reply, contains('Zwischenablage'));
+    });
+
+    test('unknown snippet name suggests available ones instead of copying', () async {
+      final result = await router.handle('code snippet für sowasgibtsnicht');
+      expect(snippets.copyCalls, 0);
+      expect(result.reply, contains('Das kenne ich nicht'));
+    });
+
+    test('welche code snippets kennst du lists the available titles', () async {
+      final result = await router.handle('welche code snippets kennst du');
+      expect(result.reply, contains('StatefulWidget'));
+      expect(result.reply, contains('Git: Commit erstellen'));
     });
   });
 

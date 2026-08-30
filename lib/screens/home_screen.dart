@@ -11,6 +11,7 @@ import '../core/command_router.dart';
 import '../services/ai_chat_service.dart';
 import '../services/app_launcher_service.dart';
 import '../services/call_service.dart';
+import '../services/code_snippet_service.dart';
 import '../services/contacts_service.dart';
 import '../services/device_info_service.dart';
 import '../services/email_service.dart';
@@ -107,6 +108,7 @@ class _HomeScreenState extends State<HomeScreen> {
       notifications: NotificationService(),
       spotify: _spotify,
       webSearch: WebSearchService(),
+      snippets: CodeSnippetService(),
     );
     _timer.onFire = _onTimerFired;
     _speech.init();
