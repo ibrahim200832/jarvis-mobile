@@ -13,6 +13,7 @@ import 'package:jarvis_mobile/services/gamification_service.dart';
 import 'package:jarvis_mobile/services/home_assistant_service.dart';
 import 'package:jarvis_mobile/services/ip_service.dart';
 import 'package:jarvis_mobile/services/joke_service.dart';
+import 'package:jarvis_mobile/services/late_night_tease_service.dart';
 import 'package:jarvis_mobile/services/location_service.dart';
 import 'package:jarvis_mobile/services/music_dj_service.dart';
 import 'package:jarvis_mobile/services/news_service.dart';
@@ -281,6 +282,21 @@ class FakeCodeSnippetService extends CodeSnippetService {
   }
 }
 
+class FakeLateNightTeaseService extends LateNightTeaseService {
+  String? nextTease;
+  int callCount = 0;
+  String? lastPersona;
+  String? lastLowerText;
+
+  @override
+  Future<String?> maybeTease(String persona, String lowerText, {DateTime? now}) async {
+    callCount++;
+    lastPersona = persona;
+    lastLowerText = lowerText;
+    return nextTease;
+  }
+}
+
 class FakeSoundboardService extends SoundboardService {
   int playCalls = 0;
   String? lastPlayed;
@@ -313,6 +329,7 @@ void main() {
   late GamificationService gamification;
   late ProactiveBriefingService briefing;
   late FakeAnimeService anime;
+  late LateNightTeaseService lateNightTease;
   late CommandRouter router;
 
   // Builds a CommandRouter from the shared setUp() fakes, with optional
@@ -320,7 +337,10 @@ void main() {
   // param doesn't force every call site in this file to be edited (there
   // used to be two full duplicates: `router` here and `freshRouter` in the
   // daily-bonus test below).
-  CommandRouter buildRouter({GamificationService? gamificationOverride}) => CommandRouter(
+  CommandRouter buildRouter({
+    GamificationService? gamificationOverride,
+    LateNightTeaseService? lateNightTeaseOverride,
+  }) => CommandRouter(
     wikipedia: wikipedia,
     jokes: FakeJokeService(),
     news: FakeNewsService(),
@@ -350,6 +370,7 @@ void main() {
     briefing: briefing,
     homeAssistant: HomeAssistantService(),
     anime: anime,
+    lateNightTease: lateNightTeaseOverride ?? lateNightTease,
   );
 
   setUp(() async {
@@ -380,6 +401,7 @@ void main() {
       settings: settings,
     );
     anime = FakeAnimeService();
+    lateNightTease = LateNightTeaseService();
 
     router = buildRouter();
     // Pre-claim today's gamification bonus so it doesn't prepend a "🎉
@@ -853,6 +875,41 @@ void main() {
       await router.handle('aktiviere den drill-trainer');
       await router.handle('aktiviere jarvis standard');
       expect(await settings.getPersona(), 'standard');
+    });
+  });
+
+  group('Kontextabhängige Spätnacht-Reaktion', () {
+    test('tease is appended when the fake service returns one', () async {
+      final fakeTease = FakeLateNightTeaseService()..nextTease = 'Geh schlafen!';
+      final freshRouter = buildRouter(lateNightTeaseOverride: fakeTease);
+      final result = await freshRouter.handle('erzähl mir einen witz');
+      expect(result.reply, contains('Geh schlafen!'));
+      expect(fakeTease.callCount, 1);
+    });
+
+    test('no tease line when the service returns null', () async {
+      final fakeTease = FakeLateNightTeaseService();
+      final freshRouter = buildRouter(lateNightTeaseOverride: fakeTease);
+      final result = await freshRouter.handle('erzähl mir einen witz');
+      expect(result.reply, isNot(contains('\n\nGeh schlafen')));
+    });
+
+    test('current persona is passed through to maybeTease', () async {
+      final fakeTease = FakeLateNightTeaseService();
+      final freshRouter = buildRouter(lateNightTeaseOverride: fakeTease);
+      await freshRouter.handle('aktiviere den drill-trainer');
+      await freshRouter.handle('hilfe');
+      expect(fakeTease.lastPersona, 'drill_sergeant');
+    });
+
+    test('tease is skipped during interactive story mode', () async {
+      final fakeTease = FakeLateNightTeaseService()..nextTease = 'Geh schlafen!';
+      final freshRouter = buildRouter(lateNightTeaseOverride: fakeTease);
+      await freshRouter.handle('starte ein sci-fi abenteuer');
+      final callsBefore = fakeTease.callCount;
+      final result = await freshRouter.handle('ich öffne die Tür');
+      expect(result.reply, isNot(contains('Geh schlafen!')));
+      expect(fakeTease.callCount, callsBefore);
     });
   });
 

@@ -13,6 +13,7 @@ import '../services/gamification_service.dart';
 import '../services/home_assistant_service.dart';
 import '../services/ip_service.dart';
 import '../services/joke_service.dart';
+import '../services/late_night_tease_service.dart';
 import '../services/location_service.dart';
 import '../services/music_dj_service.dart';
 import '../services/news_service.dart';
@@ -90,6 +91,7 @@ class CommandRouter {
     required this.briefing,
     required this.homeAssistant,
     required this.anime,
+    required this.lateNightTease,
   });
 
   final WikipediaService wikipedia;
@@ -121,6 +123,7 @@ class CommandRouter {
   final ProactiveBriefingService briefing;
   final HomeAssistantService homeAssistant;
   final AnimeService anime;
+  final LateNightTeaseService lateNightTease;
 
   /// Rolling window of past AI exchanges (user+assistant pairs), so a
   /// follow-up like "und morgen?" is understood in context instead of
@@ -185,16 +188,21 @@ Das kann ich für dich tun:
 ''';
 
   /// Public entry point: claims the once-per-day XP bonus (if not already
-  /// claimed today) and prepends a short note about it to whatever the
-  /// actual command produces — except while an interactive story is
-  /// running, where an XP line would break the narration.
+  /// claimed today) and prepends a short note about it, and appends a
+  /// once-per-night humorous tease if the user is clearly still coding deep
+  /// in the night — except while an interactive story is running, where
+  /// either would break the narration.
   Future<CommandResult> handle(String rawInput) async {
     final wasStoryMode = _storyMode;
     final dailyBonus = wasStoryMode ? null : await gamification.claimDailyBonusIfNeeded();
+    final persona = await settings.getPersona();
+    final tease = wasStoryMode ? null : await lateNightTease.maybeTease(persona, rawInput.trim().toLowerCase());
     final result = await _handleRaw(rawInput);
-    if (dailyBonus == null) return result;
+    var reply = result.reply;
+    if (tease != null) reply = '$reply\n\n$tease';
+    if (dailyBonus != null) reply = '🎉 Tages-Bonus${dailyBonus.toSuffix()}\n\n$reply';
     return CommandResult(
-      '🎉 Tages-Bonus${dailyBonus.toSuffix()}\n\n${result.reply}',
+      reply,
       qrData: result.qrData,
       openCamera: result.openCamera,
       openYoutubeUpload: result.openYoutubeUpload,

@@ -20,6 +20,7 @@ import '../services/gamification_service.dart';
 import '../services/home_assistant_service.dart';
 import '../services/ip_service.dart';
 import '../services/joke_service.dart';
+import '../services/late_night_tease_service.dart';
 import '../services/location_service.dart';
 import '../services/music_dj_service.dart';
 import '../services/news_service.dart';
@@ -130,6 +131,7 @@ class _HomeScreenState extends State<HomeScreen> {
       briefing: _briefing,
       homeAssistant: HomeAssistantService(),
       anime: AnimeService(),
+      lateNightTease: LateNightTeaseService(),
     );
     _timer.onFire = _onTimerFired;
     _speech.init();
