@@ -15,6 +15,7 @@ import '../services/code_snippet_service.dart';
 import '../services/contacts_service.dart';
 import '../services/device_info_service.dart';
 import '../services/email_service.dart';
+import '../services/gamification_service.dart';
 import '../services/ip_service.dart';
 import '../services/joke_service.dart';
 import '../services/location_service.dart';
@@ -111,6 +112,7 @@ class _HomeScreenState extends State<HomeScreen> {
       webSearch: WebSearchService(),
       snippets: CodeSnippetService(),
       soundboard: SoundboardService(),
+      gamification: GamificationService(),
     );
     _timer.onFire = _onTimerFired;
     _speech.init();

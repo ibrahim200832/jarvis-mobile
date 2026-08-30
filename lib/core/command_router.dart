@@ -8,6 +8,7 @@ import '../services/code_snippet_service.dart';
 import '../services/contacts_service.dart';
 import '../services/device_info_service.dart';
 import '../services/email_service.dart';
+import '../services/gamification_service.dart';
 import '../services/ip_service.dart';
 import '../services/joke_service.dart';
 import '../services/location_service.dart';
@@ -80,6 +81,7 @@ class CommandRouter {
     required this.webSearch,
     required this.snippets,
     required this.soundboard,
+    required this.gamification,
   });
 
   final WikipediaService wikipedia;
@@ -106,6 +108,7 @@ class CommandRouter {
   final WebSearchService webSearch;
   final CodeSnippetService snippets;
   final SoundboardService soundboard;
+  final GamificationService gamification;
 
   /// Rolling window of past AI exchanges (user+assistant pairs), so a
   /// follow-up like "und morgen?" is understood in context instead of
@@ -159,11 +162,32 @@ Das kann ich für dich tun:
 • "code snippet für <Flutter-Widget oder Git-Befehl>" (kopiert in die Zwischenablage) / "welche code snippets kennst du"
 • "spiel sound <Name>" (z.B. boot, scan, alarm) / "welche sounds hast du"
 • "starte ein sci-fi abenteuer" / "starte eine detektivgeschichte" (interaktives Textadventure, "beende das abenteuer" zum Verlassen)
+• "mein level" / "meine xp" / "meine erfolge" (Notizen, Timer und Commits geben XP) / "commit gemacht" (loggt einen Code-Commit)
 • alles andere: frag mich einfach frei, ich antworte mit echter KI und kann
   dabei auch direkt anrufen, WhatsApp schreiben oder Apps öffnen
 ''';
 
+  /// Public entry point: claims the once-per-day XP bonus (if not already
+  /// claimed today) and prepends a short note about it to whatever the
+  /// actual command produces — except while an interactive story is
+  /// running, where an XP line would break the narration.
   Future<CommandResult> handle(String rawInput) async {
+    final wasStoryMode = _storyMode;
+    final dailyBonus = wasStoryMode ? null : await gamification.claimDailyBonusIfNeeded();
+    final result = await _handleRaw(rawInput);
+    if (dailyBonus == null) return result;
+    return CommandResult(
+      '🎉 Tages-Bonus${dailyBonus.toSuffix()}\n\n${result.reply}',
+      qrData: result.qrData,
+      openCamera: result.openCamera,
+      openYoutubeUpload: result.openYoutubeUpload,
+      youtubePrivacy: result.youtubePrivacy,
+      youtubePublishAt: result.youtubePublishAt,
+      openTiktokUpload: result.openTiktokUpload,
+    );
+  }
+
+  Future<CommandResult> _handleRaw(String rawInput) async {
     final text = rawInput.trim();
     final lower = text.toLowerCase();
     if (text.isEmpty) {
@@ -440,7 +464,10 @@ Das kann ich für dich tun:
           body: '⏰ „${active.label}" ist abgelaufen!',
           delay: parsed.duration,
         );
-        return CommandResult('Timer "${active.label}" gestellt: ${TimerService.describe(parsed.duration)}.');
+        final xp = await gamification.awardForTimer();
+        return CommandResult(
+          'Timer "${active.label}" gestellt: ${TimerService.describe(parsed.duration)}.${xp.toSuffix()}',
+        );
       }
 
       if (_matchesAny(lower, ['lösche alle notizen', 'alle notizen löschen', 'notizen löschen'])) {
@@ -469,7 +496,17 @@ Das kann ich für dich tun:
       final noteText = _extractAfter(lower, text, ['notiere dir', 'merke dir', 'notiz:', 'notiere ', 'neue notiz ', 'notiz ']);
       if (noteText != null) {
         await notes.add(noteText);
-        return CommandResult('Notiz gespeichert: $noteText');
+        final xp = await gamification.awardForNote();
+        return CommandResult('Notiz gespeichert: $noteText${xp.toSuffix()}');
+      }
+
+      if (_matchesAny(lower, ['mein level', 'meine xp', 'mein rang', 'meine erfolge', 'meine achievements'])) {
+        return CommandResult(await gamification.statusText());
+      }
+
+      if (_matchesAny(lower, ['commit gemacht', 'ich habe committet', 'logge einen commit', 'trage einen commit ein'])) {
+        final xp = await gamification.logCommit();
+        return CommandResult('Commit geloggt.${xp.toSuffix()}');
       }
 
       if (_matchesAny(lower, ['wirf eine münze', 'münze werfen', 'kopf oder zahl', 'münze'])) {
@@ -602,13 +639,17 @@ Das kann ich für dich tun:
           body: '⏰ „${active.label}" ist abgelaufen!',
           delay: active.duration,
         );
-        return CommandResult('Timer "${active.label}" gestellt: ${TimerService.describe(active.duration)}.');
+        final timerXp = await gamification.awardForTimer();
+        return CommandResult(
+          'Timer "${active.label}" gestellt: ${TimerService.describe(active.duration)}.${timerXp.toSuffix()}',
+        );
 
       case 'add_note':
         final noteText = (action.params['text'] as String?)?.trim() ?? '';
         if (noteText.isEmpty) return CommandResult('Was soll ich mir merken?');
         await notes.add(noteText);
-        return CommandResult('Notiz gespeichert: $noteText');
+        final noteXp = await gamification.awardForNote();
+        return CommandResult('Notiz gespeichert: $noteText${noteXp.toSuffix()}');
 
       case 'get_weather':
         final key = await settings.getWeatherApiKey();

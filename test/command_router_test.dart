@@ -8,6 +8,7 @@ import 'package:jarvis_mobile/services/code_snippet_service.dart';
 import 'package:jarvis_mobile/services/contacts_service.dart';
 import 'package:jarvis_mobile/services/device_info_service.dart';
 import 'package:jarvis_mobile/services/email_service.dart';
+import 'package:jarvis_mobile/services/gamification_service.dart';
 import 'package:jarvis_mobile/services/ip_service.dart';
 import 'package:jarvis_mobile/services/joke_service.dart';
 import 'package:jarvis_mobile/services/location_service.dart';
@@ -263,9 +264,10 @@ void main() {
   late FakeSettingsService settings;
   late FakeCodeSnippetService snippets;
   late FakeSoundboardService soundboard;
+  late GamificationService gamification;
   late CommandRouter router;
 
-  setUp(() {
+  setUp(() async {
     SharedPreferences.setMockInitialValues({});
     wikipedia = FakeWikipediaService();
     contacts = FakeContactsService();
@@ -282,6 +284,7 @@ void main() {
     settings = FakeSettingsService();
     snippets = FakeCodeSnippetService();
     soundboard = FakeSoundboardService();
+    gamification = GamificationService();
 
     router = CommandRouter(
       wikipedia: wikipedia,
@@ -308,7 +311,12 @@ void main() {
       webSearch: webSearch,
       snippets: snippets,
       soundboard: soundboard,
+      gamification: gamification,
     );
+    // Pre-claim today's gamification bonus so it doesn't prepend a "🎉
+    // Tages-Bonus" line to the very first handle() call in each test —
+    // that's covered by its own dedicated test below instead.
+    await gamification.claimDailyBonusIfNeeded();
   });
 
   test('empty input is rejected without touching any service', () async {
@@ -480,7 +488,7 @@ void main() {
   group('Notizen', () {
     test('notiz <Text> saves a note', () async {
       final result = await router.handle('notiz kaufe milch');
-      expect(result.reply, 'Notiz gespeichert: kaufe milch');
+      expect(result.reply, contains('Notiz gespeichert: kaufe milch'));
     });
 
     test('meine notizen lists saved notes', () async {
@@ -619,6 +627,80 @@ void main() {
 
       final helpResult = await router.handle('hilfe');
       expect(helpResult.reply, contains('Das kann ich für dich tun'));
+    });
+  });
+
+  group('Gamification (XP & Level)', () {
+    test('notiz gives XP, echoed in the reply', () async {
+      final result = await router.handle('notiz Milch kaufen');
+      expect(result.reply, contains('Notiz gespeichert: Milch kaufen'));
+      expect(result.reply, contains('+5 XP'));
+    });
+
+    test('timer für gives XP, echoed in the reply', () async {
+      final result = await router.handle('timer für 5 minuten');
+      expect(result.reply, contains('Timer'));
+      expect(result.reply, contains('+5 XP'));
+    });
+
+    test('commit gemacht logs a commit and gives XP', () async {
+      final result = await router.handle('commit gemacht');
+      expect(result.reply, contains('Commit geloggt'));
+      expect(result.reply, contains('+15 XP'));
+    });
+
+    test('mein level reports status text', () async {
+      await router.handle('notiz eins');
+      final result = await router.handle('mein level');
+      expect(result.reply, contains('Level'));
+      expect(result.reply, contains('XP gesamt'));
+    });
+
+    test('erste notiz unlocks the "Erste Notiz" achievement', () async {
+      final result = await router.handle('notiz eins');
+      expect(result.reply, contains('Erfolg freigeschaltet: Erste Notiz'));
+    });
+
+    test('daily bonus is claimed once and folded into the next reply', () async {
+      // Uses its own fresh service/prefs (the shared `gamification` from
+      // setUp already pre-claimed today's bonus so router tests above
+      // aren't affected by it).
+      SharedPreferences.setMockInitialValues({});
+      final freshGamification = GamificationService();
+      final freshRouter = CommandRouter(
+        wikipedia: wikipedia,
+        jokes: FakeJokeService(),
+        news: FakeNewsService(),
+        weather: FakeWeatherService(),
+        whatsapp: whatsapp,
+        email: email,
+        call: call,
+        appLauncher: FakeAppLauncherService(),
+        youtube: youtube,
+        qr: QrService(),
+        location: FakeLocationService(),
+        contacts: contacts,
+        settings: settings,
+        ip: FakeIpService(),
+        aiChat: aiChat,
+        deviceInfo: FakeDeviceInfoService(),
+        timer: timer,
+        notes: notes,
+        fun: RandomFunService(),
+        notifications: notifications,
+        spotify: spotify,
+        webSearch: webSearch,
+        snippets: snippets,
+        soundboard: soundboard,
+        gamification: freshGamification,
+      );
+
+      final first = await freshRouter.handle('hilfe');
+      expect(first.reply, contains('Tages-Bonus'));
+      expect(first.reply, contains('+10 XP'));
+
+      final second = await freshRouter.handle('hilfe');
+      expect(second.reply, isNot(contains('Tages-Bonus')));
     });
   });
 
