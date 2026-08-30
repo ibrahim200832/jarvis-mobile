@@ -19,6 +19,10 @@ class SettingsService {
   static const _keyEveningSummaryEnabled = 'evening_summary_enabled';
   static const _keyHomeAssistantUrl = 'home_assistant_url';
   static const _keyHomeAssistantToken = 'home_assistant_token';
+  static const _keyPersona = 'jarvis_persona';
+  static const _keyHudEffectsEnabled = 'hud_effects_enabled';
+  static const _keyMoodAutoAdjustEnabled = 'mood_auto_adjust_enabled';
+  static const _keyEveningJournalEnabled = 'evening_journal_enabled';
 
   Future<String?> getNewsApiKey() async {
     final prefs = await SharedPreferences.getInstance();
@@ -214,5 +218,50 @@ class SettingsService {
   Future<void> setHomeAssistantToken(String value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyHomeAssistantToken, value);
+  }
+
+  /// Which fixed JARVIS persona is active: 'standard', 'drill_sergeant',
+  /// 'gaming_buddy', or 'butler'. Non-standard personas replace the
+  /// sarcasm-banded personality clause entirely (see ai_chat_service.dart).
+  Future<String> getPersona() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyPersona) ?? 'standard';
+  }
+
+  Future<void> setPersona(String value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyPersona, value);
+  }
+
+  Future<bool> getHudEffectsEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyHudEffectsEnabled) ?? true;
+  }
+
+  Future<void> setHudEffectsEnabled(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyHudEffectsEnabled, value);
+  }
+
+  /// Whether a "stimmungscheck" voice-tone reading is allowed to nudge the
+  /// effective sarcasm level for subsequent replies (see mood_classifier.dart).
+  Future<bool> getMoodAutoAdjustEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyMoodAutoAdjustEnabled) ?? true;
+  }
+
+  Future<void> setMoodAutoAdjustEnabled(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyMoodAutoAdjustEnabled, value);
+  }
+
+  Future<bool> getEveningJournalEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyEveningJournalEnabled) ?? false;
+  }
+
+  Future<void> setEveningJournalEnabled(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyEveningJournalEnabled, value);
   }
 }

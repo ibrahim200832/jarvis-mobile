@@ -47,6 +47,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   List<Contact> _contacts = [];
   String _appVersion = '';
   String _aiModel = 'openai';
+  String _persona = 'standard';
   bool? _hasDeviceContacts;
   bool _spotifyConnected = false;
   bool _connectingSpotify = false;
@@ -65,6 +66,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     'openai': 'ChatGPT (Standard)',
     'mistral': 'Mistral',
     'llama': 'Llama',
+  };
+
+  static const _personas = {
+    'standard': 'JARVIS (Standard)',
+    'drill_sergeant': 'Drill-Trainer',
+    'gaming_buddy': 'Gaming-Kumpel',
+    'butler': 'Butler',
   };
 
   static const _defaultVoiceKey = 'default';
@@ -98,6 +106,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _homeAssistantUrlCtrl.text = await widget.settings.getHomeAssistantUrl() ?? '';
     _homeAssistantTokenCtrl.text = await widget.settings.getHomeAssistantToken() ?? '';
     _aiModel = await widget.settings.getAiModel();
+    _persona = await widget.settings.getPersona();
     _contacts = await widget.contacts.all();
     _spotifyConnected = await widget.spotify.isConnected();
     _tiktokConnected = await widget.tiktok.isConnected();
@@ -149,6 +158,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await widget.settings.setHomeAssistantUrl(_homeAssistantUrlCtrl.text.trim());
     await widget.settings.setHomeAssistantToken(_homeAssistantTokenCtrl.text.trim());
     await widget.settings.setAiModel(_aiModel);
+    await widget.settings.setPersona(_persona);
     final voice = _selectedVoiceKey == _defaultVoiceKey || _selectedVoiceKey == null
         ? null
         : _voices.firstWhere((v) => _voiceKey(v['name']!, v['locale']!) == _selectedVoiceKey);
@@ -347,13 +357,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 24),
           Text('Persönlichkeit', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 4),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            initialValue: _persona,
+            decoration: const InputDecoration(labelText: 'Charakter', border: OutlineInputBorder()),
+            items: _personas.entries.map((e) => DropdownMenuItem(value: e.key, child: Text(e.value))).toList(),
+            onChanged: (value) {
+              if (value != null) setState(() => _persona = value);
+            },
+          ),
+          const SizedBox(height: 8),
           Text('Sarkasmus: ${_sarcasmDescription(_sarcasmLevel)}'),
           Slider(
             value: _sarcasmLevel,
             divisions: 10,
-            onChanged: (value) => setState(() => _sarcasmLevel = value),
+            onChanged: _persona == 'standard' ? (value) => setState(() => _sarcasmLevel = value) : null,
           ),
+          if (_persona != 'standard')
+            const Text(
+              'Wirkt nur bei "JARVIS (Standard)" — andere Charaktere haben einen festen Ton.',
+              style: TextStyle(fontSize: 12),
+            ),
           const Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [

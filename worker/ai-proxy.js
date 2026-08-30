@@ -273,12 +273,45 @@ function personalityClause(sarcasm) {
   );
 }
 
-function buildSystemPrompt(sarcasm) {
+// Fixed alternate personas ("Dynamische Persona-Wechsel") — each one
+// entirely REPLACES personalityClause(sarcasm) with its own fixed
+// identity+tone instead of stacking with it. Returns null for 'standard'
+// (or an unrecognized value), meaning "use the normal sarcasm-banded
+// clause instead". Mirrors _personaClause in lib/services/ai_chat_service.dart.
+function personaClause(persona) {
+  switch (persona) {
+    case 'drill_sergeant':
+      return (
+        'Du bist nicht JARVIS, sondern ein knallharter, brüllender Drill-Sergeant-Fitnesstrainer. Du ' +
+        'forderst, motivierst und stachelst den Nutzer mit lauten, energischen Ansagen an, duldest keine ' +
+        'Ausreden, bist aber im Kern auf seinen Erfolg bedacht. Kurze, harte Sätze.'
+      );
+    case 'gaming_buddy':
+      return (
+        'Du bist nicht JARVIS, sondern ein lockerer, launiger Gaming-Kumpel. Du redest locker, benutzt ' +
+        'Gaming-Slang, machst Witze und feuerst den Nutzer wie einen guten Freund beim Zocken an. Locker, ' +
+        'kumpelhaft, nie förmlich.'
+      );
+    case 'butler':
+      return (
+        'Du bist nicht JARVIS, sondern ein hyper-höflicher, altmodischer Butler. Du sprichst extrem formell ' +
+        'und respektvoll, mit tadelloser Etikette, und sprichst den Nutzer stets mit "gnädiger Herr" an. ' +
+        'Niemals Umgangssprache oder Ironie.'
+      );
+    default:
+      return null;
+  }
+}
+
+function buildSystemPrompt(sarcasm, persona) {
+  const personality =
+    personaClause(persona) ??
+    `${personalityClause(sarcasm)} Im Kern loyal, aufmerksam und stets bemüht, dem Nutzer das Leben ` +
+      'leichter zu machen. Du sprichst den Nutzer mit "Sir" oder "Master" an.';
   return (
   'Du bist JARVIS, das KI-System von Tony Stark aus den Iron-Man-Filmen, jetzt im Dienst des Nutzers. ' +
-  personalityClause(sarcasm) +
-  ' Im Kern loyal, aufmerksam und stets bemüht, dem Nutzer ' +
-  'das Leben leichter zu machen. Du sprichst den Nutzer mit "Sir" oder "Master" an. Du wirst meist in einem gesprochenen ' +
+  personality +
+  ' Du wirst meist in einem gesprochenen ' +
   'Gespräch oder Telefonat genutzt, deshalb antwortest du immer kurz und natürlich (meist 1-2 Sätze), ' +
   'nie als Liste, Aufzählung oder Roman. ' +
   'Wichtig: Die bisherigen Nachrichten dieses Gesprächs stehen dir direkt zur Verfügung. Lies sie aktiv, ' +
@@ -373,6 +406,7 @@ export default {
     let message;
     let history;
     let sarcasm;
+    let persona;
     let mode;
     let genre;
     try {
@@ -380,6 +414,7 @@ export default {
       message = body.message;
       history = Array.isArray(body.history) ? body.history : [];
       sarcasm = body.sarcasm;
+      persona = body.persona;
       mode = body.mode;
       genre = body.genre;
     } catch (_) {
@@ -409,7 +444,7 @@ export default {
     // "morgen um 18 Uhr") need the current time handed to it explicitly.
     const systemPrompt = isStory
       ? buildStorySystemPrompt(genre)
-      : `${buildSystemPrompt(sarcasm)} Aktuelles Datum/Uhrzeit (UTC): ${new Date().toISOString()}.`;
+      : `${buildSystemPrompt(sarcasm, persona)} Aktuelles Datum/Uhrzeit (UTC): ${new Date().toISOString()}.`;
     const messages = [{ role: 'system', content: systemPrompt }, ...cleanHistory, { role: 'user', content: message }];
 
     let data;

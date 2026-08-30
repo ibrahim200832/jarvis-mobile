@@ -175,6 +175,7 @@ Das kann ich für dich tun:
 • "code snippet für <Flutter-Widget oder Git-Befehl>" (kopiert in die Zwischenablage) / "welche code snippets kennst du"
 • "spiel sound <Name>" (z.B. boot, scan, alarm) / "welche sounds hast du"
 • "starte ein sci-fi abenteuer" / "starte eine detektivgeschichte" (interaktives Textadventure, "beende das abenteuer" zum Verlassen)
+• "aktiviere den drill-trainer" / "aktiviere den gaming-kumpel" / "aktiviere die butler-persona" / "aktiviere jarvis standard" (Persona wechseln) / "welche persona"
 • "mein level" / "meine xp" / "meine erfolge" (Notizen, Timer und Commits geben XP) / "commit gemacht" (loggt einen Code-Commit)
 • "musik zum <Stimmung>" (z.B. fokus, entspannen, workout, party) / "passende musik" (nach Tageszeit) (Spotify-Verbindung nötig)
 • "morgen-briefing" / "abend-zusammenfassung" (Vorschau jetzt; automatischer täglicher Versand als Benachrichtigung ist in Einstellungen aktivierbar)
@@ -217,6 +218,23 @@ Das kann ich für dich tun:
     try {
       if (_matchesAny(lower, ['hilfe', 'was kannst du', 'help'])) {
         return CommandResult(helpText);
+      }
+
+      const personaTriggers = {
+        'drill_sergeant': ['aktiviere den drill-trainer', 'drill-trainer modus', 'sei mein drill-trainer'],
+        'gaming_buddy': ['aktiviere den gaming-kumpel', 'gaming-kumpel modus', 'sei mein gaming-kumpel'],
+        'butler': ['aktiviere die butler-persona', 'butler-modus', 'sei mein butler'],
+        'standard': ['aktiviere jarvis standard', 'standard-persona', 'normale persönlichkeit'],
+      };
+      for (final entry in personaTriggers.entries) {
+        if (_matchesAny(lower, entry.value)) {
+          await settings.setPersona(entry.key);
+          return CommandResult(_personaConfirmation(entry.key));
+        }
+      }
+      if (_matchesAny(lower, ['welche persona', 'aktuelle persona'])) {
+        final current = await settings.getPersona();
+        return CommandResult('Aktuelle Persona: ${_personaLabel(current)}.');
       }
 
       final detectiveStart = _matchesAny(lower, [
@@ -600,12 +618,14 @@ Das kann ich für dich tun:
       final backendUrl = await settings.getAiBackendUrl();
       final aiModel = await settings.getAiModel();
       final sarcasm = await settings.getSarcasmLevel();
+      final persona = await settings.getPersona();
       final aiResult = await aiChat.ask(
         backendUrl ?? '',
         text,
         model: aiModel,
         history: List.unmodifiable(_aiHistory),
         sarcasm: sarcasm,
+        persona: persona,
       );
       _aiHistory.add(AiTurn(role: 'user', content: text));
       _aiHistory.add(AiTurn(role: 'assistant', content: aiResult.reply));
@@ -615,6 +635,28 @@ Das kann ich für dich tun:
       return await _handleAiResult(aiResult);
     } catch (e) {
       return CommandResult('Fehler: ${e.toString().replaceFirst('Exception: ', '')}');
+    }
+  }
+
+  static const _personaLabels = {
+    'standard': 'JARVIS (Standard)',
+    'drill_sergeant': 'Drill-Trainer',
+    'gaming_buddy': 'Gaming-Kumpel',
+    'butler': 'Butler',
+  };
+
+  String _personaLabel(String persona) => _personaLabels[persona] ?? _personaLabels['standard']!;
+
+  String _personaConfirmation(String persona) {
+    switch (persona) {
+      case 'drill_sergeant':
+        return 'DRILL-TRAINER AKTIVIERT! Auf geht\'s, keine Ausreden mehr!';
+      case 'gaming_buddy':
+        return 'Yo! Bin jetzt dein Gaming-Kumpel, lass uns zocken.';
+      case 'butler':
+        return 'Sehr wohl, gnädiger Herr. Die Butler-Persona ist ab sofort aktiv.';
+      default:
+        return 'Zurück zur Standard-Persona, Master.';
     }
   }
 

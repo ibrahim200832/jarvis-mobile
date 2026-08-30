@@ -165,6 +165,7 @@ class FakeSettingsService extends SettingsService {
   String? newsApiKey = 'test-key';
   String? aiBackendUrl = '';
   String aiModel = 'openai';
+  String persona = 'standard';
 
   @override
   Future<String?> getWeatherApiKey() async => weatherApiKey;
@@ -177,6 +178,14 @@ class FakeSettingsService extends SettingsService {
 
   @override
   Future<String> getAiModel() async => aiModel;
+
+  @override
+  Future<String> getPersona() async => persona;
+
+  @override
+  Future<void> setPersona(String value) async {
+    persona = value;
+  }
 }
 
 class FakeIpService extends IpService {
@@ -191,6 +200,7 @@ class FakeAiChatService extends AiChatService {
   String? lastStoryMessage;
   List<AiTurn>? lastStoryHistory;
   String? lastStoryGenre;
+  String? lastPersona;
 
   @override
   Future<AiChatResult> ask(
@@ -199,9 +209,11 @@ class FakeAiChatService extends AiChatService {
     String model = 'openai',
     List<AiTurn> history = const [],
     double sarcasm = 0.3,
+    String persona = 'standard',
   }) async {
     lastMessage = message;
     lastHistory = history;
+    lastPersona = persona;
     return AiChatResult(reply: 'FAKE_AI:$message', action: nextAction);
   }
 
@@ -303,6 +315,43 @@ void main() {
   late FakeAnimeService anime;
   late CommandRouter router;
 
+  // Builds a CommandRouter from the shared setUp() fakes, with optional
+  // per-test overrides — added so each new feature's required constructor
+  // param doesn't force every call site in this file to be edited (there
+  // used to be two full duplicates: `router` here and `freshRouter` in the
+  // daily-bonus test below).
+  CommandRouter buildRouter({GamificationService? gamificationOverride}) => CommandRouter(
+    wikipedia: wikipedia,
+    jokes: FakeJokeService(),
+    news: FakeNewsService(),
+    weather: FakeWeatherService(),
+    whatsapp: whatsapp,
+    email: email,
+    call: call,
+    appLauncher: FakeAppLauncherService(),
+    youtube: youtube,
+    qr: QrService(),
+    location: FakeLocationService(),
+    contacts: contacts,
+    settings: settings,
+    ip: FakeIpService(),
+    aiChat: aiChat,
+    deviceInfo: FakeDeviceInfoService(),
+    timer: timer,
+    notes: notes,
+    fun: RandomFunService(),
+    notifications: notifications,
+    spotify: spotify,
+    webSearch: webSearch,
+    snippets: snippets,
+    soundboard: soundboard,
+    gamification: gamificationOverride ?? gamification,
+    musicDj: MusicDjService(),
+    briefing: briefing,
+    homeAssistant: HomeAssistantService(),
+    anime: anime,
+  );
+
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     wikipedia = FakeWikipediaService();
@@ -332,37 +381,7 @@ void main() {
     );
     anime = FakeAnimeService();
 
-    router = CommandRouter(
-      wikipedia: wikipedia,
-      jokes: FakeJokeService(),
-      news: FakeNewsService(),
-      weather: FakeWeatherService(),
-      whatsapp: whatsapp,
-      email: email,
-      call: call,
-      appLauncher: FakeAppLauncherService(),
-      youtube: youtube,
-      qr: QrService(),
-      location: FakeLocationService(),
-      contacts: contacts,
-      settings: settings,
-      ip: FakeIpService(),
-      aiChat: aiChat,
-      deviceInfo: FakeDeviceInfoService(),
-      timer: timer,
-      notes: notes,
-      fun: RandomFunService(),
-      notifications: notifications,
-      spotify: spotify,
-      webSearch: webSearch,
-      snippets: snippets,
-      soundboard: soundboard,
-      gamification: gamification,
-      musicDj: MusicDjService(),
-      briefing: briefing,
-      homeAssistant: HomeAssistantService(),
-      anime: anime,
-    );
+    router = buildRouter();
     // Pre-claim today's gamification bonus so it doesn't prepend a "🎉
     // Tages-Bonus" line to the very first handle() call in each test —
     // that's covered by its own dedicated test below instead.
@@ -717,37 +736,7 @@ void main() {
       // aren't affected by it).
       SharedPreferences.setMockInitialValues({});
       final freshGamification = GamificationService();
-      final freshRouter = CommandRouter(
-        wikipedia: wikipedia,
-        jokes: FakeJokeService(),
-        news: FakeNewsService(),
-        weather: FakeWeatherService(),
-        whatsapp: whatsapp,
-        email: email,
-        call: call,
-        appLauncher: FakeAppLauncherService(),
-        youtube: youtube,
-        qr: QrService(),
-        location: FakeLocationService(),
-        contacts: contacts,
-        settings: settings,
-        ip: FakeIpService(),
-        aiChat: aiChat,
-        deviceInfo: FakeDeviceInfoService(),
-        timer: timer,
-        notes: notes,
-        fun: RandomFunService(),
-        notifications: notifications,
-        spotify: spotify,
-        webSearch: webSearch,
-        snippets: snippets,
-        soundboard: soundboard,
-        gamification: freshGamification,
-        musicDj: MusicDjService(),
-        briefing: briefing,
-        homeAssistant: HomeAssistantService(),
-        anime: anime,
-      );
+      final freshRouter = buildRouter(gamificationOverride: freshGamification);
 
       final first = await freshRouter.handle('hilfe');
       expect(first.reply, contains('Tages-Bonus'));
@@ -824,6 +813,46 @@ void main() {
       anime.nextResult = null;
       final result = await router.handle('anime dieswirdsnie existieren');
       expect(result.reply, contains('nicht finden'));
+    });
+  });
+
+  group('Persona-Wechsel', () {
+    test('default persona is standard', () async {
+      expect(await settings.getPersona(), 'standard');
+    });
+
+    test('aktiviere den drill-trainer switches persona and confirms', () async {
+      final result = await router.handle('aktiviere den drill-trainer');
+      expect(result.reply, contains('DRILL-TRAINER'));
+      expect(await settings.getPersona(), 'drill_sergeant');
+    });
+
+    test('sei mein gaming-kumpel switches persona', () async {
+      await router.handle('sei mein gaming-kumpel');
+      expect(await settings.getPersona(), 'gaming_buddy');
+    });
+
+    test('butler-modus switches persona', () async {
+      await router.handle('butler-modus');
+      expect(await settings.getPersona(), 'butler');
+    });
+
+    test('active persona is echoed to the next ask() call', () async {
+      await router.handle('aktiviere die butler-persona');
+      await router.handle('freie frage an die ki');
+      expect(aiChat.lastPersona, 'butler');
+    });
+
+    test('welche persona reports the current persona', () async {
+      await router.handle('aktiviere den gaming-kumpel');
+      final result = await router.handle('welche persona');
+      expect(result.reply, contains('Gaming-Kumpel'));
+    });
+
+    test('aktiviere jarvis standard resets to standard', () async {
+      await router.handle('aktiviere den drill-trainer');
+      await router.handle('aktiviere jarvis standard');
+      expect(await settings.getPersona(), 'standard');
     });
   });
 

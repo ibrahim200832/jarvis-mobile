@@ -55,16 +55,49 @@ String _personalityClause(double sarcasm) {
       'hilfst aber am Ende trotzdem zuverlässig.';
 }
 
+/// Fixed alternate personas ("Dynamische Persona-Wechsel") the user can
+/// switch JARVIS into — each one entirely REPLACES the sarcasm-banded
+/// _personalityClause with its own fixed identity+tone, rather than
+/// stacking with it (4 distinct voices, not 4x4 combinations). Returns null
+/// for the 'standard' persona (or an unknown value), meaning "use the
+/// normal sarcasm-banded JARVIS clause instead". Mirrors personaClause in
+/// worker/ai-proxy.js.
+String? _personaClause(String persona) {
+  switch (persona) {
+    case 'drill_sergeant':
+      return 'Du bist nicht JARVIS, sondern ein knallharter, brüllender Drill-Sergeant-Fitnesstrainer. '
+          'Du forderst, motivierst und stachelst den Nutzer mit lauten, energischen Ansagen an, duldest keine '
+          'Ausreden, bist aber im Kern auf seinen Erfolg bedacht. Kurze, harte Sätze.';
+    case 'gaming_buddy':
+      return 'Du bist nicht JARVIS, sondern ein lockerer, launiger Gaming-Kumpel. Du redest locker, benutzt '
+          'Gaming-Slang, machst Witze und feuerst den Nutzer wie einen guten Freund beim Zocken an. Locker, '
+          'kumpelhaft, nie förmlich.';
+    case 'butler':
+      return 'Du bist nicht JARVIS, sondern ein hyper-höflicher, altmodischer Butler. Du sprichst extrem '
+          'formell und respektvoll, mit tadelloser Etikette, und sprichst den Nutzer stets mit "gnädiger Herr" '
+          'an. Niemals Umgangssprache oder Ironie.';
+    default:
+      return null;
+  }
+}
+
 /// JARVIS's personality, shared by both AI backends below so the character
-/// stays consistent whichever one answers.
-String jarvisSystemPrompt(double sarcasm) =>
-    'Du bist JARVIS, das KI-System von Tony Stark aus den Iron-Man-Filmen, jetzt im Dienst des Nutzers. '
-    '${_personalityClause(sarcasm)} Im Kern loyal und stets bemüht, dem Nutzer das Leben '
-    'leichter zu machen. Du sprichst den Nutzer mit "Sir" oder "Master" an. Antworte kurz (meist 1-2 Sätze), natürlich und im '
-    'Gesprächston, wie ein echtes Telefonat, nicht wie ein Roman oder eine Liste. '
-    'Das bisherige Gespräch steht dir unten zur Verfügung — lies es aktiv und beziehe dich bei Nachfragen '
-    'ausdrücklich darauf, statt die Nachricht isoliert zu behandeln. Wenn du eine Tatsache nicht sicher '
-    'weißt, sag das ehrlich, statt sie zu erfinden.';
+/// stays consistent whichever one answers. If [persona] names a fixed
+/// alternate persona, it replaces the sarcasm-banded clause and the
+/// "Sir"/"Master" address entirely.
+String jarvisSystemPrompt(double sarcasm, {String persona = 'standard'}) {
+  final personaClause = _personaClause(persona);
+  final personality = personaClause ??
+      '${_personalityClause(sarcasm)} Im Kern loyal und stets bemüht, dem Nutzer das Leben leichter zu '
+          'machen. Du sprichst den Nutzer mit "Sir" oder "Master" an.';
+  return 'Du bist JARVIS, das KI-System von Tony Stark aus den Iron-Man-Filmen, jetzt im Dienst des Nutzers. '
+      '$personality '
+      'Antworte kurz (meist 1-2 Sätze), natürlich und im '
+      'Gesprächston, wie ein echtes Telefonat, nicht wie ein Roman oder eine Liste. '
+      'Das bisherige Gespräch steht dir unten zur Verfügung — lies es aktiv und beziehe dich bei Nachfragen '
+      'ausdrücklich darauf, statt die Nachricht isoliert zu behandeln. Wenn du eine Tatsache nicht sicher '
+      'weißt, sag das ehrlich, statt sie zu erfinden.';
+}
 
 /// Narrator persona for the interactive text-adventure mode ("Interaktives
 /// Storytelling"). Deliberately separate from jarvisSystemPrompt: no tool
@@ -100,9 +133,10 @@ class AiChatService {
     String model = 'openai',
     List<AiTurn> history = const [],
     double sarcasm = 0.3,
+    String persona = 'standard',
   }) async {
     if (backendUrl.trim().isEmpty) {
-      return _askFreeFallback(message, model, history, sarcasm);
+      return _askFreeFallback(message, model, history, sarcasm, persona);
     }
     try {
       final res = await http
@@ -113,6 +147,7 @@ class AiChatService {
               'message': message,
               'history': history.map((t) => t.toJson()).toList(),
               'sarcasm': sarcasm,
+              'persona': persona,
             }),
           )
           .timeout(const Duration(seconds: 25));
@@ -140,9 +175,9 @@ class AiChatService {
     }
   }
 
-  Uri _freeFallbackUri(String message, String model, List<AiTurn> history, double sarcasm) {
+  Uri _freeFallbackUri(String message, String model, List<AiTurn> history, double sarcasm, String persona) {
     final transcript = history.map((t) => '${t.role == 'user' ? 'Master' : 'JARVIS'}: ${t.content}').join('\n');
-    final prompt = '${jarvisSystemPrompt(sarcasm)}'
+    final prompt = '${jarvisSystemPrompt(sarcasm, persona: persona)}'
         '${transcript.isEmpty ? '' : '\n\nBisheriges Gespräch:\n$transcript'}'
         '\n\nMaster sagt: $message\n\nJARVIS antwortet:';
     return Uri(
@@ -153,9 +188,15 @@ class AiChatService {
     );
   }
 
-  Future<AiChatResult> _askFreeFallback(String message, String model, List<AiTurn> history, double sarcasm) {
+  Future<AiChatResult> _askFreeFallback(
+    String message,
+    String model,
+    List<AiTurn> history,
+    double sarcasm,
+    String persona,
+  ) {
     return _getWithRetry(
-      _freeFallbackUri(message, model, history, sarcasm),
+      _freeFallbackUri(message, model, history, sarcasm, persona),
       failMsg: 'Ich hab gerade keine Antwort bekommen, Master',
       timeoutMsg: 'Die Antwort hat zu lange gedauert, Master. Versuch es gleich nochmal.',
       offlineMsg: 'Ich konnte die KI gerade nicht erreichen, Master. Prüf deine Internetverbindung.',
