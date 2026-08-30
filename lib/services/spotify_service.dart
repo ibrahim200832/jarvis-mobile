@@ -228,6 +228,39 @@ class SpotifyService {
     return 'Spiele die Playlist "${match.name}" auf Spotify.';
   }
 
+  /// Searches Spotify's public catalog (not just the user's own saved
+  /// playlists) for a playlist matching [query] and starts playing it — used
+  /// by the mood/time-of-day DJ feature to recommend something without the
+  /// user needing to name an exact playlist.
+  Future<String> playMoodPlaylist(String clientId, String query, String moodLabel) async {
+    final token = await _validAccessToken(clientId);
+    if (token == null) return 'Spotify ist nicht verbunden. Bitte in den Einstellungen anmelden.';
+
+    final searchRes = await http.get(
+      Uri.https('api.spotify.com', '/v1/search', {'q': query, 'type': 'playlist', 'limit': '1'}),
+      headers: {'authorization': 'Bearer $token'},
+    );
+    if (searchRes.statusCode != 200) return 'Spotify-Suche fehlgeschlagen.';
+    final items = (jsonDecode(searchRes.body)['playlists']?['items'] as List?) ?? [];
+    final match = items.whereType<Map<String, dynamic>>().firstOrNull;
+    if (match == null) return 'Ich konnte keine passende Playlist für "$moodLabel" finden.';
+    final uri = match['uri'] as String;
+    final name = match['name'] as String? ?? moodLabel;
+
+    final playRes = await http.put(
+      Uri.https('api.spotify.com', '/v1/me/player/play'),
+      headers: {'authorization': 'Bearer $token', 'content-type': 'application/json'},
+      body: jsonEncode({'context_uri': uri}),
+    );
+    if (playRes.statusCode == 404) {
+      return 'Öffne zuerst Spotify auf einem Gerät, dann kann ich "$name" abspielen.';
+    }
+    if (playRes.statusCode != 204 && playRes.statusCode != 200) {
+      return 'Spotify-Wiedergabe fehlgeschlagen (Code ${playRes.statusCode}). Braucht ein Premium-Konto.';
+    }
+    return '$moodLabel: Spiele "$name" auf Spotify.';
+  }
+
   static String _randomVerifier() {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
     final rand = Random.secure();

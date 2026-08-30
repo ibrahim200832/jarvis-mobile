@@ -19,6 +19,7 @@ import '../services/gamification_service.dart';
 import '../services/ip_service.dart';
 import '../services/joke_service.dart';
 import '../services/location_service.dart';
+import '../services/music_dj_service.dart';
 import '../services/news_service.dart';
 import '../services/notes_service.dart';
 import '../services/notification_service.dart';
@@ -113,6 +114,7 @@ class _HomeScreenState extends State<HomeScreen> {
       snippets: CodeSnippetService(),
       soundboard: SoundboardService(),
       gamification: GamificationService(),
+      musicDj: MusicDjService(),
     );
     _timer.onFire = _onTimerFired;
     _speech.init();

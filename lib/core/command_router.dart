@@ -12,6 +12,7 @@ import '../services/gamification_service.dart';
 import '../services/ip_service.dart';
 import '../services/joke_service.dart';
 import '../services/location_service.dart';
+import '../services/music_dj_service.dart';
 import '../services/news_service.dart';
 import '../services/notes_service.dart';
 import '../services/notification_service.dart';
@@ -82,6 +83,7 @@ class CommandRouter {
     required this.snippets,
     required this.soundboard,
     required this.gamification,
+    required this.musicDj,
   });
 
   final WikipediaService wikipedia;
@@ -109,6 +111,7 @@ class CommandRouter {
   final CodeSnippetService snippets;
   final SoundboardService soundboard;
   final GamificationService gamification;
+  final MusicDjService musicDj;
 
   /// Rolling window of past AI exchanges (user+assistant pairs), so a
   /// follow-up like "und morgen?" is understood in context instead of
@@ -163,6 +166,7 @@ Das kann ich für dich tun:
 • "spiel sound <Name>" (z.B. boot, scan, alarm) / "welche sounds hast du"
 • "starte ein sci-fi abenteuer" / "starte eine detektivgeschichte" (interaktives Textadventure, "beende das abenteuer" zum Verlassen)
 • "mein level" / "meine xp" / "meine erfolge" (Notizen, Timer und Commits geben XP) / "commit gemacht" (loggt einen Code-Commit)
+• "musik zum <Stimmung>" (z.B. fokus, entspannen, workout, party) / "passende musik" (nach Tageszeit) (Spotify-Verbindung nötig)
 • alles andere: frag mich einfach frei, ich antworte mit echter KI und kann
   dabei auch direkt anrufen, WhatsApp schreiben oder Apps öffnen
 ''';
@@ -351,6 +355,19 @@ Das kann ich für dich tun:
         final message = parts.sublist(1).join(':').trim();
         await email.compose(to: to, subject: 'Nachricht von JARVIS', body: message);
         return CommandResult('Öffne E-Mail an $to.');
+      }
+
+      final moodText = _extractAfter(lower, text, ['musik zum', 'musik für', 'spiel musik zum', 'spiel musik für']);
+      if (moodText != null) {
+        final pick = musicDj.forMood(moodText);
+        if (pick == null) {
+          return CommandResult('Diese Stimmung kenne ich nicht. Versuch z.B.: ${musicDj.knownMoods.take(6).join(', ')}.');
+        }
+        return CommandResult(await _playMoodOnSpotify(pick));
+      }
+
+      if (_matchesAny(lower, ['passende musik', 'musik-dj', 'was passt musikalisch', 'musik für jetzt'])) {
+        return CommandResult(await _playMoodOnSpotify(musicDj.forTimeOfDay()));
       }
 
       final youtubeQuery = _extractAfter(lower, text, ['youtube', 'spiele']);
@@ -736,6 +753,17 @@ Das kann ich für dich tun:
   Future<WeatherResult> _weatherAtCurrentLocation(String key) async {
     final loc = await location.current();
     return weather.byCoordinates(key, loc.latitude, loc.longitude);
+  }
+
+  Future<String> _playMoodOnSpotify(MoodPick pick) async {
+    final clientId = await settings.getSpotifyClientId();
+    if (clientId == null || clientId.isEmpty) {
+      return 'Spotify ist nicht eingerichtet. Bitte Client-ID in den Einstellungen eintragen und verbinden.';
+    }
+    if (!await spotify.isConnected()) {
+      return 'Spotify ist noch nicht verbunden. Bitte in den Einstellungen anmelden.';
+    }
+    return spotify.playMoodPlaylist(clientId, pick.query, pick.label);
   }
 
   Future<String> _playOnSpotify(String song) async {

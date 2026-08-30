@@ -12,6 +12,7 @@ import 'package:jarvis_mobile/services/gamification_service.dart';
 import 'package:jarvis_mobile/services/ip_service.dart';
 import 'package:jarvis_mobile/services/joke_service.dart';
 import 'package:jarvis_mobile/services/location_service.dart';
+import 'package:jarvis_mobile/services/music_dj_service.dart';
 import 'package:jarvis_mobile/services/news_service.dart';
 import 'package:jarvis_mobile/services/notes_service.dart';
 import 'package:jarvis_mobile/services/notification_service.dart';
@@ -312,6 +313,7 @@ void main() {
       snippets: snippets,
       soundboard: soundboard,
       gamification: gamification,
+      musicDj: MusicDjService(),
     );
     // Pre-claim today's gamification bonus so it doesn't prepend a "🎉
     // Tages-Bonus" line to the very first handle() call in each test —
@@ -693,6 +695,7 @@ void main() {
         snippets: snippets,
         soundboard: soundboard,
         gamification: freshGamification,
+        musicDj: MusicDjService(),
       );
 
       final first = await freshRouter.handle('hilfe');
@@ -701,6 +704,23 @@ void main() {
 
       final second = await freshRouter.handle('hilfe');
       expect(second.reply, isNot(contains('Tages-Bonus')));
+    });
+  });
+
+  group('Musik-DJ', () {
+    test('musik zum fokus reports Spotify not connected (not set up in test)', () async {
+      final result = await router.handle('musik zum fokus');
+      expect(result.reply, contains('Spotify'));
+    });
+
+    test('musik zum <unbekannte stimmung> suggests known moods', () async {
+      final result = await router.handle('musik zum quantenphysik');
+      expect(result.reply, contains('kenne ich nicht'));
+    });
+
+    test('passende musik picks a time-of-day mood and reports Spotify not connected', () async {
+      final result = await router.handle('passende musik');
+      expect(result.reply, contains('Spotify'));
     });
   });
 
