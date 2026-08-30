@@ -85,6 +85,7 @@ class _HomeScreenState extends State<HomeScreen> {
     challenges: ChallengeService(),
   );
   final _ambient = AmbientSoundService();
+  final _soundboard = SoundboardService();
   final _contacts = ContactsService();
   final _timer = TimerService();
   final _spotify = SpotifyService();
@@ -136,7 +137,7 @@ class _HomeScreenState extends State<HomeScreen> {
       spotify: _spotify,
       webSearch: WebSearchService(),
       snippets: CodeSnippetService(),
-      soundboard: SoundboardService(),
+      soundboard: _soundboard,
       gamification: GamificationService(),
       musicDj: MusicDjService(),
       briefing: _briefing,
@@ -158,6 +159,22 @@ class _HomeScreenState extends State<HomeScreen> {
     // sure the daily notifications are scheduled/updated with today's data
     // whenever the app is opened, in case Einstellungen enabled them.
     unawaited(_briefing.rescheduleAll());
+    unawaited(_maybeDeliverMorningAudioBriefing());
+  }
+
+  /// If it's the first app-open at/after 7:00 today (and the morning
+  /// briefing is enabled), plays a short sound intro and speaks the
+  /// briefing aloud immediately, in addition to it having already been
+  /// scheduled as a silent-until-tapped OS notification via rescheduleAll().
+  Future<void> _maybeDeliverMorningAudioBriefing() async {
+    final briefingText = await _briefing.claimMorningAudioBriefingIfDue();
+    if (briefingText == null || !mounted) return;
+    await _soundboard.play('boot');
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+    if (!mounted) return;
+    setState(() => _messages.add(ChatMessage(briefingText, fromUser: false)));
+    _scrollToBottom();
+    unawaited(_tts.speak(briefingText));
   }
 
   Future<void> _loadHudEffectsEnabled() async {

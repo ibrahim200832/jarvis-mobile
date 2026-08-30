@@ -1,3 +1,5 @@
+import 'package:shared_preferences/shared_preferences.dart';
+
 import 'challenge_service.dart';
 import 'gamification_service.dart';
 import 'location_service.dart';
@@ -67,6 +69,12 @@ class ProactiveBriefingService {
     }
   }
 
+  Future<String> _remindersLine() async {
+    final reminders = await notifications.pendingReminderBodies();
+    if (reminders.isEmpty) return '';
+    return ' Anstehende Termine: ${reminders.join(', ')}.';
+  }
+
   Future<String> buildMorningBriefing() async {
     final buffer = StringBuffer('Guten Morgen!');
     buffer.write(await _weatherLine());
@@ -74,6 +82,7 @@ class ProactiveBriefingService {
     if (openNotes.isNotEmpty) {
       buffer.write(' Du hast ${openNotes.length} offene Notiz${openNotes.length == 1 ? '' : 'en'}.');
     }
+    buffer.write(await _remindersLine());
     buffer.write(await _newsLine());
     final challenge = await challenges.current();
     buffer.write('\n\nHeutige Challenge: ${challenge.text}');
@@ -89,6 +98,31 @@ class ProactiveBriefingService {
   /// replies via chat, which is where the actual reflection happens (see
   /// CommandRouter's journal handling).
   String buildJournalPrompt() => 'Wie war dein Tag? Erzähl mir kurz davon, wenn du magst.';
+
+  static const _lastAudioBriefingKey = 'proactive_briefing_last_audio_delivered';
+
+  /// Returns today's morning briefing text — with a sound intro spoken
+  /// aloud by the caller — exactly once per day, the first time the app is
+  /// opened at/after [morningHour], if the morning-briefing setting is
+  /// enabled. Returns null otherwise (not due yet, already delivered today,
+  /// or disabled).
+  ///
+  /// Honest limitation: this can only actually "auto-play" the moment the
+  /// app is next opened, not while the phone is locked/the app is fully
+  /// closed — there's no background audio playback here, same boundary as
+  /// every other proactive-notification feature in this app.
+  Future<String?> claimMorningAudioBriefingIfDue({DateTime? now}) async {
+    if (!await settings.getMorningBriefingEnabled()) return null;
+    final effectiveNow = now ?? DateTime.now();
+    if (effectiveNow.hour < morningHour) return null;
+
+    final prefs = await SharedPreferences.getInstance();
+    final today = effectiveNow.toIso8601String().substring(0, 10);
+    if (prefs.getString(_lastAudioBriefingKey) == today) return null;
+    await prefs.setString(_lastAudioBriefingKey, today);
+
+    return buildMorningBriefing();
+  }
 
   /// Re-schedules both notifications based on the current Einstellungen
   /// (enabled/disabled) and freshest available data — call on app start and

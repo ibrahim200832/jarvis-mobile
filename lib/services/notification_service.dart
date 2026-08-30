@@ -104,4 +104,23 @@ class NotificationService {
     await _ensureInitialized();
     await _plugin.cancel(id: id);
   }
+
+  static const _dailyNotificationIds = {9001, 9002, 9003};
+
+  /// Returns the body texts of currently OS-scheduled one-off reminders
+  /// (from "timer für ..."/"erinnere mich an ..."), excluding the daily
+  /// morning/evening/journal notifications. This is the only reminder
+  /// state that actually survives an app restart — TimerService's
+  /// in-memory dart:async.Timer list does not — so it's what
+  /// ProactiveBriefingService uses to source "Termine" for the morning
+  /// briefing.
+  Future<List<String>> pendingReminderBodies() async {
+    await _ensureInitialized();
+    final pending = await _plugin.pendingNotificationRequests();
+    return pending
+        .where((p) => !_dailyNotificationIds.contains(p.id))
+        .map((p) => p.body ?? '')
+        .where((b) => b.isNotEmpty)
+        .toList();
+  }
 }

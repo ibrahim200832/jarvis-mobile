@@ -312,6 +312,11 @@ class FakeNotificationService extends NotificationService {
 
   @override
   Future<void> cancelDailyNotification(int id) async {}
+
+  List<String> reminderBodies = [];
+
+  @override
+  Future<List<String>> pendingReminderBodies() async => reminderBodies;
 }
 
 class FakeCodeSnippetService extends CodeSnippetService {
@@ -886,6 +891,13 @@ void main() {
       final result = await router.handle('abend-zusammenfassung');
       expect(result.reply, contains('Guten Abend'));
       expect(result.reply, contains('Level'));
+    });
+
+    test('morgen-briefing includes pending reminders as Termine', () async {
+      notifications.reminderBodies = ['⏰ „Zahnarzt" ist abgelaufen!'];
+      final result = await router.handle('morgen-briefing');
+      expect(result.reply, contains('Anstehende Termine'));
+      expect(result.reply, contains('Zahnarzt'));
     });
   });
 
