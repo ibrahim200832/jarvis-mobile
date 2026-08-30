@@ -48,8 +48,11 @@ import '../services/wikipedia_service.dart';
 import '../services/youtube_service.dart';
 import '../services/youtube_upload_service.dart';
 import '../theme/jarvis_theme.dart';
+import '../widgets/access_denied_flash.dart';
+import '../widgets/blinking_dot.dart';
 import '../widgets/chat_bubble.dart';
 import '../widgets/glass_container.dart';
+import '../widgets/scanline_overlay.dart';
 import '../widgets/voice_orb_overlay.dart';
 import 'camera_screen.dart';
 import 'gesture_screen.dart';
@@ -102,6 +105,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _processing = false;
   bool _speaking = false;
   bool _muted = false;
+  bool _hudEffectsEnabled = true;
   String _partialText = '';
 
   @override
@@ -147,10 +151,16 @@ class _HomeScreenState extends State<HomeScreen> {
     _speech.init();
     unawaited(_checkForUpdate());
     unawaited(_applyStoredTtsSettings());
+    unawaited(_loadHudEffectsEnabled());
     // Not a background fetch (see ProactiveBriefingService) - just makes
     // sure the daily notifications are scheduled/updated with today's data
     // whenever the app is opened, in case Einstellungen enabled them.
     unawaited(_briefing.rescheduleAll());
+  }
+
+  Future<void> _loadHudEffectsEnabled() async {
+    final enabled = await _settings.getHudEffectsEnabled();
+    if (mounted) setState(() => _hudEffectsEnabled = enabled);
   }
 
   /// Loads the saved TTS voice/pitch/speech-rate (Einstellungen) so JARVIS
@@ -281,6 +291,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     final micStatus = await Permission.microphone.request();
     if (!micStatus.isGranted) {
+      if (mounted) showAccessDeniedFlash(context);
       _showSnack('Mikrofon-Berechtigung wird benötigt.');
       return;
     }
@@ -301,6 +312,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     final micStatus = await Permission.microphone.request();
     if (!micStatus.isGranted) {
+      if (mounted) showAccessDeniedFlash(context);
       _showSnack('Mikrofon-Berechtigung wird benötigt.');
       return;
     }
@@ -352,6 +364,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (status.isGranted && mounted) {
       Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CameraScreen()));
     } else {
+      if (mounted) showAccessDeniedFlash(context);
       _showSnack('Kamera-Berechtigung wird benötigt.');
     }
   }
@@ -392,6 +405,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (status.isGranted && mounted) {
         Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CameraScreen()));
       } else {
+        if (mounted) showAccessDeniedFlash(context);
         _showSnack('Kamera-Berechtigung wird benötigt.');
       }
     }
@@ -470,14 +484,19 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_callActive) {
       return Scaffold(
         backgroundColor: Colors.black,
-        body: VoiceOrbOverlay(
-          state: _orbState,
-          statusText: _orbStatusText,
-          muted: _muted,
-          onToggleMute: _toggleMute,
-          onEndCall: _toggleCall,
-          onReset: _resetCall,
-          onOpenCamera: _openCameraDuringCall,
+        body: Stack(
+          children: [
+            VoiceOrbOverlay(
+              state: _orbState,
+              statusText: _orbStatusText,
+              muted: _muted,
+              onToggleMute: _toggleMute,
+              onEndCall: _toggleCall,
+              onReset: _resetCall,
+              onOpenCamera: _openCameraDuringCall,
+            ),
+            if (_hudEffectsEnabled) const Positioned.fill(child: ScanlineOverlay()),
+          ],
         ),
       );
     }
@@ -488,6 +507,7 @@ class _HomeScreenState extends State<HomeScreen> {
           constraints: const BoxConstraints(maxWidth: 720),
           child: Stack(
             children: [
+              if (_hudEffectsEnabled) const Positioned.fill(child: ScanlineOverlay()),
               // Ambient glow — mirrors the blurred radial gradient behind the
               // AETHER web redesign, so the glass header/composer have
               // something to visibly show through.
@@ -583,11 +603,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Container(
-                        width: 6,
-                        height: 6,
-                        decoration: BoxDecoration(shape: BoxShape.circle, color: colorScheme.primary),
-                      ),
+                      BlinkingDot(color: colorScheme.primary),
                       const SizedBox(width: 6),
                       Text('Online', style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant)),
                     ],
@@ -616,19 +632,21 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
               IconButton(
                 icon: const Icon(Icons.settings_outlined),
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => SettingsScreen(
-                      settings: _settings,
-                      contacts: _contacts,
-                      spotify: _spotify,
-                      tiktok: _tiktok,
-                      tts: _tts,
-                      briefing: _briefing,
-                      homeAssistant: HomeAssistantService(),
-                    ),
-                  ),
-                ),
+                onPressed: () => Navigator.of(context)
+                    .push(
+                      MaterialPageRoute(
+                        builder: (_) => SettingsScreen(
+                          settings: _settings,
+                          contacts: _contacts,
+                          spotify: _spotify,
+                          tiktok: _tiktok,
+                          tts: _tts,
+                          briefing: _briefing,
+                          homeAssistant: HomeAssistantService(),
+                        ),
+                      ),
+                    )
+                    .then((_) => _loadHudEffectsEnabled()),
               ),
             ],
           ),

@@ -61,6 +61,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _morningBriefingEnabled = false;
   bool _eveningSummaryEnabled = false;
   bool _eveningJournalEnabled = false;
+  bool _hudEffectsEnabled = true;
   bool _testingHomeAssistant = false;
 
   static const _aiModels = {
@@ -118,6 +119,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _morningBriefingEnabled = await widget.settings.getMorningBriefingEnabled();
     _eveningSummaryEnabled = await widget.settings.getEveningSummaryEnabled();
     _eveningJournalEnabled = await widget.settings.getEveningJournalEnabled();
+    _hudEffectsEnabled = await widget.settings.getHudEffectsEnabled();
     final savedVoiceName = await widget.settings.getTtsVoiceName();
     final savedVoiceLocale = await widget.settings.getTtsVoiceLocale();
     if (savedVoiceName != null && savedVoiceLocale != null) {
@@ -177,6 +179,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await widget.settings.setMorningBriefingEnabled(_morningBriefingEnabled);
     await widget.settings.setEveningSummaryEnabled(_eveningSummaryEnabled);
     await widget.settings.setEveningJournalEnabled(_eveningJournalEnabled);
+    await widget.settings.setHudEffectsEnabled(_hudEffectsEnabled);
     await widget.briefing.rescheduleAll();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gespeichert.')));
@@ -413,6 +416,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: const Text('Abend-Tagebuch (21:30 Uhr)'),
             value: _eveningJournalEnabled,
             onChanged: (value) => setState(() => _eveningJournalEnabled = value),
+          ),
+          const SizedBox(height: 24),
+          Text('HUD-Optik', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 4),
+          const Text(
+            'Dezente Sci-Fi-Scanlines im Hintergrund (Chat- und Anruf-Bildschirm).',
+            style: TextStyle(fontSize: 12),
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Scanline-Effekt'),
+            value: _hudEffectsEnabled,
+            onChanged: (value) => setState(() => _hudEffectsEnabled = value),
           ),
           const SizedBox(height: 24),
           Text('Smart-Home (Home Assistant)', style: Theme.of(context).textTheme.titleMedium),
