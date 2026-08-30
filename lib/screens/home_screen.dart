@@ -12,6 +12,7 @@ import '../services/ai_chat_service.dart';
 import '../services/anime_service.dart';
 import '../services/app_launcher_service.dart';
 import '../services/call_service.dart';
+import '../services/challenge_service.dart';
 import '../services/code_snippet_service.dart';
 import '../services/contacts_service.dart';
 import '../services/device_info_service.dart';
@@ -74,6 +75,7 @@ class _HomeScreenState extends State<HomeScreen> {
     location: LocationService(),
     gamification: GamificationService(),
     settings: SettingsService(),
+    challenges: ChallengeService(),
   );
   final _contacts = ContactsService();
   final _timer = TimerService();
@@ -132,6 +134,7 @@ class _HomeScreenState extends State<HomeScreen> {
       homeAssistant: HomeAssistantService(),
       anime: AnimeService(),
       lateNightTease: LateNightTeaseService(),
+      challenges: ChallengeService(),
     );
     _timer.onFire = _onTimerFired;
     _speech.init();

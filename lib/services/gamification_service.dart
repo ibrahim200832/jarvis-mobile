@@ -50,6 +50,7 @@ class GamificationService {
   static const noteXp = 5;
   static const timerXp = 5;
   static const commitXp = 15;
+  static const challengeXp = 20;
 
   static final List<_AchievementDef> _achievements = [
     _AchievementDef('erste_notiz', 'Erste Notiz', (s, lvl) => (s['notesAdded'] ?? 0) >= 1),
@@ -59,6 +60,8 @@ class GamificationService {
     _AchievementDef('commit_serie', 'Commit-Serie', (s, lvl) => (s['commitsLogged'] ?? 0) >= 10),
     _AchievementDef('aufsteiger', 'Aufsteiger (Level 5)', (s, lvl) => lvl >= 5),
     _AchievementDef('veteran', 'Veteran (Level 10)', (s, lvl) => lvl >= 10),
+    _AchievementDef('erste_challenge', 'Erste Challenge', (s, lvl) => (s['challengesCompleted'] ?? 0) >= 1),
+    _AchievementDef('challenge_serie', 'Challenge-Serie', (s, lvl) => (s['challengesCompleted'] ?? 0) >= 10),
   ];
 
   /// level = 1 + floor(sqrt(xp / 25)), so each level needs progressively
@@ -130,6 +133,7 @@ class GamificationService {
   Future<XpResult> awardForNote() => _award(noteXp, statKey: 'notesAdded');
   Future<XpResult> awardForTimer() => _award(timerXp, statKey: 'timersSet');
   Future<XpResult> logCommit() => _award(commitXp, statKey: 'commitsLogged');
+  Future<XpResult> awardForChallenge() => _award(challengeXp, statKey: 'challengesCompleted');
 
   /// Once per calendar day: a small "thanks for using JARVIS today" bonus.
   /// Returns null if already claimed today.

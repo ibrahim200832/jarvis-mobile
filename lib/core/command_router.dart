@@ -5,6 +5,7 @@ import '../services/anime_service.dart';
 import '../services/app_launcher_service.dart';
 import '../services/calculator_service.dart';
 import '../services/call_service.dart';
+import '../services/challenge_service.dart';
 import '../services/code_snippet_service.dart';
 import '../services/contacts_service.dart';
 import '../services/device_info_service.dart';
@@ -92,6 +93,7 @@ class CommandRouter {
     required this.homeAssistant,
     required this.anime,
     required this.lateNightTease,
+    required this.challenges,
   });
 
   final WikipediaService wikipedia;
@@ -124,6 +126,7 @@ class CommandRouter {
   final HomeAssistantService homeAssistant;
   final AnimeService anime;
   final LateNightTeaseService lateNightTease;
+  final ChallengeService challenges;
 
   /// Rolling window of past AI exchanges (user+assistant pairs), so a
   /// follow-up like "und morgen?" is understood in context instead of
@@ -180,6 +183,7 @@ Das kann ich für dich tun:
 • "starte ein sci-fi abenteuer" / "starte eine detektivgeschichte" (interaktives Textadventure, "beende das abenteuer" zum Verlassen)
 • "aktiviere den drill-trainer" / "aktiviere den gaming-kumpel" / "aktiviere die butler-persona" / "aktiviere jarvis standard" (Persona wechseln) / "welche persona"
 • "mein level" / "meine xp" / "meine erfolge" (Notizen, Timer und Commits geben XP) / "commit gemacht" (loggt einen Code-Commit)
+• "tägliche challenge" (heutige Mini-Herausforderung, erscheint auch im Morgen-Briefing) / "challenge erledigt"
 • "musik zum <Stimmung>" (z.B. fokus, entspannen, workout, party) / "passende musik" (nach Tageszeit) (Spotify-Verbindung nötig)
 • "morgen-briefing" / "abend-zusammenfassung" (Vorschau jetzt; automatischer täglicher Versand als Benachrichtigung ist in Einstellungen aktivierbar)
 • "licht <Name> an" / "licht <Name> aus" / "status von <Gerät>" (Home Assistant, URL+Token in Einstellungen nötig)
@@ -567,6 +571,25 @@ Das kann ich für dich tun:
 
       if (_matchesAny(lower, ['mein level', 'meine xp', 'mein rang', 'meine erfolge', 'meine achievements'])) {
         return CommandResult(await gamification.statusText());
+      }
+
+      if (_matchesAny(lower, ['tägliche challenge', 'heutige challenge', 'meine challenge', 'challenge des tages'])) {
+        final challenge = await challenges.current();
+        final done = await challenges.isCompletedToday();
+        return CommandResult(
+          done
+              ? 'Heutige Challenge (schon erledigt): ${challenge.text}'
+              : 'Heutige Challenge: ${challenge.text}',
+        );
+      }
+
+      if (_matchesAny(lower, ['challenge erledigt', 'challenge abgeschlossen', 'challenge geschafft'])) {
+        if (await challenges.isCompletedToday()) {
+          return CommandResult('Die heutige Challenge hast du schon erledigt gemeldet, Master.');
+        }
+        await challenges.markCompleted();
+        final xp = await gamification.awardForChallenge();
+        return CommandResult('Challenge erledigt!${xp.toSuffix()}');
       }
 
       if (_matchesAny(lower, ['morgen-briefing', 'morgenbriefing', 'gib mir das briefing'])) {

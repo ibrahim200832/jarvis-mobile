@@ -1,3 +1,4 @@
+import 'challenge_service.dart';
 import 'gamification_service.dart';
 import 'location_service.dart';
 import 'news_service.dart';
@@ -26,6 +27,7 @@ class ProactiveBriefingService {
   final LocationService location;
   final GamificationService gamification;
   final SettingsService settings;
+  final ChallengeService challenges;
 
   ProactiveBriefingService({
     required this.notifications,
@@ -35,6 +37,7 @@ class ProactiveBriefingService {
     required this.location,
     required this.gamification,
     required this.settings,
+    required this.challenges,
   });
 
   Future<String> _weatherLine() async {
@@ -69,6 +72,8 @@ class ProactiveBriefingService {
       buffer.write(' Du hast ${openNotes.length} offene Notiz${openNotes.length == 1 ? '' : 'en'}.');
     }
     buffer.write(await _newsLine());
+    final challenge = await challenges.current();
+    buffer.write('\n\nHeutige Challenge: ${challenge.text}');
     return buffer.toString();
   }
 

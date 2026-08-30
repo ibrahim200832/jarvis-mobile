@@ -5,6 +5,7 @@ import 'package:jarvis_mobile/services/ai_chat_service.dart';
 import 'package:jarvis_mobile/services/anime_service.dart';
 import 'package:jarvis_mobile/services/app_launcher_service.dart';
 import 'package:jarvis_mobile/services/call_service.dart';
+import 'package:jarvis_mobile/services/challenge_service.dart';
 import 'package:jarvis_mobile/services/code_snippet_service.dart';
 import 'package:jarvis_mobile/services/contacts_service.dart';
 import 'package:jarvis_mobile/services/device_info_service.dart';
@@ -330,6 +331,7 @@ void main() {
   late ProactiveBriefingService briefing;
   late FakeAnimeService anime;
   late LateNightTeaseService lateNightTease;
+  late ChallengeService challenges;
   late CommandRouter router;
 
   // Builds a CommandRouter from the shared setUp() fakes, with optional
@@ -371,6 +373,7 @@ void main() {
     homeAssistant: HomeAssistantService(),
     anime: anime,
     lateNightTease: lateNightTeaseOverride ?? lateNightTease,
+    challenges: challenges,
   );
 
   setUp(() async {
@@ -391,6 +394,7 @@ void main() {
     snippets = FakeCodeSnippetService();
     soundboard = FakeSoundboardService();
     gamification = GamificationService();
+    challenges = ChallengeService();
     briefing = ProactiveBriefingService(
       notifications: notifications,
       weather: FakeWeatherService(),
@@ -399,6 +403,7 @@ void main() {
       location: FakeLocationService(),
       gamification: gamification,
       settings: settings,
+      challenges: challenges,
     );
     anime = FakeAnimeService();
     lateNightTease = LateNightTeaseService();
@@ -792,6 +797,7 @@ void main() {
       expect(result.reply, contains('Guten Morgen'));
       expect(result.reply, contains('bewölkt'));
       expect(result.reply, contains('Erste Meldung'));
+      expect(result.reply, contains('Heutige Challenge'));
     });
 
     test('abend-zusammenfassung includes the gamification status', () async {
@@ -875,6 +881,32 @@ void main() {
       await router.handle('aktiviere den drill-trainer');
       await router.handle('aktiviere jarvis standard');
       expect(await settings.getPersona(), 'standard');
+    });
+  });
+
+  group('Tägliche Challenges', () {
+    test('tägliche challenge reports today\'s challenge', () async {
+      final result = await router.handle('tägliche challenge');
+      expect(result.reply, contains('Heutige Challenge'));
+    });
+
+    test('challenge erledigt awards XP and marks it done', () async {
+      final result = await router.handle('challenge erledigt');
+      expect(result.reply, contains('Challenge erledigt'));
+      expect(result.reply, contains('+20 XP'));
+    });
+
+    test('challenge erledigt twice the same day is idempotent', () async {
+      await router.handle('challenge erledigt');
+      final second = await router.handle('challenge erledigt');
+      expect(second.reply, contains('schon erledigt'));
+      expect(second.reply, isNot(contains('+20 XP')));
+    });
+
+    test('heutige challenge shows completed status after marking done', () async {
+      await router.handle('challenge erledigt');
+      final result = await router.handle('heutige challenge');
+      expect(result.reply, contains('schon erledigt'));
     });
   });
 
