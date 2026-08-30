@@ -15,6 +15,7 @@ import 'package:jarvis_mobile/services/location_service.dart';
 import 'package:jarvis_mobile/services/music_dj_service.dart';
 import 'package:jarvis_mobile/services/news_service.dart';
 import 'package:jarvis_mobile/services/notes_service.dart';
+import 'package:jarvis_mobile/services/proactive_briefing_service.dart';
 import 'package:jarvis_mobile/services/notification_service.dart';
 import 'package:jarvis_mobile/services/qr_service.dart';
 import 'package:jarvis_mobile/services/random_fun_service.dart';
@@ -223,6 +224,18 @@ class FakeNotificationService extends NotificationService {
   Future<void> cancelAll() async {
     cancelCalls++;
   }
+
+  @override
+  Future<void> scheduleDailyNotification({
+    required int id,
+    required String title,
+    required String body,
+    required int hour,
+    required int minute,
+  }) async {}
+
+  @override
+  Future<void> cancelDailyNotification(int id) async {}
 }
 
 class FakeCodeSnippetService extends CodeSnippetService {
@@ -266,6 +279,7 @@ void main() {
   late FakeCodeSnippetService snippets;
   late FakeSoundboardService soundboard;
   late GamificationService gamification;
+  late ProactiveBriefingService briefing;
   late CommandRouter router;
 
   setUp(() async {
@@ -286,6 +300,15 @@ void main() {
     snippets = FakeCodeSnippetService();
     soundboard = FakeSoundboardService();
     gamification = GamificationService();
+    briefing = ProactiveBriefingService(
+      notifications: notifications,
+      weather: FakeWeatherService(),
+      news: FakeNewsService(),
+      notes: notes,
+      location: FakeLocationService(),
+      gamification: gamification,
+      settings: settings,
+    );
 
     router = CommandRouter(
       wikipedia: wikipedia,
@@ -314,6 +337,7 @@ void main() {
       soundboard: soundboard,
       gamification: gamification,
       musicDj: MusicDjService(),
+      briefing: briefing,
     );
     // Pre-claim today's gamification bonus so it doesn't prepend a "🎉
     // Tages-Bonus" line to the very first handle() call in each test —
@@ -696,6 +720,7 @@ void main() {
         soundboard: soundboard,
         gamification: freshGamification,
         musicDj: MusicDjService(),
+        briefing: briefing,
       );
 
       final first = await freshRouter.handle('hilfe');
@@ -721,6 +746,21 @@ void main() {
     test('passende musik picks a time-of-day mood and reports Spotify not connected', () async {
       final result = await router.handle('passende musik');
       expect(result.reply, contains('Spotify'));
+    });
+  });
+
+  group('Proaktive Nachrichten', () {
+    test('morgen-briefing includes weather and news from the fake services', () async {
+      final result = await router.handle('morgen-briefing');
+      expect(result.reply, contains('Guten Morgen'));
+      expect(result.reply, contains('bewölkt'));
+      expect(result.reply, contains('Erste Meldung'));
+    });
+
+    test('abend-zusammenfassung includes the gamification status', () async {
+      final result = await router.handle('abend-zusammenfassung');
+      expect(result.reply, contains('Guten Abend'));
+      expect(result.reply, contains('Level'));
     });
   });
 

@@ -15,6 +15,8 @@ class SettingsService {
   static const _keyTtsPitch = 'tts_pitch';
   static const _keyTtsSpeechRate = 'tts_speech_rate';
   static const _keySarcasmLevel = 'sarcasm_level';
+  static const _keyMorningBriefingEnabled = 'morning_briefing_enabled';
+  static const _keyEveningSummaryEnabled = 'evening_summary_enabled';
 
   Future<String?> getNewsApiKey() async {
     final prefs = await SharedPreferences.getInstance();
@@ -170,5 +172,25 @@ class SettingsService {
   Future<void> setSarcasmLevel(double value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_keySarcasmLevel, value);
+  }
+
+  Future<bool> getMorningBriefingEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyMorningBriefingEnabled) ?? false;
+  }
+
+  Future<void> setMorningBriefingEnabled(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyMorningBriefingEnabled, value);
+  }
+
+  Future<bool> getEveningSummaryEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyEveningSummaryEnabled) ?? false;
+  }
+
+  Future<void> setEveningSummaryEnabled(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyEveningSummaryEnabled, value);
   }
 }

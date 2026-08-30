@@ -23,6 +23,7 @@ import '../services/music_dj_service.dart';
 import '../services/news_service.dart';
 import '../services/notes_service.dart';
 import '../services/notification_service.dart';
+import '../services/proactive_briefing_service.dart';
 import '../services/qr_service.dart';
 import '../services/random_fun_service.dart';
 import '../services/settings_service.dart';
@@ -62,6 +63,15 @@ class _HomeScreenState extends State<HomeScreen> {
   final _speech = SpeechService();
   final _tts = TtsService();
   final _settings = SettingsService();
+  final _briefing = ProactiveBriefingService(
+    notifications: NotificationService(),
+    weather: WeatherService(),
+    news: NewsService(),
+    notes: NotesService(),
+    location: LocationService(),
+    gamification: GamificationService(),
+    settings: SettingsService(),
+  );
   final _contacts = ContactsService();
   final _timer = TimerService();
   final _spotify = SpotifyService();
@@ -115,11 +125,16 @@ class _HomeScreenState extends State<HomeScreen> {
       soundboard: SoundboardService(),
       gamification: GamificationService(),
       musicDj: MusicDjService(),
+      briefing: _briefing,
     );
     _timer.onFire = _onTimerFired;
     _speech.init();
     unawaited(_checkForUpdate());
     unawaited(_applyStoredTtsSettings());
+    // Not a background fetch (see ProactiveBriefingService) - just makes
+    // sure the daily notifications are scheduled/updated with today's data
+    // whenever the app is opened, in case Einstellungen enabled them.
+    unawaited(_briefing.rescheduleAll());
   }
 
   /// Loads the saved TTS voice/pitch/speech-rate (Einstellungen) so JARVIS
@@ -592,6 +607,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       spotify: _spotify,
                       tiktok: _tiktok,
                       tts: _tts,
+                      briefing: _briefing,
                     ),
                   ),
                 ),

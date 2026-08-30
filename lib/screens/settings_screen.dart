@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../services/contacts_service.dart';
+import '../services/proactive_briefing_service.dart';
 import '../services/settings_service.dart';
 import '../services/spotify_service.dart';
 import '../services/tiktok_upload_service.dart';
@@ -16,6 +17,7 @@ class SettingsScreen extends StatefulWidget {
     required this.spotify,
     required this.tiktok,
     required this.tts,
+    required this.briefing,
   });
 
   final SettingsService settings;
@@ -23,6 +25,7 @@ class SettingsScreen extends StatefulWidget {
   final SpotifyService spotify;
   final TikTokUploadService tiktok;
   final TtsService tts;
+  final ProactiveBriefingService briefing;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -49,6 +52,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   double _ttsPitch = 1.0;
   double _ttsSpeechRate = 0.5;
   double _sarcasmLevel = 0.3;
+  bool _morningBriefingEnabled = false;
+  bool _eveningSummaryEnabled = false;
 
   static const _aiModels = {
     'openai': 'ChatGPT (Standard)',
@@ -92,6 +97,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _ttsPitch = await widget.settings.getTtsPitch();
     _ttsSpeechRate = await widget.settings.getTtsSpeechRate();
     _sarcasmLevel = await widget.settings.getSarcasmLevel();
+    _morningBriefingEnabled = await widget.settings.getMorningBriefingEnabled();
+    _eveningSummaryEnabled = await widget.settings.getEveningSummaryEnabled();
     final savedVoiceName = await widget.settings.getTtsVoiceName();
     final savedVoiceLocale = await widget.settings.getTtsVoiceLocale();
     if (savedVoiceName != null && savedVoiceLocale != null) {
@@ -145,6 +152,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       pitch: _ttsPitch,
       speechRate: _ttsSpeechRate,
     );
+    await widget.settings.setMorningBriefingEnabled(_morningBriefingEnabled);
+    await widget.settings.setEveningSummaryEnabled(_eveningSummaryEnabled);
+    await widget.briefing.rescheduleAll();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gespeichert.')));
   }
@@ -322,6 +332,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
               Text('Höflich', style: TextStyle(fontSize: 12)),
               Text('Sarkastisch (Tony Stark)', style: TextStyle(fontSize: 12)),
             ],
+          ),
+          const SizedBox(height: 24),
+          Text('Proaktive Nachrichten', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 4),
+          const Text(
+            'Kommen als Benachrichtigung, auch wenn die App geschlossen ist. Inhalt (Wetter, Notizen, News) '
+            'spiegelt den Stand beim letzten App-Start wider, nicht live zum Sendezeitpunkt.',
+            style: TextStyle(fontSize: 12),
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Morgen-Briefing (7:00 Uhr)'),
+            value: _morningBriefingEnabled,
+            onChanged: (value) => setState(() => _morningBriefingEnabled = value),
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Abend-Zusammenfassung (21:00 Uhr)'),
+            value: _eveningSummaryEnabled,
+            onChanged: (value) => setState(() => _eveningSummaryEnabled = value),
           ),
           const SizedBox(height: 16),
           TextField(

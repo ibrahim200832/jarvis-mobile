@@ -16,6 +16,7 @@ import '../services/music_dj_service.dart';
 import '../services/news_service.dart';
 import '../services/notes_service.dart';
 import '../services/notification_service.dart';
+import '../services/proactive_briefing_service.dart';
 import '../services/qr_service.dart';
 import '../services/random_fun_service.dart';
 import '../services/settings_service.dart';
@@ -84,6 +85,7 @@ class CommandRouter {
     required this.soundboard,
     required this.gamification,
     required this.musicDj,
+    required this.briefing,
   });
 
   final WikipediaService wikipedia;
@@ -112,6 +114,7 @@ class CommandRouter {
   final SoundboardService soundboard;
   final GamificationService gamification;
   final MusicDjService musicDj;
+  final ProactiveBriefingService briefing;
 
   /// Rolling window of past AI exchanges (user+assistant pairs), so a
   /// follow-up like "und morgen?" is understood in context instead of
@@ -167,6 +170,7 @@ Das kann ich für dich tun:
 • "starte ein sci-fi abenteuer" / "starte eine detektivgeschichte" (interaktives Textadventure, "beende das abenteuer" zum Verlassen)
 • "mein level" / "meine xp" / "meine erfolge" (Notizen, Timer und Commits geben XP) / "commit gemacht" (loggt einen Code-Commit)
 • "musik zum <Stimmung>" (z.B. fokus, entspannen, workout, party) / "passende musik" (nach Tageszeit) (Spotify-Verbindung nötig)
+• "morgen-briefing" / "abend-zusammenfassung" (Vorschau jetzt; automatischer täglicher Versand als Benachrichtigung ist in Einstellungen aktivierbar)
 • alles andere: frag mich einfach frei, ich antworte mit echter KI und kann
   dabei auch direkt anrufen, WhatsApp schreiben oder Apps öffnen
 ''';
@@ -519,6 +523,14 @@ Das kann ich für dich tun:
 
       if (_matchesAny(lower, ['mein level', 'meine xp', 'mein rang', 'meine erfolge', 'meine achievements'])) {
         return CommandResult(await gamification.statusText());
+      }
+
+      if (_matchesAny(lower, ['morgen-briefing', 'morgenbriefing', 'gib mir das briefing'])) {
+        return CommandResult(await briefing.buildMorningBriefing());
+      }
+
+      if (_matchesAny(lower, ['abend-zusammenfassung', 'tageszusammenfassung', 'abendzusammenfassung'])) {
+        return CommandResult(await briefing.buildEveningSummary());
       }
 
       if (_matchesAny(lower, ['commit gemacht', 'ich habe committet', 'logge einen commit', 'trage einen commit ein'])) {
