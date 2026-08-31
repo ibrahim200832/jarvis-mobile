@@ -232,6 +232,70 @@ gegen einen unabhängig erzeugten Test-Schlüssel isoliert verifiziert (gültige
 Verdikt-Auswertung bei verschiedenen Antworten), die native Android-Anbindung nur so weit wie ohne
 echtes Gerät möglich (Kotlin-Code + Gradle-Abhängigkeit, kompiliert über die reguläre APK-Build-Pipeline).
 
+## Runde 13: Automatisierung, Backups & Offline-KI (optional)
+
+### Crash-Reporting & Log-Viewer
+
+Fehler (Flutter-Abstürze, fehlgeschlagene KI-Anfragen/Timeouts) landen automatisch mit Zeitstempel in
+einer lokalen Logdatei (max. 500 Einträge) — einsehbar unter **Einstellungen → „Log-Viewer"**
+(aktualisieren/kopieren/leeren). Keine Einrichtung nötig.
+
+### API-Health-Monitor
+
+**Einstellungen → „API-Health-Monitor"** zeigt, ob der eigene KI-Server gerade erreichbar ist und wie
+hoch die Round-Trip-Latenz ist. Verbrauchte API-Quotas zeigt die App bewusst **nicht** an — Cloudflare
+legt die nur im eigenen Account-Dashboard offen, nicht dem Worker selbst.
+
+### RSS-Feed-Reader
+
+„abonniere feed \<URL\>" akzeptiert sowohl einen direkten RSS/Atom-Feed-Link als auch eine normale
+Website-Adresse (der zugehörige Feed-Link wird automatisch erkannt). „meine feeds" listet Abos,
+„entferne feed \<URL\>" kündigt eins, „was gibt's neues in meinen feeds" prüft sofort auf neue
+Schlagzeilen. Regelmäßige Hintergrundprüfung (alle 3 Stunden, auch bei geschlossener App) mit
+Push-Benachrichtigung bei neuen Schlagzeilen: **Einstellungen → „RSS-Hintergrundprüfung"** (Standard
+aus).
+
+### Verschlüsselter Backup-Export (rein lokal)
+
+„erstelle jetzt ein backup" sichert Notizen, Journal, XP/Erfolge, Challenges, RPG-Spielstand,
+RSS-Abos und Einstellungen als AES-256-verschlüsselte Datei — der Schlüssel wird einmalig erzeugt und
+sicher im Android Keystore/iOS Keychain abgelegt, kein Passwort nötig. Bleibt bewusst **rein lokal auf
+dem Gerät** (kein Mail-/Bot-Versand). „backup wiederherstellen" stellt den letzten Stand wieder her,
+„backup status" zeigt den Zeitpunkt des letzten Backups. Wöchentlicher automatischer Export:
+**Einstellungen → „Wöchentlicher Backup-Export"** (Standard aus).
+
+### WebDAV-Cloud-Sync (Ende-zu-Ende-verschlüsselt, optional)
+
+Synchronisiert das verschlüsselte Backup mit einem **eigenen** WebDAV-Server (z. B. Nextcloud) —
+„cloud-backup hochladen" / „cloud-backup herunterladen". Die Verschlüsselung passiert vollständig auf
+dem Gerät, *bevor* etwas gesendet wird: der WebDAV-Server sieht ausschließlich Chiffretext, nie die
+Klardaten. Einrichtung unter **Einstellungen → „WebDAV-Cloud-Sync"**: Server-URL, Benutzername,
+Passwort eintragen, mit „Verbindung testen" prüfen.
+
+### Offline-KI (lokales Sprachmodell, optional)
+
+Lässt JARVIS grundlegende Fragen, Notizen und Berechnungen auch **ganz ohne Internetverbindung**
+beantworten — ein Sprachmodell läuft direkt auf dem Gerät (Googles MediaPipe/LiteRT-LM-Laufzeit über
+[flutter_gemma](https://pub.dev/packages/flutter_gemma)). Sobald ein Modell installiert ist, springt
+JARVIS automatisch ein, wenn die Cloud-KI (eigener Server oder der kostenlose Fallback) gerade nicht
+erreichbar ist — „offline-ki status" zeigt den aktuellen Stand.
+
+Einrichtung unter **Einstellungen → „Offline-KI"**:
+
+1. Ein Gemma-Modell im `.litertlm`-Format besorgen, z. B. von
+   [huggingface.co/litert-community](https://huggingface.co/litert-community) (nach „Gemma" filtern).
+   Größere Modelle (mehrere GB) antworten besser, brauchen aber mehr Speicherplatz und RAM — passend zur
+   Empfehlung „größeres Modell" ruhig eines im 2–4-GB-Bereich wählen, sofern das Gerät genug freien
+   Speicher hat.
+2. Den direkten Download-Link zur `.litertlm`-Datei in **„Modell-Datei-URL"** eintragen.
+3. **„Herunterladen"** antippen (läuft als Hintergrund-Download mit Fortschrittsanzeige, auch bei
+   mehreren GB).
+
+Es gibt bewusst **keinen** vorausgewählten Standard-Modell-Link: `huggingface.co` war aus der
+Entwicklungsumgebung dieses Projekts heraus nicht erreichbar, ein konkreter Link ließ sich also nicht
+vorab verifizieren — lieber selbst ein Modell wählen als einer möglicherweise falschen Adresse
+vertrauen. „Modell löschen" gibt den Speicherplatz wieder frei.
+
 ## YouTube-Video-Upload einrichten (optional)
 
 Der Befehl „video hochladen" lässt dich ein Video von deinem Handy/Computer auswählen und direkt auf dein eigenes YouTube-Konto hochladen — jeder Upload ist ein bewusster Tastendruck (Anmelden → Video wählen → Sichtbarkeit wählen → Titel eintippen → Hochladen), nichts passiert automatisch im Hintergrund. Beim Hochladen wählst du die Sichtbarkeit — **privat**, **nicht gelistet** oder **öffentlich** — und kannst optional eine spätere Veröffentlichungszeit festlegen; YouTube macht das Video dann automatisch zur gewählten Zeit öffentlich (bis dahin bleibt es privat, das schreibt die YouTube-API so vor). Standard bleibt „privat", damit nichts versehentlich sofort öffentlich landet. Auch JARVIS selbst kann beim Öffnen des Upload-Bildschirms schon eine Sichtbarkeit vorauswählen (z. B. „lade das video öffentlich hoch") — die eigentliche Datei wählst du danach weiterhin immer manuell aus.
