@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Plain RemoteViews-compatible layout for JarvisWidgetProvider.kt — no
+     Flutter rendering is possible inside a home-screen widget, so this is
+     hand-written native XML rather than anything Flutter-generated. Colors
+     match lib/theme/jarvis_theme.dart's JarvisColors (background/surface/
+     accent/accentGlow) so the widget looks like part of the same app. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/jarvis_widget_background"
+    android:padding="12dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="J.A.R.V.I.S."
+        android:textColor="#E3A552"
+        android:textSize="14sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/widget_status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:textColor="#F5EFE6"
+        android:textSize="13sp"
+        tools:text="Online, 42ms" />
+
+    <TextView
+        android:id="@+id/widget_todo_count"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="#F0C674"
+        android:textSize="13sp"
+        tools:text="3 offene Aufgaben" />
+
+    <TextView
+        android:id="@+id/widget_quicknote"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="end"
+        android:layout_marginTop="8dp"
+        android:background="@drawable/jarvis_widget_button_background"
+        android:paddingHorizontal="10dp"
+        android:paddingVertical="4dp"
+        android:text="+ Blitz-Notiz"
+        android:textColor="#120F0C"
+        android:textSize="12sp"
+        android:textStyle="bold" />
+</LinearLayout>

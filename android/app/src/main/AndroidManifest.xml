@@ -83,6 +83,21 @@
                 <action android:name="android.service.notification.NotificationListenerService"/>
             </intent-filter>
         </service>
+        <!-- Homescreen-Widget (Runde 14, Einheiten 7+9): rendert die von
+             HomeWidgetService.refresh() geschriebenen Daten nativ (RemoteViews
+             kann keine Flutter-Engine hosten). android:exported="true" ist
+             hier Pflicht, da das System den APPWIDGET_UPDATE-Broadcast von
+             außerhalb des eigenen Prozesses sendet. -->
+        <receiver
+            android:name=".JarvisWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/jarvis_widget_info"/>
+        </receiver>
     </application>
     <queries>
         <intent>
