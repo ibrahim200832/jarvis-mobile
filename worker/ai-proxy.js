@@ -396,6 +396,19 @@ function buildJournalSystemPrompt() {
   );
 }
 
+// Persona for summarizing captured notifications (mode:
+// "notification_digest") into a short evening digest — a single-shot
+// exchange, same shape as buildJournalSystemPrompt. Mirrors
+// buildNotificationDigestSystemPrompt in lib/services/ai_chat_service.dart.
+function buildNotificationDigestSystemPrompt() {
+  return (
+    'Du bist ein präziser, kurzer Zusammenfasser von Smartphone-Benachrichtigungen. Der Nutzer gibt dir ' +
+    'eine Liste kurzer Vorschautexte, gruppiert nach App. Fasse in 2-4 knappen Sätzen zusammen, worum es ' +
+    'insgesamt ging — nicht jede einzelne Nachricht wortwörtlich wiederholen. Keine Spekulation über ' +
+    'Inhalte, die nicht im Text stehen. Keine Werkzeuge, keine Meta-Kommentare, nur die Zusammenfassung.'
+  );
+}
+
 // Reverted from @cf/openai/gpt-oss-120b back to Llama 3.3 70B. gpt-oss-120b
 // is a reasoning model that repeatedly produced empty completions (neither
 // `response` text nor a tool call — surfaced to the user as "Ich habe keine
@@ -500,12 +513,14 @@ export default {
       .map((m) => ({ role: m.role, content: m.content }));
 
     // Interaktives Storytelling (mode: "story"), the Überlebens-RPG (mode:
-    // "rpg"), and the evening journaling check-in (mode: "journal") each
-    // use a dedicated persona with no tool use, instead of JARVIS's normal
+    // "rpg"), the evening journaling check-in (mode: "journal"), and the
+    // notification digest (mode: "notification_digest") each use a
+    // dedicated persona with no tool use, instead of JARVIS's normal
     // assistant character/actions.
     const isStory = mode === 'story';
     const isRpg = mode === 'rpg';
     const isJournal = mode === 'journal';
+    const isNotificationDigest = mode === 'notification_digest';
     // The model has no built-in notion of "now", so tools that need to
     // resolve relative times (e.g. open_youtube_upload's publish_at from
     // "morgen um 18 Uhr") need the current time handed to it explicitly.
@@ -515,10 +530,12 @@ export default {
         ? buildRpgSystemPrompt(statsSummary)
         : isJournal
           ? buildJournalSystemPrompt()
-          : `${buildSystemPrompt(sarcasm, persona)} Aktuelles Datum/Uhrzeit (UTC): ${new Date().toISOString()}.`;
+          : isNotificationDigest
+            ? buildNotificationDigestSystemPrompt()
+            : `${buildSystemPrompt(sarcasm, persona)} Aktuelles Datum/Uhrzeit (UTC): ${new Date().toISOString()}.`;
     const messages = [{ role: 'system', content: systemPrompt }, ...cleanHistory, { role: 'user', content: message }];
 
-    const includeTools = !isStory && !isRpg && !isJournal;
+    const includeTools = !isStory && !isRpg && !isJournal && !isNotificationDigest;
     let data;
     let toolCall;
     let replyText;

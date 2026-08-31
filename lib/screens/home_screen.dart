@@ -38,6 +38,7 @@ import '../services/motion_actions_service.dart';
 import '../services/music_dj_service.dart';
 import '../services/news_service.dart';
 import '../services/notes_service.dart';
+import '../services/notification_hub_service.dart';
 import '../services/notification_service.dart';
 import '../services/offline_llm_service.dart';
 import '../services/proactive_briefing_service.dart';
@@ -101,6 +102,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     settings: SettingsService(),
     challenges: ChallengeService(),
     todos: TodoService(),
+    notificationHub: NotificationHubService(),
+    // A fresh instance (not the offline-fallback-capable one used by
+    // CommandRouter) — askNotificationDigest is only ever called when a
+    // real custom backend is configured (see ProactiveBriefingService's
+    // privacy gating), so there's no offline path to fall back to here.
+    aiChat: AiChatService(),
   );
   final _ambient = AmbientSoundService();
   final _soundboard = SoundboardService();
@@ -206,6 +213,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       offlineLlm: _offlineLlm,
       todos: TodoService(),
       appLock: _appLock,
+      notificationHub: NotificationHubService(),
     );
     _timer.onFire = _onTimerFired;
     _speech.init();
@@ -1002,6 +1010,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           backgroundTasks: _backgroundTasks,
                           webdav: _webdav,
                           offlineLlm: _offlineLlm,
+                          notificationHub: NotificationHubService(),
                         ),
                       ),
                     )

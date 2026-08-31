@@ -25,6 +25,7 @@ import '../services/mood_classifier.dart';
 import '../services/music_dj_service.dart';
 import '../services/news_service.dart';
 import '../services/notes_service.dart';
+import '../services/notification_hub_service.dart';
 import '../services/notification_service.dart';
 import '../services/offline_llm_service.dart';
 import '../services/proactive_briefing_service.dart';
@@ -128,6 +129,7 @@ class CommandRouter {
     required this.offlineLlm,
     required this.todos,
     required this.appLock,
+    required this.notificationHub,
   });
 
   final WikipediaService wikipedia;
@@ -172,6 +174,7 @@ class CommandRouter {
   final OfflineLlmService offlineLlm;
   final TodoService todos;
   final AppLockService appLock;
+  final NotificationHubService notificationHub;
 
   /// Session-scoped, in-memory only (reset on cold start, like _storyMode/
   /// _aiHistory — CommandRouter itself is rebuilt fresh on every app
@@ -282,6 +285,7 @@ Das kann ich für dich tun:
 • "mein level" / "meine xp" / "meine erfolge" (Notizen, Timer und Commits geben XP) / "commit gemacht" (loggt einen Code-Commit)
 • "ich habe X stunden geschlafen" (setzt deine Energie) / "öffne mein dashboard" (visuelles Real-Life-RPG-Dashboard mit XP-/Energie-Leiste und taktischen Tipps)
 • "sperre die app"/"notfall-sperre" (PIN-Sperrbildschirm, PIN vorher in den Einstellungen festlegen; auch per Schütteln auslösbar) / "aktiviere fokus-modus"/"deaktiviere fokus-modus" (mutet TTS/Mikrofon; auch automatisch durchs Umdrehen des Handys)
+• "meine benachrichtigungen"/"ungelesene benachrichtigungen" (Zusammenfassung erfasster Benachrichtigungen anderer Apps — Benachrichtigungszugriff nötig, siehe Einstellungen)
 • "tägliche challenge" (heutige Mini-Herausforderung, erscheint auch im Morgen-Briefing) / "challenge erledigt"
 • "musik zum <Stimmung>" (z.B. fokus, entspannen, workout, party) / "passende musik" (nach Tageszeit) (Spotify-Verbindung nötig)
 • "morgen-briefing" / "abend-zusammenfassung" (Vorschau jetzt; automatischer täglicher Versand als Benachrichtigung ist in Einstellungen aktivierbar)
@@ -563,6 +567,23 @@ Das kann ich für dich tun:
 
       if (_matchesAny(lower, ['aktiviere fokus-modus', 'fokus-modus an', 'aktiviere den fokus-modus'])) {
         return CommandResult('Fokus-Modus aktiviert.', triggerFocusModeOn: true);
+      }
+
+      // "ungelesene nachrichten" is deliberately NOT a trigger here: it
+      // contains "nachrichten" as a substring, which the existing news-
+      // headlines command (_matchesAny(lower, ['nachrichten', ...]) above)
+      // already claims earlier in this chain — same collision class as
+      // Runde 13's RSS "neue schlagzeilen" fix.
+      if (_matchesAny(lower, ['meine benachrichtigungen', 'ungelesene benachrichtigungen', 'zeig mir meine benachrichtigungen'])) {
+        if (!await settings.getNotificationHubEnabled()) {
+          return CommandResult(
+            'Der Benachrichtigungs-Zusammenfasser ist noch aus — aktivier ihn und richte den '
+            'Benachrichtigungszugriff in den Einstellungen ein.',
+          );
+        }
+        final items = await notificationHub.getCaptured();
+        if (items.isEmpty) return CommandResult('Keine neuen Benachrichtigungen.');
+        return CommandResult(notificationHub.buildRuleBasedDigest(items));
       }
 
       final appName = _extractAfter(lower, text, ['öffne', 'open']);

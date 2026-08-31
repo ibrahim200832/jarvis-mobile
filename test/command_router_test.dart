@@ -27,6 +27,7 @@ import 'package:jarvis_mobile/services/mood_capture_service.dart';
 import 'package:jarvis_mobile/services/music_dj_service.dart';
 import 'package:jarvis_mobile/services/news_service.dart';
 import 'package:jarvis_mobile/services/notes_service.dart';
+import 'package:jarvis_mobile/services/notification_hub_service.dart';
 import 'package:jarvis_mobile/services/proactive_briefing_service.dart';
 import 'package:jarvis_mobile/services/notification_service.dart';
 import 'package:jarvis_mobile/services/qr_service.dart';
@@ -342,6 +343,8 @@ class FakeAiChatService extends AiChatService {
   int askJournalCallCount = 0;
   String? lastHmacSecret;
   List<String>? lastCertPins;
+  int askNotificationDigestCallCount = 0;
+  String? lastNotificationDigestSummary;
 
   @override
   Future<AiChatResult> ask(
@@ -410,6 +413,20 @@ class FakeAiChatService extends AiChatService {
     lastHmacSecret = hmacSecret;
     lastCertPins = certPins;
     return AiChatResult(reply: 'FAKE_JOURNAL:$dayText');
+  }
+
+  @override
+  Future<AiChatResult> askNotificationDigest(
+    String backendUrl,
+    String itemsSummary, {
+    String? hmacSecret,
+    List<String> certPins = const [],
+  }) async {
+    askNotificationDigestCallCount++;
+    lastNotificationDigestSummary = itemsSummary;
+    lastHmacSecret = hmacSecret;
+    lastCertPins = certPins;
+    return AiChatResult(reply: 'FAKE_DIGEST:$itemsSummary');
   }
 }
 
@@ -565,6 +582,7 @@ void main() {
   late FakeOfflineLlmService offlineLlm;
   late TodoService todos;
   late AppLockService appLock;
+  late NotificationHubService notificationHub;
   late CommandRouter router;
 
   // Builds a CommandRouter from the shared setUp() fakes, with optional
@@ -618,6 +636,7 @@ void main() {
     offlineLlm: offlineLlm,
     todos: todos,
     appLock: appLock,
+    notificationHub: notificationHub,
   );
 
   setUp(() async {
@@ -630,6 +649,7 @@ void main() {
     timer = TimerService();
     notes = NotesService();
     todos = TodoService();
+    notificationHub = NotificationHubService();
     email = FakeEmailService();
     youtube = FakeYoutubeService();
     notifications = FakeNotificationService();
@@ -651,6 +671,8 @@ void main() {
       settings: settings,
       challenges: challenges,
       todos: todos,
+      notificationHub: notificationHub,
+      aiChat: aiChat,
     );
     anime = FakeAnimeService();
     lateNightTease = LateNightTeaseService();
@@ -1139,6 +1161,19 @@ void main() {
       expect(result.triggerAppLock, isFalse);
       expect(result.triggerFocusModeOn, isFalse);
       expect(result.triggerFocusModeOff, isFalse);
+    });
+  });
+
+  group('Benachrichtigungs-Zusammenfasser', () {
+    test('reports the feature is off when the toggle is disabled', () async {
+      final result = await router.handle('meine benachrichtigungen');
+      expect(result.reply, contains('noch aus'));
+    });
+
+    test('reports nothing captured once enabled (no native listener under test)', () async {
+      await settings.setNotificationHubEnabled(true);
+      final result = await router.handle('ungelesene benachrichtigungen');
+      expect(result.reply, 'Keine neuen Benachrichtigungen.');
     });
   });
 

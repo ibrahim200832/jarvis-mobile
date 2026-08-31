@@ -6,6 +6,7 @@ import '../services/background_task_service.dart';
 import '../services/contacts_service.dart';
 import '../services/home_assistant_service.dart';
 import '../services/log_service.dart';
+import '../services/notification_hub_service.dart';
 import '../services/proactive_briefing_service.dart';
 import '../services/settings_service.dart';
 import '../services/spotify_service.dart';
@@ -32,6 +33,7 @@ class SettingsScreen extends StatefulWidget {
     required this.backgroundTasks,
     required this.webdav,
     required this.offlineLlm,
+    required this.notificationHub,
   });
 
   final SettingsService settings;
@@ -44,6 +46,7 @@ class SettingsScreen extends StatefulWidget {
   final BackgroundTaskService backgroundTasks;
   final WebDavSyncService webdav;
   final OfflineLlmService offlineLlm;
+  final NotificationHubService notificationHub;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -89,6 +92,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _nightAlertEnabled = false;
   bool _securityBreachEnabled = true;
   bool _dashboardNotificationEnabled = false;
+  bool _notificationHubEnabled = false;
+  bool _notificationDigestAiEnabled = false;
+  bool _notificationListenerActive = false;
+  bool _notificationHubBusy = false;
   bool _hudEffectsEnabled = true;
   bool _reactiveOrbEnabled = true;
   bool _faceDownFocusEnabled = false;
@@ -183,6 +190,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _rssFeedCheckEnabled = await widget.settings.getRssFeedCheckEnabled();
     _weeklyBackupExportEnabled = await widget.settings.getWeeklyBackupExportEnabled();
     _dashboardNotificationEnabled = await widget.settings.getDashboardNotificationEnabled();
+    _notificationHubEnabled = await widget.settings.getNotificationHubEnabled();
+    _notificationDigestAiEnabled = await widget.settings.getNotificationDigestAiEnabled();
+    _notificationListenerActive = await widget.notificationHub.isListenerEnabled();
     final savedVoiceName = await widget.settings.getTtsVoiceName();
     final savedVoiceLocale = await widget.settings.getTtsVoiceLocale();
     if (savedVoiceName != null && savedVoiceLocale != null) {
@@ -270,6 +280,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await widget.settings.setRssFeedCheckEnabled(_rssFeedCheckEnabled);
     await widget.settings.setWeeklyBackupExportEnabled(_weeklyBackupExportEnabled);
     await widget.settings.setDashboardNotificationEnabled(_dashboardNotificationEnabled);
+    await widget.settings.setNotificationHubEnabled(_notificationHubEnabled);
+    await widget.settings.setNotificationDigestAiEnabled(_notificationDigestAiEnabled);
+    await widget.notificationHub.setCaptureEnabled(_notificationHubEnabled);
     await widget.briefing.rescheduleAll();
     await widget.backgroundTasks.syncRssFeedTask();
     await widget.backgroundTasks.syncBackupExportTask();
@@ -421,6 +434,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _appLockPinBusy = false;
     });
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PIN entfernt.')));
+  }
+
+  Future<void> _openNotificationListenerSettings() async {
+    await widget.notificationHub.openListenerSettings();
+    // The user grants this in a separate OS settings screen, not a normal
+    // in-app dialog — refresh the status once they come back to this one.
+    final active = await widget.notificationHub.isListenerEnabled();
+    if (mounted) setState(() => _notificationListenerActive = active);
+  }
+
+  Future<void> _clearCapturedNotifications() async {
+    setState(() => _notificationHubBusy = true);
+    await widget.notificationHub.clearCaptured();
+    if (!mounted) return;
+    setState(() => _notificationHubBusy = false);
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Erfasste Benachrichtigungen gelöscht.')));
   }
 
   /// Trust-on-first-use helper: connects once to the configured AI-backend
@@ -865,6 +894,50 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: const Text('App-Integritäts-Check aktivieren'),
             value: _integrityCheckEnabled,
             onChanged: (value) => setState(() => _integrityCheckEnabled = value),
+          ),
+          const SizedBox(height: 24),
+          Text('Benachrichtigungs-Zusammenfasser', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 4),
+          const Text(
+            'Erfasst Vorschautexte von Benachrichtigungen anderer Apps, damit JARVIS sie abends kurz '
+            'zusammenfasst. Das ist eine Sonderberechtigung, die Android nicht per normalem Dialog abfragt — '
+            'du musst sie manuell in den System-Einstellungen erlauben.',
+            style: TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _notificationListenerActive ? 'Benachrichtigungszugriff: aktiv' : 'Benachrichtigungszugriff: nicht aktiv',
+            style: const TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: widget.notificationHub.isSupported ? _openNotificationListenerSettings : null,
+            icon: const Icon(Icons.notifications_active_outlined),
+            label: const Text('Benachrichtigungszugriff einrichten'),
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Benachrichtigungen erfassen'),
+            value: _notificationHubEnabled,
+            onChanged: (value) => setState(() => _notificationHubEnabled = value),
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('KI-Zusammenfassung erlauben'),
+            subtitle: const Text(
+              'Sendet kurze Vorschautexte deiner Benachrichtigungen an deinen eigenen KI-Server (nie an den '
+              'öffentlichen Gratis-Fallback). Ohne eigenen Server bleibt es bei der lokalen, einfachen '
+              'Zusammenfassung.',
+              style: TextStyle(fontSize: 12),
+            ),
+            value: _notificationDigestAiEnabled,
+            onChanged: (value) => setState(() => _notificationDigestAiEnabled = value),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _notificationHubBusy ? null : _clearCapturedNotifications,
+            icon: const Icon(Icons.delete_outline),
+            label: const Text('Erfasste Benachrichtigungen jetzt löschen'),
           ),
           const SizedBox(height: 24),
           Text('Smart-Home (Home Assistant)', style: Theme.of(context).textTheme.titleMedium),

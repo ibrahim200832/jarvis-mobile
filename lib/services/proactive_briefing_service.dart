@@ -1,10 +1,12 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'ai_chat_service.dart';
 import 'challenge_service.dart';
 import 'gamification_service.dart';
 import 'location_service.dart';
 import 'news_service.dart';
 import 'notes_service.dart';
+import 'notification_hub_service.dart';
 import 'notification_service.dart';
 import 'settings_service.dart';
 import 'todo_service.dart';
@@ -35,6 +37,8 @@ class ProactiveBriefingService {
   final SettingsService settings;
   final ChallengeService challenges;
   final TodoService todos;
+  final NotificationHubService notificationHub;
+  final AiChatService aiChat;
 
   ProactiveBriefingService({
     required this.notifications,
@@ -46,6 +50,8 @@ class ProactiveBriefingService {
     required this.settings,
     required this.challenges,
     required this.todos,
+    required this.notificationHub,
+    required this.aiChat,
   });
 
   Future<String> _weatherLine() async {
@@ -98,7 +104,42 @@ class ProactiveBriefingService {
 
   Future<String> buildEveningSummary() async {
     final status = await gamification.statusText();
-    return 'Guten Abend! $status';
+    final buffer = StringBuffer('Guten Abend! $status');
+    buffer.write(await _notificationDigestLine());
+    return buffer.toString();
+  }
+
+  /// Folds a digest of captured notifications (see NotificationHubService)
+  /// into the evening summary, if the feature is on and there's anything to
+  /// summarize. AI summarization only happens when the user both opted in
+  /// separately AND configured a genuinely custom backend — this feature
+  /// deliberately never sends real notification previews to the public
+  /// pollinations.ai fallback, unlike every other AI feature in this app,
+  /// since the content here is meaningfully more privacy-sensitive.
+  Future<String> _notificationDigestLine() async {
+    try {
+      if (!await settings.getNotificationHubEnabled()) return '';
+      final items = await notificationHub.getCaptured();
+      if (items.isEmpty) return '';
+
+      final ruleBasedDigest = notificationHub.buildRuleBasedDigest(items);
+      final aiEnabled = await settings.getNotificationDigestAiEnabled();
+      final backendUrl = await settings.getAiBackendUrl();
+      final hasCustomBackend = backendUrl != null && backendUrl.trim().isNotEmpty;
+
+      final digest = (aiEnabled && hasCustomBackend)
+          ? (await aiChat.askNotificationDigest(
+              backendUrl,
+              ruleBasedDigest,
+              hmacSecret: await settings.getAiHmacSecret(),
+              certPins: await settings.getCertPins(),
+            )).reply
+          : ruleBasedDigest;
+
+      return '\n\nBenachrichtigungen: $digest';
+    } catch (_) {
+      return '';
+    }
   }
 
   /// Static invitation text (no AI call at scheduling time) — the user

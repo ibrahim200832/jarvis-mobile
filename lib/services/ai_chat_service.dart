@@ -157,6 +157,17 @@ String journalSystemPrompt() =>
     'motivierenden Nachricht für morgen. Bleib immer warmherzig und unterstützend, unabhängig davon, wie der '
     'Tag war — keine Ironie, kein Sarkasmus, keine Werkzeuge, keine Meta-Kommentare.';
 
+/// Persona for summarizing captured notifications ("Benachrichtigungs-
+/// Zusammenfasser") into a short evening digest — a single-shot exchange,
+/// same shape as journalSystemPrompt. Deliberately no persona/sarcasm
+/// (same rationale as story/RPG/journal): a factual summary shouldn't
+/// vary in tone with the user's chosen JARVIS persona.
+String buildNotificationDigestSystemPrompt() =>
+    'Du bist ein präziser, kurzer Zusammenfasser von Smartphone-Benachrichtigungen. Der Nutzer gibt dir eine '
+    'Liste kurzer Vorschautexte, gruppiert nach App. Fasse in 2-4 knappen Sätzen zusammen, worum es insgesamt '
+    'ging — nicht jede einzelne Nachricht wortwörtlich wiederholen. Keine Spekulation über Inhalte, die nicht '
+    'im Text stehen. Keine Werkzeuge, keine Meta-Kommentare, nur die Zusammenfassung.';
+
 /// Sends free-form questions to an AI. If the user configured their own
 /// backend (see worker/ai-proxy.js) under Einstellungen, that's used — it
 /// holds a real API key server-side and supports phone actions (AiAction).
@@ -519,6 +530,41 @@ class AiChatService {
     } catch (e) {
       unawaited(_log.error('AiChatService.askJournal', e.toString()));
       return AiChatResult(reply: 'Ich konnte den Tagesrückblick gerade nicht erstellen. Prüf deine Internetverbindung.');
+    }
+  }
+
+  /// Summarizes captured notifications (see NotificationHubService) via the
+  /// user's OWN backend only. Deliberately has NO free public-endpoint
+  /// fallback, unlike every other AI feature in this app: the input here is
+  /// real preview text from the user's other apps, meaningfully more
+  /// privacy-sensitive than anything else sent to an AI in this app — the
+  /// caller (ProactiveBriefingService) only calls this when a genuinely
+  /// custom backend is configured, and must fall back to a local
+  /// rule-based digest otherwise (see NotificationHubService.
+  /// buildRuleBasedDigest), never to this method with an empty backendUrl.
+  Future<AiChatResult> askNotificationDigest(
+    String backendUrl,
+    String itemsSummary, {
+    String? hmacSecret,
+    List<String> certPins = const [],
+  }) async {
+    try {
+      final bodyJson = jsonEncode({'message': itemsSummary, 'history': const [], 'mode': 'notification_digest'});
+      final res = await _post(
+        Uri.parse(backendUrl.trim()),
+        headers: _headers(backendUrl, bodyJson, hmacSecret),
+        body: bodyJson,
+        certPins: certPins,
+      ).timeout(const Duration(seconds: 25));
+      if (res.statusCode != 200) {
+        return AiChatResult(reply: 'Die Zusammenfassung konnte nicht erstellt werden (Code ${res.statusCode}).');
+      }
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      final reply = data['reply'] as String?;
+      return AiChatResult(reply: (reply == null || reply.isEmpty) ? 'Ich habe keine Antwort erhalten.' : reply);
+    } catch (e) {
+      unawaited(_log.error('AiChatService.askNotificationDigest', e.toString()));
+      return AiChatResult(reply: 'Ich konnte die Benachrichtigungen gerade nicht zusammenfassen.');
     }
   }
 

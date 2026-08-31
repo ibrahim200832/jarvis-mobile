@@ -59,6 +59,8 @@ class SettingsService {
   static const _keyAppLockPinHash = 'app_lock_pin_hash';
   static const _keyShakeLocksAppEnabled = 'shake_locks_app_enabled';
   static const _keyDashboardNotificationEnabled = 'dashboard_notification_enabled';
+  static const _keyNotificationHubEnabled = 'notification_hub_enabled';
+  static const _keyNotificationDigestAiEnabled = 'notification_digest_ai_enabled';
 
   /// Reads a secret from secure (AES-256) storage. If it hasn't been
   /// migrated yet, transparently pulls a legacy plaintext SharedPreferences
@@ -556,5 +558,34 @@ class SettingsService {
   Future<void> setDashboardNotificationEnabled(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyDashboardNotificationEnabled, value);
+  }
+
+  /// Whether the Notification-Hub captures other apps' notification
+  /// previews at all (see NotificationHubService). Default off — a special
+  /// OS permission with real privacy implications, opt-in like every other
+  /// sensitive feature.
+  Future<bool> getNotificationHubEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyNotificationHubEnabled) ?? false;
+  }
+
+  Future<void> setNotificationHubEnabled(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyNotificationHubEnabled, value);
+  }
+
+  /// Whether captured notification previews may be sent to the user's own
+  /// AI backend for a nicer summary (see AiChatService.askNotificationDigest).
+  /// Default off — a second, separate opt-in on top of
+  /// [getNotificationHubEnabled] itself, since this sends real preview text
+  /// off-device (to the user's OWN server only, never the public fallback).
+  Future<bool> getNotificationDigestAiEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyNotificationDigestAiEnabled) ?? false;
+  }
+
+  Future<void> setNotificationDigestAiEnabled(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyNotificationDigestAiEnabled, value);
   }
 }
