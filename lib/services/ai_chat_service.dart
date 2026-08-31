@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'log_service.dart';
+import 'offline_llm_service.dart';
 import 'request_signing_service.dart';
 import 'tls_pinning_service.dart';
 
@@ -163,10 +164,73 @@ String journalSystemPrompt() =>
 /// service (no account, no key) so JARVIS can always hold a conversation —
 /// just without the ability to trigger phone actions itself.
 class AiChatService {
-  AiChatService({LogService? logService}) : _log = logService ?? LogService();
+  // See LogService's constructor (log_service.dart) for why the analyzer's
+  // initializing-formal suggestion doesn't apply to _offlineLlm here (it
+  // would make the public `offlineLlm` named parameter private).
+  AiChatService({LogService? logService, OfflineLlmService? offlineLlm})
+    : _log = logService ?? LogService(),
+      _offlineLlm = offlineLlm; // ignore: prefer_initializing_formals
 
   final LogService _log;
+  final OfflineLlmService? _offlineLlm;
   final _tlsPinning = TlsPinningService();
+
+  // Automatischer Cloud-Fallback ("Runde 13, Einheit 8"): remembers the
+  // outcome of the last real cloud attempt (own backend or the pollinations
+  // free fallback, whichever is actually in use) so a clearly-offline
+  // device skips straight to the on-device model on the NEXT message
+  // instead of re-paying its full request timeout — genuinely seamless
+  // switching. Deliberately NOT a separate periodic background connectivity
+  // poll (see BackgroundTaskService): that would cost battery/data even
+  // while the user isn't chatting. Instead this "checks in the background"
+  // passively, from real traffic, and self-corrects the moment a cloud
+  // call succeeds again.
+  bool? _lastCloudReachable;
+  DateTime? _lastCloudCheckAt;
+  static const _cloudStateFreshFor = Duration(seconds: 30);
+
+  bool get _assumeCloudUnreachable {
+    final checkedAt = _lastCloudCheckAt;
+    final reachable = _lastCloudReachable;
+    if (checkedAt == null || reachable == null) return false;
+    if (DateTime.now().difference(checkedAt) > _cloudStateFreshFor) return false;
+    return !reachable;
+  }
+
+  void _markCloud(bool reachable) {
+    _lastCloudReachable = reachable;
+    _lastCloudCheckAt = DateTime.now();
+  }
+
+  Future<bool> _offlineModelReady() async {
+    final llm = _offlineLlm;
+    if (llm == null) return false;
+    try {
+      return await llm.isModelInstalled();
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Tries the on-device model for a general-purpose (non-story/RPG/
+  /// journal) question. Returns null if there's no offline model available
+  /// or it itself fails, so the caller can fall back to its normal
+  /// cloud-failure message instead.
+  Future<AiChatResult?> _tryOffline(String message) async {
+    final llm = _offlineLlm;
+    if (llm == null) return null;
+    try {
+      final reply = await llm.ask(message);
+      return AiChatResult(reply: '$reply\n\n(Offline beantwortet – keine Internetverbindung.)');
+    } catch (e) {
+      unawaited(_log.error('AiChatService.offline', e.toString()));
+      return null;
+    }
+  }
+
+  Future<AiChatResult> _withOfflineFallback(String userMessage, String cloudFailureReply) async {
+    return await _tryOffline(userMessage) ?? AiChatResult(reply: cloudFailureReply);
+  }
 
   /// POSTs to the user's own backend Worker, using a certificate-pinned
   /// client when [certPins] is non-empty (see TlsPinningService) and the
@@ -196,8 +260,18 @@ class AiChatService {
     String? hmacSecret,
     List<String> certPins = const [],
   }) async {
+    // Skip straight to the on-device model if the cloud was unreachable
+    // moments ago and stayed that way — avoids re-paying the full request
+    // timeout on every message while genuinely offline. Only skips when an
+    // offline model is actually available; otherwise there's nothing to
+    // gain by not trying (and it lets the state self-correct once the
+    // connection returns).
+    if (_assumeCloudUnreachable && await _offlineModelReady()) {
+      final offlineResult = await _tryOffline(message);
+      if (offlineResult != null) return offlineResult;
+    }
     if (backendUrl.trim().isEmpty) {
-      return _askFreeFallback(message, model, history, sarcasm, persona);
+      return _askFreeFallbackWithOfflineFallback(message, model, history, sarcasm, persona);
     }
     try {
       final bodyJson = jsonEncode({
@@ -213,7 +287,8 @@ class AiChatService {
         certPins: certPins,
       ).timeout(const Duration(seconds: 25));
       if (res.statusCode != 200) {
-        return AiChatResult(reply: 'Die KI-Anfrage ist fehlgeschlagen (Code ${res.statusCode}).');
+        _markCloud(false);
+        return await _withOfflineFallback(message, 'Die KI-Anfrage ist fehlgeschlagen (Code ${res.statusCode}).');
       }
       final data = jsonDecode(res.body) as Map<String, dynamic>;
       final reply = data['reply'] as String?;
@@ -224,15 +299,17 @@ class AiChatService {
               type: actionJson['type'] as String,
               params: (actionJson['params'] as Map<String, dynamic>?) ?? const {},
             );
+      _markCloud(true);
       return AiChatResult(
         reply: (reply == null || reply.isEmpty) ? 'Ich habe keine Antwort erhalten.' : reply,
         action: action,
       );
     } catch (e) {
+      _markCloud(false);
       unawaited(_log.error('AiChatService.ask', e.toString()));
-      return AiChatResult(
-        reply:
-            'Ich konnte die KI gerade nicht erreichen. Prüf deine Internetverbindung und die Server-Adresse in den Einstellungen.',
+      return _withOfflineFallback(
+        message,
+        'Ich konnte die KI gerade nicht erreichen. Prüf deine Internetverbindung und die Server-Adresse in den Einstellungen.',
       );
     }
   }
@@ -263,6 +340,32 @@ class AiChatService {
       timeoutMsg: 'Die Antwort hat zu lange gedauert, Master. Versuch es gleich nochmal.',
       offlineMsg: 'Ich konnte die KI gerade nicht erreichen, Master. Prüf deine Internetverbindung.',
     );
+  }
+
+  /// Wraps [_askFreeFallback] with the same automatic offline fallback
+  /// [ask] applies to the own-backend path, without touching the shared
+  /// [_getWithRetry] helper (also used, unchanged, by askStory/askRpg/
+  /// askJournal's free fallbacks — offline fallback is deliberately scoped
+  /// to the general-purpose assistant only, matching "grundlegende Befehle,
+  /// Notizen und Berechnungen" from the original request). Detects failure
+  /// by comparing against the exact messages just passed to
+  /// [_getWithRetry] above — those three are the only possible failure
+  /// texts it can return.
+  Future<AiChatResult> _askFreeFallbackWithOfflineFallback(
+    String message,
+    String model,
+    List<AiTurn> history,
+    double sarcasm,
+    String persona,
+  ) async {
+    const failMsg = 'Ich hab gerade keine Antwort bekommen, Master';
+    const timeoutMsg = 'Die Antwort hat zu lange gedauert, Master. Versuch es gleich nochmal.';
+    const offlineMsg = 'Ich konnte die KI gerade nicht erreichen, Master. Prüf deine Internetverbindung.';
+    final result = await _askFreeFallback(message, model, history, sarcasm, persona);
+    final failed = result.reply.startsWith(failMsg) || result.reply == timeoutMsg || result.reply == offlineMsg;
+    _markCloud(!failed);
+    if (!failed) return result;
+    return _withOfflineFallback(message, result.reply);
   }
 
   /// One turn of an interactive text-adventure (see storySystemPrompt).

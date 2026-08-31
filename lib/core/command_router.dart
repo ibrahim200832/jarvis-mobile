@@ -25,6 +25,7 @@ import '../services/music_dj_service.dart';
 import '../services/news_service.dart';
 import '../services/notes_service.dart';
 import '../services/notification_service.dart';
+import '../services/offline_llm_service.dart';
 import '../services/proactive_briefing_service.dart';
 import '../services/qr_service.dart';
 import '../services/random_fun_service.dart';
@@ -116,6 +117,7 @@ class CommandRouter {
     required this.feeds,
     required this.backup,
     required this.webdav,
+    required this.offlineLlm,
   });
 
   final WikipediaService wikipedia;
@@ -157,6 +159,7 @@ class CommandRouter {
   final RssFeedService feeds;
   final BackupExportService backup;
   final WebDavSyncService webdav;
+  final OfflineLlmService offlineLlm;
 
   /// Session-scoped, in-memory only (reset on cold start, like _storyMode/
   /// _aiHistory — CommandRouter itself is rebuilt fresh on every app
@@ -275,6 +278,7 @@ Das kann ich für dich tun:
 • "abonniere feed <URL>" (RSS/Atom-Feed oder normale Website mit Feed-Verweis) / "meine feeds" / "entferne feed <URL>" / "was gibt's neues in meinen feeds" / "rss updates" (regelmäßige Hintergrundprüfung in Einstellungen aktivierbar)
 • "erstelle jetzt ein backup" (verschlüsseltes, rein lokales Backup deiner Notizen/App-Daten) / "backup wiederherstellen" / "backup status" (wöchentlicher automatischer Export in Einstellungen aktivierbar)
 • "cloud-backup hochladen" / "cloud-backup herunterladen" (Ende-zu-Ende-verschlüsselte Synchronisation mit deinem eigenen WebDAV-Server, URL/Zugangsdaten in Einstellungen nötig)
+• "offline-ki status" (lokales Sprachmodell, läuft ganz ohne Internetverbindung; Modell-Download in Einstellungen, springt automatisch ein, wenn die Cloud-KI mal nicht erreichbar ist)
 • alles andere: frag mich einfach frei, ich antworte mit echter KI und kann
   dabei auch direkt anrufen, WhatsApp schreiben oder Apps öffnen
 ''';
@@ -899,6 +903,15 @@ Das kann ich für dich tun:
 
       if (_matchesAny(lower, ['cloud-backup herunterladen', 'backup aus der cloud herunterladen', 'hole mein cloud-backup'])) {
         return CommandResult(await _syncWebDavDownload());
+      }
+
+      if (_matchesAny(lower, ['offline-ki status', 'ist die offline-ki bereit', 'läuft die offline-ki'])) {
+        final installed = await offlineLlm.isModelInstalled();
+        return CommandResult(
+          installed
+              ? 'Offline-KI ist einsatzbereit und übernimmt automatisch, wenn ich die Cloud-KI mal nicht erreiche.'
+              : 'Es ist noch kein Offline-Modell installiert. Trag eine Modell-URL in den Einstellungen ein und lade es herunter.',
+        );
       }
 
       if (_matchesAny(lower, ['wirf eine münze', 'münze werfen', 'kopf oder zahl', 'münze'])) {

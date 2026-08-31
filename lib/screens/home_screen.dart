@@ -147,7 +147,7 @@ class _HomeScreenState extends State<HomeScreen> {
       contacts: _contacts,
       settings: _settings,
       ip: IpService(),
-      aiChat: AiChatService(),
+      aiChat: AiChatService(offlineLlm: _offlineLlm),
       deviceInfo: DeviceInfoService(),
       timer: _timer,
       notes: NotesService(),
@@ -172,6 +172,7 @@ class _HomeScreenState extends State<HomeScreen> {
       feeds: _feeds,
       backup: _backup,
       webdav: _webdav,
+      offlineLlm: _offlineLlm,
     );
     _timer.onFire = _onTimerFired;
     _speech.init();

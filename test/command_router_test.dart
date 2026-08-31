@@ -40,6 +40,7 @@ import 'package:jarvis_mobile/services/spotify_service.dart';
 import 'package:jarvis_mobile/services/timer_service.dart';
 import 'package:jarvis_mobile/services/weather_service.dart';
 import 'package:jarvis_mobile/services/web_search_service.dart';
+import 'package:jarvis_mobile/services/offline_llm_service.dart';
 import 'package:jarvis_mobile/services/webdav_sync_service.dart';
 import 'package:jarvis_mobile/services/whatsapp_service.dart';
 import 'package:jarvis_mobile/services/wikipedia_service.dart';
@@ -179,6 +180,20 @@ class FakeWebDavSyncService extends WebDavSyncService {
     if (throwOnDownload) throw StateError('Auf dem WebDAV-Server liegt noch kein Backup.');
     downloadCount++;
   }
+}
+
+/// In-memory stand-in for OfflineLlmService — the real one talks to the
+/// flutter_gemma plugin, which has no platform-channel/FFI implementation
+/// available under `flutter test`.
+class FakeOfflineLlmService extends OfflineLlmService {
+  bool installed = false;
+  String nextReply = 'Offline-Testantwort.';
+
+  @override
+  Future<bool> isModelInstalled() async => installed;
+
+  @override
+  Future<String> ask(String prompt, {String systemInstruction = ''}) async => nextReply;
 }
 
 class FakeWebSearchService extends WebSearchService {
@@ -545,6 +560,7 @@ void main() {
   late FakeRssFeedService feeds;
   late FakeBackupExportService backup;
   late FakeWebDavSyncService webdav;
+  late FakeOfflineLlmService offlineLlm;
   late CommandRouter router;
 
   // Builds a CommandRouter from the shared setUp() fakes, with optional
@@ -595,6 +611,7 @@ void main() {
     feeds: feeds,
     backup: backup,
     webdav: webdav,
+    offlineLlm: offlineLlm,
   );
 
   setUp(() async {
@@ -636,6 +653,7 @@ void main() {
     feeds = FakeRssFeedService();
     backup = FakeBackupExportService();
     webdav = FakeWebDavSyncService();
+    offlineLlm = FakeOfflineLlmService();
 
     router = buildRouter();
     // Pre-claim today's gamification bonus so it doesn't prepend a "🎉
@@ -1225,6 +1243,19 @@ void main() {
       final result = await router.handle('cloud-backup herunterladen');
       expect(result.reply, contains('nicht eingerichtet'));
       expect(webdav.downloadCount, 0);
+    });
+  });
+
+  group('Offline-KI', () {
+    test('offline-ki status reports not-ready when no model is installed', () async {
+      final result = await router.handle('offline-ki status');
+      expect(result.reply, contains('kein Offline-Modell installiert'));
+    });
+
+    test('offline-ki status reports ready once a model is installed', () async {
+      offlineLlm.installed = true;
+      final result = await router.handle('ist die offline-ki bereit');
+      expect(result.reply, contains('einsatzbereit'));
     });
   });
 
