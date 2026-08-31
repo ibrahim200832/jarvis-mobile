@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
+    <!-- Parent must be a Theme.AppCompat variant (Runde 15, Einheit 2) —
+         local_auth_android's biometric prompt (androidx.biometric, pulled
+         in transitively) crashes on Android 8 and below otherwise; see
+         local_auth_android's README "Android theme" section. -->
+    <style name="LaunchTheme" parent="@style/Theme.AppCompat.Light.NoActionBar">
         <item name="android:windowBackground">@drawable/launch_background</item>
     </style>
     <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">

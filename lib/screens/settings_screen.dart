@@ -4,6 +4,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../services/admin_auth_service.dart';
 import '../services/api_health_service.dart';
 import '../services/background_task_service.dart';
+import '../services/biometric_auth_service.dart';
 import '../services/contacts_service.dart';
 import '../services/home_assistant_service.dart';
 import '../services/home_widget_service.dart';
@@ -81,6 +82,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _adminPinCtrl = TextEditingController();
   final _adminPinConfirmCtrl = TextEditingController();
   late final _adminAuth = AdminAuthService(settings: widget.settings);
+  final _biometricAuth = BiometricAuthService();
   List<Contact> _contacts = [];
   String _appVersion = '';
   String _aiModel = 'openai';
@@ -115,6 +117,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _appLockPinBusy = false;
   bool _hasAdminPin = false;
   bool _adminPinBusy = false;
+  bool _adminBiometricEnabled = false;
+  bool _adminBiometricAvailable = false;
   bool _moodAutoAdjustEnabled = true;
   bool _testingHomeAssistant = false;
   bool _testingWebDav = false;
@@ -199,6 +203,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _shakeLocksAppEnabled = await widget.settings.getShakeLocksAppEnabled();
     _hasAppLockPin = await widget.settings.hasAppLockPin();
     _hasAdminPin = await widget.settings.hasAdminPin();
+    _adminBiometricEnabled = await widget.settings.getAdminBiometricEnabled();
+    _adminBiometricAvailable = await _biometricAuth.canCheckBiometrics();
     _moodAutoAdjustEnabled = await widget.settings.getMoodAutoAdjustEnabled();
     _rssFeedCheckEnabled = await widget.settings.getRssFeedCheckEnabled();
     _weeklyBackupExportEnabled = await widget.settings.getWeeklyBackupExportEnabled();
@@ -506,14 +512,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ).showSnackBar(const SnackBar(content: Text('Bitte zuerst oben eine Admin-PIN einrichten.')));
       return;
     }
+    final offerBiometrics = _adminBiometricEnabled && _adminBiometricAvailable;
     final unlocked = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => AdminGateScreen(onUnlock: _adminAuth.unlock)),
+      MaterialPageRoute(
+        builder: (_) => AdminGateScreen(
+          onUnlock: _adminAuth.unlock,
+          onBiometricUnlock: offerBiometrics ? _authenticateWithBiometrics : null,
+        ),
+      ),
     );
     if (unlocked == true && mounted) {
       Navigator.of(
         context,
       ).push(MaterialPageRoute(builder: (_) => AdminConsoleScreen(settings: widget.settings)));
     }
+  }
+
+  /// Passed as AdminGateScreen's onBiometricUnlock — a successful device
+  /// biometric check marks the admin session unlocked exactly like a
+  /// correct PIN would (see AdminAuthService.unlockViaBiometrics).
+  Future<bool> _authenticateWithBiometrics() async {
+    final success = await _biometricAuth.authenticate(
+      reason: 'Admin-Konsole entsperren',
+    );
+    if (success) _adminAuth.unlockViaBiometrics();
+    return success;
   }
 
   Future<void> _openNotificationListenerSettings() async {
@@ -998,6 +1021,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
             ],
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Biometrie-Login'),
+            subtitle: Text(
+              !_hasAdminPin
+                  ? 'Braucht erst eine gesetzte Admin-PIN oben.'
+                  : !_adminBiometricAvailable
+                  ? 'Dieses Gerät hat keine eingerichtete Biometrie (Fingerabdruck/Face Unlock).'
+                  : 'Zusätzlicher Weg in die Admin-Konsole per Fingerabdruck/Face Unlock — die PIN '
+                        'bleibt weiterhin nutzbar.',
+              style: const TextStyle(fontSize: 12),
+            ),
+            value: _adminBiometricEnabled,
+            onChanged: (!_hasAdminPin || !_adminBiometricAvailable)
+                ? null
+                : (value) {
+                    setState(() => _adminBiometricEnabled = value);
+                    widget.settings.setAdminBiometricEnabled(value);
+                  },
           ),
           const SizedBox(height: 12),
           OutlinedButton.icon(

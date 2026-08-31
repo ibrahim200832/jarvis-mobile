@@ -6,7 +6,7 @@ import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
 import com.google.android.play.core.integrity.IntegrityManagerFactory
 import com.google.android.play.core.integrity.IntegrityTokenRequest
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
@@ -16,8 +16,14 @@ import io.flutter.plugin.common.MethodChannel
  * notificationHubChannelName) — each in its own configure*Channel method,
  * kept in one class since FlutterActivity's configureFlutterEngine is the
  * one place Flutter plugins/channels get wired up per Activity instance.
+ *
+ * Extends FlutterFragmentActivity rather than plain FlutterActivity (Runde
+ * 15, Einheit 2) — local_auth's Android biometric prompt requires a
+ * FragmentActivity, see local_auth_android's own README ("Activity
+ * Changes"). Drop-in replacement, no other code here depends on
+ * FlutterActivity-specific behavior.
  */
-class MainActivity : FlutterActivity() {
+class MainActivity : FlutterFragmentActivity() {
     private val integrityChannelName = "com.jarvis.mobile.jarvis_mobile/integrity"
     private val notificationHubChannelName = "com.jarvis.mobile.jarvis_mobile/notification_hub"
 
