@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'log_service.dart';
 import 'request_signing_service.dart';
 import 'tls_pinning_service.dart';
 
@@ -162,6 +163,9 @@ String journalSystemPrompt() =>
 /// service (no account, no key) so JARVIS can always hold a conversation —
 /// just without the ability to trigger phone actions itself.
 class AiChatService {
+  AiChatService({LogService? logService}) : _log = logService ?? LogService();
+
+  final LogService _log;
   final _tlsPinning = TlsPinningService();
 
   /// POSTs to the user's own backend Worker, using a certificate-pinned
@@ -224,7 +228,8 @@ class AiChatService {
         reply: (reply == null || reply.isEmpty) ? 'Ich habe keine Antwort erhalten.' : reply,
         action: action,
       );
-    } catch (_) {
+    } catch (e) {
+      unawaited(_log.error('AiChatService.ask', e.toString()));
       return AiChatResult(
         reply:
             'Ich konnte die KI gerade nicht erreichen. Prüf deine Internetverbindung und die Server-Adresse in den Einstellungen.',
@@ -293,7 +298,8 @@ class AiChatService {
       final data = jsonDecode(res.body) as Map<String, dynamic>;
       final reply = data['reply'] as String?;
       return AiChatResult(reply: (reply == null || reply.isEmpty) ? 'Ich habe keine Antwort erhalten.' : reply);
-    } catch (_) {
+    } catch (e) {
+      unawaited(_log.error('AiChatService.askStory', e.toString()));
       return AiChatResult(
         reply: 'Ich konnte die Geschichte gerade nicht weitererzählen. Prüf deine Internetverbindung.',
       );
@@ -353,7 +359,8 @@ class AiChatService {
       final data = jsonDecode(res.body) as Map<String, dynamic>;
       final reply = data['reply'] as String?;
       return AiChatResult(reply: (reply == null || reply.isEmpty) ? 'Ich habe keine Antwort erhalten.' : reply);
-    } catch (_) {
+    } catch (e) {
+      unawaited(_log.error('AiChatService.askRpg', e.toString()));
       return AiChatResult(
         reply: 'Ich konnte das Überlebens-RPG gerade nicht weitererzählen. Prüf deine Internetverbindung.',
       );
@@ -406,7 +413,8 @@ class AiChatService {
       final data = jsonDecode(res.body) as Map<String, dynamic>;
       final reply = data['reply'] as String?;
       return AiChatResult(reply: (reply == null || reply.isEmpty) ? 'Ich habe keine Antwort erhalten.' : reply);
-    } catch (_) {
+    } catch (e) {
+      unawaited(_log.error('AiChatService.askJournal', e.toString()));
       return AiChatResult(reply: 'Ich konnte den Tagesrückblick gerade nicht erstellen. Prüf deine Internetverbindung.');
     }
   }
@@ -444,12 +452,15 @@ class AiChatService {
           return AiChatResult(reply: res.body.trim());
         }
         if (attempt == 0) continue;
+        unawaited(_log.warning('AiChatService.freeFallback', 'Bad status ${res.statusCode} after retry'));
         return AiChatResult(reply: '$failMsg (Code ${res.statusCode}). Versuch es gleich nochmal.');
       } on TimeoutException {
         if (attempt == 0) continue;
+        unawaited(_log.warning('AiChatService.freeFallback', 'Timeout after retry'));
         return AiChatResult(reply: timeoutMsg);
-      } catch (_) {
+      } catch (e) {
         if (attempt == 0) continue;
+        unawaited(_log.error('AiChatService.freeFallback', e.toString()));
         return AiChatResult(reply: offlineMsg);
       }
     }

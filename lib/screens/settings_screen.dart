@@ -3,6 +3,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 import '../services/contacts_service.dart';
 import '../services/home_assistant_service.dart';
+import '../services/log_service.dart';
 import '../services/proactive_briefing_service.dart';
 import '../services/settings_service.dart';
 import '../services/spotify_service.dart';
@@ -11,6 +12,7 @@ import '../services/tls_pinning_service.dart';
 import '../services/tts_service.dart';
 import 'changelog_screen.dart';
 import 'dashboard_screen.dart';
+import 'log_viewer_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
@@ -801,6 +803,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             icon: const Icon(Icons.history),
             label: const Text('Änderungsverlauf'),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => LogViewerScreen(logService: LogService()))),
+            icon: const Icon(Icons.bug_report_outlined),
+            label: const Text('Log-Viewer'),
           ),
           const SizedBox(height: 12),
           Center(
