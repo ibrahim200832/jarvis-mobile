@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../services/admin_auth_service.dart';
 import '../services/api_health_service.dart';
 import '../services/background_task_service.dart';
 import '../services/contacts_service.dart';
@@ -16,6 +17,8 @@ import '../services/offline_llm_service.dart';
 import '../services/tls_pinning_service.dart';
 import '../services/tts_service.dart';
 import '../services/webdav_sync_service.dart';
+import '../widgets/admin_gate_screen.dart';
+import 'admin_console_screen.dart';
 import 'api_health_screen.dart';
 import 'changelog_screen.dart';
 import 'dashboard_screen.dart';
@@ -75,6 +78,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _offlineModelUrlCtrl = TextEditingController();
   final _appLockPinCtrl = TextEditingController();
   final _appLockPinConfirmCtrl = TextEditingController();
+  final _adminPinCtrl = TextEditingController();
+  final _adminPinConfirmCtrl = TextEditingController();
+  late final _adminAuth = AdminAuthService(settings: widget.settings);
   List<Contact> _contacts = [];
   String _appVersion = '';
   String _aiModel = 'openai';
@@ -107,6 +113,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _shakeLocksAppEnabled = false;
   bool _hasAppLockPin = false;
   bool _appLockPinBusy = false;
+  bool _hasAdminPin = false;
+  bool _adminPinBusy = false;
   bool _moodAutoAdjustEnabled = true;
   bool _testingHomeAssistant = false;
   bool _testingWebDav = false;
@@ -190,6 +198,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _shakeStartsVoiceEnabled = await widget.settings.getShakeStartsVoiceEnabled();
     _shakeLocksAppEnabled = await widget.settings.getShakeLocksAppEnabled();
     _hasAppLockPin = await widget.settings.hasAppLockPin();
+    _hasAdminPin = await widget.settings.hasAdminPin();
     _moodAutoAdjustEnabled = await widget.settings.getMoodAutoAdjustEnabled();
     _rssFeedCheckEnabled = await widget.settings.getRssFeedCheckEnabled();
     _weeklyBackupExportEnabled = await widget.settings.getWeeklyBackupExportEnabled();
@@ -439,6 +448,72 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _appLockPinBusy = false;
     });
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PIN entfernt.')));
+  }
+
+  Future<void> _saveAdminPin() async {
+    final pin = _adminPinCtrl.text.trim();
+    final confirm = _adminPinConfirmCtrl.text.trim();
+    if (pin.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Bitte eine PIN eingeben.')));
+      return;
+    }
+    if (pin != confirm) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Die beiden PINs stimmen nicht überein.')));
+      return;
+    }
+    setState(() => _adminPinBusy = true);
+    await widget.settings.setAdminPin(pin);
+    if (!mounted) return;
+    _adminPinCtrl.clear();
+    _adminPinConfirmCtrl.clear();
+    setState(() {
+      _hasAdminPin = true;
+      _adminPinBusy = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Admin-PIN gespeichert.')));
+  }
+
+  Future<void> _removeAdminPin() async {
+    setState(() => _adminPinBusy = true);
+    await widget.settings.clearAdminPin();
+    if (!mounted) return;
+    setState(() {
+      _hasAdminPin = false;
+      _adminPinBusy = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Admin-PIN entfernt.')));
+  }
+
+  /// Entry point for the "Admin-Einstellungen" button: already unlocked
+  /// this session → straight to the console; no PIN configured yet →
+  /// point at the fields above instead of showing a gate with nothing to
+  /// unlock; otherwise → AdminGateScreen first.
+  Future<void> _openAdminConsole() async {
+    if (_adminAuth.isUnlockedThisSession) {
+      if (!mounted) return;
+      Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => AdminConsoleScreen(settings: widget.settings)));
+      return;
+    }
+    if (!_hasAdminPin) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Bitte zuerst oben eine Admin-PIN einrichten.')));
+      return;
+    }
+    final unlocked = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => AdminGateScreen(onUnlock: _adminAuth.unlock)),
+    );
+    if (unlocked == true && mounted) {
+      Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => AdminConsoleScreen(settings: widget.settings)));
+    }
   }
 
   Future<void> _openNotificationListenerSettings() async {
@@ -875,6 +950,60 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 24),
+          Text('Admin-Zugang', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 4),
+          const Text(
+            'Schützt fortgeschrittene/sensible Einstellungen (KI-Server, System-Prompt, Diagnose usw.) '
+            'hinter einer eigenen PIN, getrennt von der Notfall-Sperre oben — einmal pro App-Sitzung '
+            'entsperrt.',
+            style: TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            _hasAdminPin ? 'Admin-PIN ist gesetzt.' : 'Noch keine Admin-PIN gesetzt.',
+            style: const TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _adminPinCtrl,
+            obscureText: true,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: 'Neue Admin-PIN'),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _adminPinConfirmCtrl,
+            obscureText: true,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: 'Admin-PIN bestätigen'),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _adminPinBusy ? null : _saveAdminPin,
+                  icon: const Icon(Icons.lock_outline),
+                  label: const Text('PIN speichern'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: (_adminPinBusy || !_hasAdminPin) ? null : _removeAdminPin,
+                  icon: const Icon(Icons.lock_open_outlined),
+                  label: const Text('PIN entfernen'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: _openAdminConsole,
+            icon: const Icon(Icons.admin_panel_settings_outlined),
+            label: const Text('Admin-Einstellungen'),
           ),
           const SizedBox(height: 24),
           Text('Homescreen-Widget', style: Theme.of(context).textTheme.titleMedium),

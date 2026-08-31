@@ -61,6 +61,9 @@ class SettingsService {
   static const _keyDashboardNotificationEnabled = 'dashboard_notification_enabled';
   static const _keyNotificationHubEnabled = 'notification_hub_enabled';
   static const _keyNotificationDigestAiEnabled = 'notification_digest_ai_enabled';
+  static const _keyAdminPinSalt = 'admin_pin_salt';
+  static const _keyAdminPinHash = 'admin_pin_hash';
+  static const _keyAdminBiometricEnabled = 'admin_biometric_enabled';
 
   /// Reads a secret from secure (AES-256) storage. If it hasn't been
   /// migrated yet, transparently pulls a legacy plaintext SharedPreferences
@@ -587,5 +590,53 @@ class SettingsService {
   Future<void> setNotificationDigestAiEnabled(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyNotificationDigestAiEnabled, value);
+  }
+
+  /// Sets/replaces the Admin-Konsole PIN — a separate credential from the
+  /// emergency-lock PIN (see [setAppLockPin]), since the two protect
+  /// different things (the whole app in an emergency vs. just the admin
+  /// console). Never stores the PIN itself, only a salted SHA-256 hash,
+  /// same pattern as [setAppLockPin].
+  Future<void> setAdminPin(String pin) async {
+    final saltBytes = List<int>.generate(16, (_) => Random.secure().nextInt(256));
+    final salt = base64Url.encode(saltBytes);
+    final hash = sha256.convert(utf8.encode('$salt:$pin')).toString();
+    await _secureSet(_keyAdminPinSalt, salt);
+    await _secureSet(_keyAdminPinHash, hash);
+  }
+
+  Future<bool> hasAdminPin() async {
+    return (await _secureGet(_keyAdminPinHash)) != null;
+  }
+
+  /// Recomputes the salted hash for [pin] and compares it against the
+  /// stored one. Returns false (never throws) if no PIN is set.
+  Future<bool> verifyAdminPin(String pin) async {
+    final salt = await _secureGet(_keyAdminPinSalt);
+    final storedHash = await _secureGet(_keyAdminPinHash);
+    if (salt == null || storedHash == null) return false;
+    final hash = sha256.convert(utf8.encode('$salt:$pin')).toString();
+    return hash == storedHash;
+  }
+
+  /// Unlike [clearAppLockPin], removing this PIN carries no lockout risk —
+  /// it's only reachable from the normal (ungated) settings screen, never
+  /// from inside the admin console itself.
+  Future<void> clearAdminPin() async {
+    await _secure.delete(_keyAdminPinSalt);
+    await _secure.delete(_keyAdminPinHash);
+  }
+
+  /// Whether biometric unlock (fingerprint/face) is offered as an
+  /// additional way into the admin console, alongside the PIN — the PIN
+  /// always remains the required fallback. Default off.
+  Future<bool> getAdminBiometricEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyAdminBiometricEnabled) ?? false;
+  }
+
+  Future<void> setAdminBiometricEnabled(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyAdminBiometricEnabled, value);
   }
 }

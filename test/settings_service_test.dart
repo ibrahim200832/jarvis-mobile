@@ -124,6 +124,64 @@ void main() {
     });
   });
 
+  group('admin PIN', () {
+    test('hasAdminPin is false until a PIN is set', () async {
+      expect(await settings.hasAdminPin(), isFalse);
+      await settings.setAdminPin('1234');
+      expect(await settings.hasAdminPin(), isTrue);
+    });
+
+    test('verifyAdminPin returns true for the correct PIN', () async {
+      await settings.setAdminPin('1234');
+      expect(await settings.verifyAdminPin('1234'), isTrue);
+    });
+
+    test('verifyAdminPin returns false for a wrong PIN', () async {
+      await settings.setAdminPin('1234');
+      expect(await settings.verifyAdminPin('0000'), isFalse);
+    });
+
+    test('verifyAdminPin returns false when no PIN has ever been set', () async {
+      expect(await settings.verifyAdminPin('1234'), isFalse);
+    });
+
+    test('the PIN itself is never stored in plaintext, only a salted hash', () async {
+      await settings.setAdminPin('1234');
+      expect(secure.values.values, isNot(contains('1234')));
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getKeys().map((k) => prefs.get(k)), isNot(contains('1234')));
+    });
+
+    test('setAdminPin overwrites a previous PIN', () async {
+      await settings.setAdminPin('1234');
+      await settings.setAdminPin('5678');
+      expect(await settings.verifyAdminPin('1234'), isFalse);
+      expect(await settings.verifyAdminPin('5678'), isTrue);
+    });
+
+    test('clearAdminPin removes the PIN entirely', () async {
+      await settings.setAdminPin('1234');
+      await settings.clearAdminPin();
+      expect(await settings.hasAdminPin(), isFalse);
+      expect(await settings.verifyAdminPin('1234'), isFalse);
+    });
+
+    test('the admin PIN is independent of the emergency-lock PIN', () async {
+      await settings.setAppLockPin('1111');
+      await settings.setAdminPin('2222');
+      expect(await settings.verifyAppLockPin('2222'), isFalse);
+      expect(await settings.verifyAdminPin('1111'), isFalse);
+      expect(await settings.verifyAppLockPin('1111'), isTrue);
+      expect(await settings.verifyAdminPin('2222'), isTrue);
+    });
+
+    test('admin biometric toggle defaults to false and round-trips', () async {
+      expect(await settings.getAdminBiometricEnabled(), isFalse);
+      await settings.setAdminBiometricEnabled(true);
+      expect(await settings.getAdminBiometricEnabled(), isTrue);
+    });
+  });
+
   group('legacy plaintext migration', () {
     test('an existing plaintext weather key is migrated into secure storage on first read', () async {
       SharedPreferences.setMockInitialValues({'weather_api_key': 'legacy-plaintext-key'});
