@@ -296,6 +296,60 @@ Entwicklungsumgebung dieses Projekts heraus nicht erreichbar, ein konkreter Link
 vorab verifizieren — lieber selbst ein Modell wählen als einer möglicherweise falschen Adresse
 vertrauen. „Modell löschen" gibt den Speicherplatz wieder frei.
 
+## Runde 14: Widget, Reaktor-Ring, Gesten & Benachrichtigungs-Digest
+
+### Homescreen-Widget & Lockscreen-Dashboard-Ersatz
+
+Ein Android-Homescreen-Widget zeigt Server-Status/Latenz und die Anzahl offener Aufgaben, ohne die App
+zu öffnen — antippen des „+ Blitz-Notiz"-Buttons öffnet direkt einen Notiz-Dialog. Einrichtung: lange auf
+den Startbildschirm drücken → Widgets → J.A.R.V.I.S. (ein programmatisches Anheften ist erst ab Android 8
+möglich; **Einstellungen → „Homescreen-Widget"** bietet dafür einen „Widget anheften"-Button, falls der
+Launcher das unterstützt). Android hat seit Version 5 keine echten Sperrbildschirm-Widgets mehr (von
+Google entfernt) — als Ersatz zeigt eine **dauerhafte, nicht wegwischbare Benachrichtigung** dieselben
+Infos auch bei gesperrtem Handy: **Einstellungen → „Lockscreen-Dashboard"** (Standard aus). Beide
+aktualisieren sich alle 30 Minuten automatisch sowie sofort nach jeder Chat-Antwort.
+
+### Audio-reaktiver Reaktor-Ring
+
+Der Reaktor-Ring im Anruf-Modus schlägt jetzt im Takt der echten Mikrofon-Lautstärke beim Zuhören und
+einem angenäherten Sprech-Puls bei JARVIS' Antwort aus. Abschaltbar unter **Einstellungen → HUD-Optik →
+„Audio-reaktiver Reaktor-Ring"**.
+
+### Bewegungssteuerung (Face-Down & Schütteln)
+
+Alle drei Gesten sind standardmäßig **aus** und einzeln aktivierbar unter **Einstellungen →
+„Bewegungssteuerung & Notfall-Sperre"**:
+
+- **Handy umdrehen (Face-Down)** schaltet JARVIS in einen stummen Fokus-Modus (TTS/Mikrofon pausiert,
+  HUD-Banner sichtbar) — Umdrehen zurück beendet ihn automatisch.
+- **Schütteln** kann wahlweise die Spracheingabe starten und/oder die Notfall-Sperre auslösen — beide
+  Wirkungen sind unabhängig voneinander zu- und abschaltbar, auch gleichzeitig.
+
+### Notfall-Sperre (PIN)
+
+Sperrt die App komplett hinter einer PIN-Eingabe (z. B. per Sprachbefehl „sperre die app" oder per
+Schütteln, falls aktiviert). Einrichtung unter **Einstellungen → „Bewegungssteuerung &
+Notfall-Sperre"** (PIN + Bestätigung eingeben, „PIN speichern"). Die PIN wird **nie im Klartext
+gespeichert**, nur ein gesalzener SHA-256-Hash. **Wichtig:** Es gibt bewusst **keinen
+Wiederherstellungsweg** für eine vergessene PIN (wie schon beim App-Integritäts-Lockdown) — „PIN
+entfernen" ist nur erreichbar, solange die App nicht gesperrt ist. Vor dem Einrichten sicherstellen, dass
+die PIN nicht in Vergessenheit gerät.
+
+### Benachrichtigungs-Zusammenfasser (Notification Hub)
+
+Fasst abends ungelesene Push-Benachrichtigungen anderer Apps kurz zusammen. Braucht eine besondere,
+manuell erteilte Systemberechtigung — **„Benachrichtigungszugriff"** — kein normaler Laufzeit-Dialog.
+Einrichtung unter **Einstellungen → „Benachrichtigungs-Zusammenfasser"**:
+
+1. „Benachrichtigungszugriff einrichten" antippen → JARVIS in der sich öffnenden Systemliste aktivieren.
+2. „Benachrichtigungen erfassen" einschalten.
+
+Standardmäßig läuft die Zusammenfassung **rein lokal und regelbasiert** (kein KI-Aufruf, keine Daten
+verlassen das Gerät). Nur wenn zusätzlich „KI-Zusammenfassung erlauben" aktiviert **und** ein eigener
+KI-Server eingetragen ist, werden kurze Vorschautexte an diesen eigenen Server geschickt — anders als
+jede andere KI-Funktion dieser App fällt der Benachrichtigungs-Digest dabei **nie** auf den öffentlichen
+Gratis-Fallback zurück. „Erfasste Benachrichtigungen jetzt löschen" entfernt alles sofort wieder.
+
 ## YouTube-Video-Upload einrichten (optional)
 
 Der Befehl „video hochladen" lässt dich ein Video von deinem Handy/Computer auswählen und direkt auf dein eigenes YouTube-Konto hochladen — jeder Upload ist ein bewusster Tastendruck (Anmelden → Video wählen → Sichtbarkeit wählen → Titel eintippen → Hochladen), nichts passiert automatisch im Hintergrund. Beim Hochladen wählst du die Sichtbarkeit — **privat**, **nicht gelistet** oder **öffentlich** — und kannst optional eine spätere Veröffentlichungszeit festlegen; YouTube macht das Video dann automatisch zur gewählten Zeit öffentlich (bis dahin bleibt es privat, das schreibt die YouTube-API so vor). Standard bleibt „privat", damit nichts versehentlich sofort öffentlich landet. Auch JARVIS selbst kann beim Öffnen des Upload-Bildschirms schon eine Sichtbarkeit vorauswählen (z. B. „lade das video öffentlich hoch") — die eigentliche Datei wählst du danach weiterhin immer manuell aus.
@@ -388,7 +442,7 @@ Wer stattdessen eine echte native iOS-App (`.ipa`) bauen will, braucht einmalig 
 
 ## Berechtigungen
 
-Mikrofon, Kamera, Standort, Kontakte und Benachrichtigungen werden zur Laufzeit angefragt. `QUERY_ALL_PACKAGES` erlaubt das Auflisten installierter Apps (nur Android).
+Mikrofon, Kamera, Standort, Kontakte und Benachrichtigungen werden zur Laufzeit angefragt. `QUERY_ALL_PACKAGES` erlaubt das Auflisten installierter Apps (nur Android). Der Benachrichtigungs-Zusammenfasser (Runde 14) braucht zusätzlich die besondere, manuell in den Systemeinstellungen erteilte „Benachrichtigungszugriff"-Berechtigung — kein normaler Laufzeit-Dialog, siehe oben.
 
 ## Projektstruktur
 
