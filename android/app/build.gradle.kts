@@ -27,7 +27,11 @@ android {
 
     defaultConfig {
         applicationId = "com.jarvis.mobile.jarvis_mobile"
-        minSdk = flutter.minSdkVersion
+        // flutter_gemma_litertlm (Offline-KI, Runde 13 Einheit 7) declares
+        // minSdk 24, but its own example app raises this to 26 "against the
+        // library's declared minSdk" — matching that tested value here
+        // rather than trusting the lower manifest floor.
+        minSdk = 26
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

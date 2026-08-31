@@ -76,8 +76,11 @@ Map<String, dynamic> decryptBackup(Uint8List fileBytes, enc.Key key) {
 /// AES tool — an explicit, documented scope choice for this local-only,
 /// automatic-friendly feature.
 class BackupExportService {
+  // See LogService's identical constructor for why the analyzer's
+  // initializing-formal suggestion doesn't apply here (it would make the
+  // `directoryOverride` named parameter private).
   BackupExportService({Directory? directoryOverride, SecureStorageService? secureStorage})
-    : _directoryOverride = directoryOverride,
+    : _directoryOverride = directoryOverride, // ignore: prefer_initializing_formals
       _secure = secureStorage ?? SecureStorageService();
 
   final Directory? _directoryOverride;

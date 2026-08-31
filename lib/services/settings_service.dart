@@ -47,6 +47,7 @@ class SettingsService {
   static const _keyWebDavUrl = 'webdav_url';
   static const _keyWebDavUsername = 'webdav_username';
   static const _keyWebDavPassword = 'webdav_password';
+  static const _keyOfflineLlmModelUrl = 'offline_llm_model_url';
 
   /// Reads a secret from secure (AES-256) storage. If it hasn't been
   /// migrated yet, transparently pulls a legacy plaintext SharedPreferences
@@ -277,6 +278,20 @@ class SettingsService {
   Future<String?> getWebDavPassword() => _secureGet(_keyWebDavPassword);
 
   Future<void> setWebDavPassword(String value) => _secureSet(_keyWebDavPassword, value);
+
+  /// Direct download URL for the offline `.litertlm` model file (see
+  /// OfflineLlmService). Not secret — a public HuggingFace file link — and
+  /// deliberately has no hardcoded default (see OfflineLlmService's doc
+  /// comment for why), unlike the AI backend Worker URL above.
+  Future<String?> getOfflineLlmModelUrl() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyOfflineLlmModelUrl);
+  }
+
+  Future<void> setOfflineLlmModelUrl(String value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyOfflineLlmModelUrl, value);
+  }
 
   /// Shared secret for signing requests to the user's own AI backend Worker
   /// with an HMAC (see request_signing_service.dart) — proves a request

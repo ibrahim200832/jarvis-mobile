@@ -35,6 +35,7 @@ import '../services/music_dj_service.dart';
 import '../services/news_service.dart';
 import '../services/notes_service.dart';
 import '../services/notification_service.dart';
+import '../services/offline_llm_service.dart';
 import '../services/proactive_briefing_service.dart';
 import '../services/qr_service.dart';
 import '../services/random_fun_service.dart';
@@ -101,6 +102,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _feeds = RssFeedService();
   final _backup = BackupExportService();
   final _webdav = WebDavSyncService();
+  final _offlineLlm = OfflineLlmService();
   final _contacts = ContactsService();
   final _timer = TimerService();
   final _spotify = SpotifyService();
@@ -785,6 +787,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           homeAssistant: HomeAssistantService(),
                           backgroundTasks: _backgroundTasks,
                           webdav: _webdav,
+                          offlineLlm: _offlineLlm,
                         ),
                       ),
                     )

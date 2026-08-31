@@ -45,6 +45,11 @@ class LogEntry {
 /// crashes the app it's trying to help debug would be worse than no
 /// logger at all.
 class LogService {
+  // The field is deliberately private while the constructor parameter is
+  // deliberately public-named; the analyzer's `this._directoryOverride`
+  // shorthand suggestion would make the named parameter private too,
+  // breaking every external `directoryOverride: ...` call site.
+  // ignore: prefer_initializing_formals
   LogService({Directory? directoryOverride}) : _directoryOverride = directoryOverride;
 
   final Directory? _directoryOverride;

@@ -10,6 +10,7 @@ import '../services/proactive_briefing_service.dart';
 import '../services/settings_service.dart';
 import '../services/spotify_service.dart';
 import '../services/tiktok_upload_service.dart';
+import '../services/offline_llm_service.dart';
 import '../services/tls_pinning_service.dart';
 import '../services/tts_service.dart';
 import '../services/webdav_sync_service.dart';
@@ -30,6 +31,7 @@ class SettingsScreen extends StatefulWidget {
     required this.homeAssistant,
     required this.backgroundTasks,
     required this.webdav,
+    required this.offlineLlm,
   });
 
   final SettingsService settings;
@@ -41,6 +43,7 @@ class SettingsScreen extends StatefulWidget {
   final HomeAssistantService homeAssistant;
   final BackgroundTaskService backgroundTasks;
   final WebDavSyncService webdav;
+  final OfflineLlmService offlineLlm;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -63,6 +66,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _webDavUrlCtrl = TextEditingController();
   final _webDavUsernameCtrl = TextEditingController();
   final _webDavPasswordCtrl = TextEditingController();
+  final _offlineModelUrlCtrl = TextEditingController();
   List<Contact> _contacts = [];
   String _appVersion = '';
   String _aiModel = 'openai';
@@ -86,6 +90,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _moodAutoAdjustEnabled = true;
   bool _testingHomeAssistant = false;
   bool _testingWebDav = false;
+  bool? _offlineModelInstalled;
+  bool _offlineModelBusy = false;
+  int _offlineModelDownloadPercent = 0;
   bool _checkingCertPin = false;
   bool _integrityCheckEnabled = false;
   bool _rssFeedCheckEnabled = false;
@@ -141,6 +148,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _webDavUrlCtrl.text = await widget.settings.getWebDavUrl() ?? '';
     _webDavUsernameCtrl.text = await widget.settings.getWebDavUsername() ?? '';
     _webDavPasswordCtrl.text = await widget.settings.getWebDavPassword() ?? '';
+    _offlineModelUrlCtrl.text = await widget.settings.getOfflineLlmModelUrl() ?? '';
+    _offlineModelInstalled = await widget.offlineLlm.isModelInstalled();
     _aiModel = await widget.settings.getAiModel();
     _persona = await widget.settings.getPersona();
     _contacts = await widget.contacts.all();
@@ -216,6 +225,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await widget.settings.setWebDavUrl(_webDavUrlCtrl.text.trim());
     await widget.settings.setWebDavUsername(_webDavUsernameCtrl.text.trim());
     await widget.settings.setWebDavPassword(_webDavPasswordCtrl.text.trim());
+    await widget.settings.setOfflineLlmModelUrl(_offlineModelUrlCtrl.text.trim());
     await widget.settings.setAiModel(_aiModel);
     await widget.settings.setPersona(_persona);
     final voice = _selectedVoiceKey == _defaultVoiceKey || _selectedVoiceKey == null
@@ -308,6 +318,50 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(ok ? 'Verbindung zum WebDAV-Server erfolgreich.' : 'Verbindung fehlgeschlagen.')));
+  }
+
+  Future<void> _downloadOfflineModel() async {
+    final url = _offlineModelUrlCtrl.text.trim();
+    if (url.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Bitte zuerst eine Modell-Datei-URL eintragen.')));
+      return;
+    }
+    await widget.settings.setOfflineLlmModelUrl(url);
+    setState(() {
+      _offlineModelBusy = true;
+      _offlineModelDownloadPercent = 0;
+    });
+    try {
+      await widget.offlineLlm.installModel(
+        url,
+        onProgress: (percent) {
+          if (mounted) setState(() => _offlineModelDownloadPercent = percent);
+        },
+      );
+      if (!mounted) return;
+      setState(() {
+        _offlineModelInstalled = true;
+        _offlineModelBusy = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Offline-Modell heruntergeladen.')));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _offlineModelBusy = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Download fehlgeschlagen: $e')));
+    }
+  }
+
+  Future<void> _deleteOfflineModel() async {
+    setState(() => _offlineModelBusy = true);
+    await widget.offlineLlm.deleteModel();
+    if (!mounted) return;
+    setState(() {
+      _offlineModelInstalled = false;
+      _offlineModelBusy = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Offline-Modell gelöscht.')));
   }
 
   /// Trust-on-first-use helper: connects once to the configured AI-backend
@@ -716,6 +770,59 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.cloud_sync_outlined),
             label: const Text('Verbindung testen'),
+          ),
+          const SizedBox(height: 24),
+          Text('Offline-KI (lokales Sprachmodell)', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 4),
+          const Text(
+            'Läuft komplett auf dem Gerät, auch ohne Internetverbindung — für grundlegende Fragen, Notizen und '
+            'Berechnungen. Trage den direkten Download-Link zu einer .litertlm-Modelldatei ein (z.B. ein '
+            'Gemma-Modell von huggingface.co/litert-community). Größere Modelle (mehrere GB) antworten besser, '
+            'brauchen aber mehr Speicherplatz und RAM.',
+            style: TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _offlineModelInstalled == null
+                ? 'Status: wird geprüft…'
+                : _offlineModelInstalled!
+                ? 'Status: Modell installiert.'
+                : 'Status: kein Modell installiert.',
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _offlineModelUrlCtrl,
+            decoration: const InputDecoration(
+              labelText: 'Modell-Datei-URL (.litertlm)',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (_offlineModelBusy && _offlineModelDownloadPercent > 0) ...[
+            LinearProgressIndicator(value: _offlineModelDownloadPercent / 100),
+            const SizedBox(height: 8),
+          ],
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _offlineModelBusy ? null : _downloadOfflineModel,
+                  icon: _offlineModelBusy
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.download_outlined),
+                  label: const Text('Herunterladen'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: (_offlineModelBusy || _offlineModelInstalled != true) ? null : _deleteOfflineModel,
+                  icon: const Icon(Icons.delete_outline),
+                  label: const Text('Löschen'),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 16),
           TextField(
