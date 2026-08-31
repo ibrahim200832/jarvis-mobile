@@ -13,6 +13,8 @@ class TtsService {
   String? _voiceName;
   String? _voiceLocale;
 
+  void Function(String word)? _wordBoundaryListener;
+
   Future<void> _ensureInit() async {
     if (_initialized) return;
     await _tts.setLanguage('de-DE');
@@ -21,7 +23,21 @@ class TtsService {
     if (_voiceName != null && _voiceLocale != null) {
       await _tts.setVoice({'name': _voiceName!, 'locale': _voiceLocale!});
     }
+    _tts.setProgressHandler((text, start, end, word) {
+      _wordBoundaryListener?.call(word);
+    });
     _initialized = true;
+  }
+
+  /// Fires once per spoken word while JARVIS is talking — used to drive a
+  /// synthetic "speaking" pulse on the reactor ring, since flutter_tts has
+  /// no real playback-amplitude API to react to.
+  ///
+  /// Known Android quirk: this word-boundary callback can stop firing after
+  /// a sentence-ending punctuation mark (". "/"! "/"? ") on some devices/TTS
+  /// engines — an honest limitation, not something this wrapper can fix.
+  void setWordBoundaryListener(void Function(String word) onWord) {
+    _wordBoundaryListener = onWord;
   }
 
   /// The German system voices available on this device, so the user can

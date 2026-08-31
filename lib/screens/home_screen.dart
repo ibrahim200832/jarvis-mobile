@@ -127,9 +127,16 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _speaking = false;
   bool _muted = false;
   bool _hudEffectsEnabled = true;
+  bool _reactiveOrbEnabled = true;
   bool _integrityLocked = false;
   String _partialText = '';
   final _appIntegrity = AppIntegrityService();
+
+  /// Drives VoiceOrbOverlay's audio-reactive pulse (0.0-1.0): real
+  /// microphone level while listening, or a synthetic decaying pulse while
+  /// speaking (see _startAmplitudeDecayLoop). Pinned at 0 outside a call.
+  final _orbAmplitude = ValueNotifier<double>(0.0);
+  Timer? _amplitudeDecayTimer;
 
   @override
   void initState() {
@@ -179,9 +186,13 @@ class _HomeScreenState extends State<HomeScreen> {
     );
     _timer.onFire = _onTimerFired;
     _speech.init();
+    _tts.setWordBoundaryListener((_) {
+      if (_reactiveOrbEnabled) _orbAmplitude.value = 1.0;
+    });
     unawaited(_checkForUpdate());
     unawaited(_applyStoredTtsSettings());
     unawaited(_loadHudEffectsEnabled());
+    unawaited(_loadReactiveOrbEnabled());
     // Not a background fetch (see ProactiveBriefingService) - just makes
     // sure the daily notifications are scheduled/updated with today's data
     // whenever the app is opened, in case Einstellungen enabled them.
@@ -268,6 +279,11 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadHudEffectsEnabled() async {
     final enabled = await _settings.getHudEffectsEnabled();
     if (mounted) setState(() => _hudEffectsEnabled = enabled);
+  }
+
+  Future<void> _loadReactiveOrbEnabled() async {
+    final enabled = await _settings.getReactiveOrbEnabled();
+    if (mounted) setState(() => _reactiveOrbEnabled = enabled);
   }
 
   /// Loads the saved TTS voice/pitch/speech-rate (Einstellungen) so JARVIS
@@ -357,6 +373,8 @@ class _HomeScreenState extends State<HomeScreen> {
     _timer.cancelAll();
     _textCtrl.dispose();
     _scrollCtrl.dispose();
+    _amplitudeDecayTimer?.cancel();
+    _orbAmplitude.dispose();
     super.dispose();
   }
 
@@ -387,7 +405,38 @@ class _HomeScreenState extends State<HomeScreen> {
           _submit(text);
         }
       },
+      onSoundLevelChange: _onMicSoundLevelChange,
     );
+  }
+
+  /// Feeds VoiceOrbOverlay's reactor-ring pulse from the real microphone
+  /// level while listening. speech_to_text's raw level isn't documented for
+  /// Android and differs by platform (see SpeechService.listen's doc
+  /// comment) — this normalization is a first approximation that would need
+  /// calibrating against a real device/microphone, not something verifiable
+  /// in a sandbox without one.
+  void _onMicSoundLevelChange(double level) {
+    if (!mounted || !_reactiveOrbEnabled) return;
+    _orbAmplitude.value = (level / 10.0).clamp(0.0, 1.0);
+  }
+
+  /// Starts a short repeating decay of _orbAmplitude, called while JARVIS is
+  /// speaking: each word-boundary event (see initState's
+  /// setWordBoundaryListener) snaps the value back up to 1.0, and this loop
+  /// lets it fall back towards 0 between words — approximating a "talking"
+  /// pulse, since flutter_tts exposes no real playback-amplitude data.
+  void _startAmplitudeDecayLoop() {
+    if (!_reactiveOrbEnabled) return;
+    _amplitudeDecayTimer?.cancel();
+    _amplitudeDecayTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
+      _orbAmplitude.value = (_orbAmplitude.value * 0.82).clamp(0.0, 1.0);
+    });
+  }
+
+  void _stopAmplitudeDecayLoop() {
+    _amplitudeDecayTimer?.cancel();
+    _amplitudeDecayTimer = null;
+    _orbAmplitude.value = 0.0;
   }
 
   Future<void> _toggleListening() async {
@@ -414,6 +463,7 @@ class _HomeScreenState extends State<HomeScreen> {
       });
       await _speech.stop();
       await _tts.stop();
+      _stopAmplitudeDecayLoop();
       if (_listening) setState(() => _listening = false);
       return;
     }
@@ -443,6 +493,7 @@ class _HomeScreenState extends State<HomeScreen> {
       await _speech.stop();
       setState(() => _listening = false);
     }
+    _orbAmplitude.value = 0.0;
   }
 
   /// Clears the conversation and starts fresh, without ending the call —
@@ -450,6 +501,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _resetCall() async {
     await _speech.stop();
     await _tts.stop();
+    _stopAmplitudeDecayLoop();
     setState(() {
       _messages
         ..clear()
@@ -556,7 +608,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (_callActive) {
       setState(() => _speaking = true);
+      _startAmplitudeDecayLoop();
       await _tts.speakAndWait(reply);
+      _stopAmplitudeDecayLoop();
       if (mounted) setState(() => _speaking = false);
       if (_callActive && mounted && !_muted) {
         await _startListening();
@@ -640,6 +694,7 @@ class _HomeScreenState extends State<HomeScreen> {
               onEndCall: _toggleCall,
               onReset: _resetCall,
               onOpenCamera: _openCameraDuringCall,
+              amplitude: _orbAmplitude,
             ),
             if (_hudEffectsEnabled) const Positioned.fill(child: ScanlineOverlay()),
           ],
@@ -795,7 +850,10 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                     )
-                    .then((_) => _loadHudEffectsEnabled()),
+                    .then((_) {
+                      unawaited(_loadHudEffectsEnabled());
+                      unawaited(_loadReactiveOrbEnabled());
+                    }),
               ),
             ],
           ),

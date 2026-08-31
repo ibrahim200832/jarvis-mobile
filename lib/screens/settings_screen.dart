@@ -87,6 +87,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _nightAlertEnabled = false;
   bool _securityBreachEnabled = true;
   bool _hudEffectsEnabled = true;
+  bool _reactiveOrbEnabled = true;
   bool _moodAutoAdjustEnabled = true;
   bool _testingHomeAssistant = false;
   bool _testingWebDav = false;
@@ -165,6 +166,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _nightAlertEnabled = await widget.settings.getNightAlertEnabled();
     _securityBreachEnabled = await widget.settings.getSecurityBreachEnabled();
     _hudEffectsEnabled = await widget.settings.getHudEffectsEnabled();
+    _reactiveOrbEnabled = await widget.settings.getReactiveOrbEnabled();
     _moodAutoAdjustEnabled = await widget.settings.getMoodAutoAdjustEnabled();
     _rssFeedCheckEnabled = await widget.settings.getRssFeedCheckEnabled();
     _weeklyBackupExportEnabled = await widget.settings.getWeeklyBackupExportEnabled();
@@ -247,6 +249,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await widget.settings.setNightAlertEnabled(_nightAlertEnabled);
     await widget.settings.setSecurityBreachEnabled(_securityBreachEnabled);
     await widget.settings.setHudEffectsEnabled(_hudEffectsEnabled);
+    await widget.settings.setReactiveOrbEnabled(_reactiveOrbEnabled);
     await widget.settings.setMoodAutoAdjustEnabled(_moodAutoAdjustEnabled);
     await widget.settings.setRssFeedCheckEnabled(_rssFeedCheckEnabled);
     await widget.settings.setWeeklyBackupExportEnabled(_weeklyBackupExportEnabled);
@@ -681,6 +684,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: const Text('Scanline-Effekt'),
             value: _hudEffectsEnabled,
             onChanged: (value) => setState(() => _hudEffectsEnabled = value),
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Audio-reaktiver Reaktor-Ring'),
+            subtitle: const Text(
+              'Der Reaktor-Ring im Anruf-Modus schlägt im Takt der Mikrofon-Lautstärke bzw. der '
+              'Sprachausgabe von JARVIS aus, statt nur einer festen Animation zu folgen.',
+              style: TextStyle(fontSize: 12),
+            ),
+            value: _reactiveOrbEnabled,
+            onChanged: (value) => setState(() => _reactiveOrbEnabled = value),
           ),
           const SizedBox(height: 24),
           Text('App-Integrität (Play Integrity)', style: Theme.of(context).textTheme.titleMedium),

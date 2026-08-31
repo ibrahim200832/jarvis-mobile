@@ -34,6 +34,7 @@ class SettingsService {
   static const _keyHomeAssistantToken = 'home_assistant_token';
   static const _keyPersona = 'jarvis_persona';
   static const _keyHudEffectsEnabled = 'hud_effects_enabled';
+  static const _keyReactiveOrbEnabled = 'reactive_orb_enabled';
   static const _keyMoodAutoAdjustEnabled = 'mood_auto_adjust_enabled';
   static const _keyEveningJournalEnabled = 'evening_journal_enabled';
   static const _keyNightAlertEnabled = 'night_alert_enabled';
@@ -402,6 +403,19 @@ class SettingsService {
   Future<void> setHudEffectsEnabled(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyHudEffectsEnabled, value);
+  }
+
+  /// Whether VoiceOrbOverlay's reactor ring reacts to real microphone
+  /// volume / a synthetic speaking pulse, or just its original pure-time
+  /// animation.
+  Future<bool> getReactiveOrbEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyReactiveOrbEnabled) ?? true;
+  }
+
+  Future<void> setReactiveOrbEnabled(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyReactiveOrbEnabled, value);
   }
 
   /// Whether a "stimmungscheck" voice-tone reading is allowed to nudge the

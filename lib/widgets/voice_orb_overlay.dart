@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 /// What JARVIS is doing right now during a call, so the orb can react.
@@ -17,6 +18,7 @@ class VoiceOrbOverlay extends StatefulWidget {
     required this.onEndCall,
     required this.onReset,
     required this.onOpenCamera,
+    required this.amplitude,
   });
 
   final VoiceOrbState state;
@@ -26,6 +28,13 @@ class VoiceOrbOverlay extends StatefulWidget {
   final VoidCallback onEndCall;
   final VoidCallback onReset;
   final VoidCallback onOpenCamera;
+
+  /// Live 0.0-1.0 audio level — real microphone volume while listening
+  /// (from SpeechService's onSoundLevelChange), or a synthetic per-word
+  /// pulse while JARVIS is speaking (flutter_tts has no real playback-
+  /// amplitude API). Owned by the caller; pinned at 0 to fall back to the
+  /// orb's original pure-animation look.
+  final ValueListenable<double> amplitude;
 
   @override
   State<VoiceOrbOverlay> createState() => _VoiceOrbOverlayState();
@@ -86,10 +95,14 @@ class _VoiceOrbOverlayState extends State<VoiceOrbOverlay> with SingleTickerProv
               child: Center(
                 child: AnimatedBuilder(
                   animation: _controller,
-                  builder: (context, _) => _Orb(
-                    t: _controller.value * 2 * math.pi,
-                    state: widget.state,
-                    colorScheme: colorScheme,
+                  builder: (context, _) => ValueListenableBuilder<double>(
+                    valueListenable: widget.amplitude,
+                    builder: (context, amplitude, _) => _Orb(
+                      t: _controller.value * 2 * math.pi,
+                      state: widget.state,
+                      colorScheme: colorScheme,
+                      amplitude: amplitude,
+                    ),
                   ),
                 ),
               ),
@@ -129,11 +142,14 @@ class _VoiceOrbOverlayState extends State<VoiceOrbOverlay> with SingleTickerProv
 }
 
 class _Orb extends StatelessWidget {
-  const _Orb({required this.t, required this.state, required this.colorScheme});
+  const _Orb({required this.t, required this.state, required this.colorScheme, required this.amplitude});
 
   final double t;
   final VoiceOrbState state;
   final ColorScheme colorScheme;
+
+  /// 0.0-1.0, see [VoiceOrbOverlay.amplitude].
+  final double amplitude;
 
   @override
   Widget build(BuildContext context) {
@@ -143,11 +159,21 @@ class _Orb extends StatelessWidget {
       VoiceOrbState.speaking => 1.7,
     };
     final wave = math.sin(t * speed);
-    final pulse = switch (state) {
+    // Idle time-based pulse, same as before amplitude reactivity was added.
+    final idlePulse = switch (state) {
       VoiceOrbState.listening => 0.035 * wave,
       VoiceOrbState.thinking => 0.05 * wave,
       VoiceOrbState.speaking => 0.09 * wave.abs(),
     };
+    // How much the real/synthetic amplitude signal on top of the idle
+    // pulse can add — zero for "thinking", since no audio signal makes
+    // sense while JARVIS is just processing.
+    final amplitudeWeight = switch (state) {
+      VoiceOrbState.listening => 0.15,
+      VoiceOrbState.thinking => 0.0,
+      VoiceOrbState.speaking => 0.12,
+    };
+    final pulse = idlePulse + amplitude.clamp(0.0, 1.0) * amplitudeWeight;
     final colors = switch (state) {
       VoiceOrbState.listening => [colorScheme.primary, colorScheme.primaryContainer],
       VoiceOrbState.thinking => [colorScheme.tertiary, colorScheme.primary],
