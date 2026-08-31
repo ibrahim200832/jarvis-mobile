@@ -27,7 +27,7 @@ class _FakeSecureStorageService extends SecureStorageService {
 /// per-field dragUntilVisible calls that would need updating each time a
 /// new section is added above an existing one.
 Future<void> _pumpConsole(WidgetTester tester, SettingsService settings) async {
-  tester.view.physicalSize = const Size(800, 4000);
+  tester.view.physicalSize = const Size(800, 8000);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
   await tester.pumpWidget(MaterialApp(home: AdminConsoleScreen(settings: settings)));
@@ -175,5 +175,30 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(await settings.getAiModelTier(), 'smart');
+  });
+
+  testWidgets('shows today\'s locally-tracked request count', (tester) async {
+    await settings.recordAiRequestToday();
+    await settings.recordAiRequestToday();
+
+    await _pumpConsole(tester, settings);
+
+    expect(find.text('Anfragen heute: 2'), findsOneWidget);
+  });
+
+  testWidgets('checking latency with an empty backend field reports it immediately, no network call', (tester) async {
+    // getAiBackendUrl() defaults to this app's own default Worker URL, not
+    // empty — clear the field explicitly so this exercises
+    // ApiHealthService's synchronous "kein eigener Server konfiguriert"
+    // path instead of attempting a real HTTP request (which the Flutter
+    // test binding fakes as a 400 response, not a thrown exception).
+    await _pumpConsole(tester, settings);
+    await tester.enterText(find.widgetWithText(TextField, 'KI-Server-Adresse (für freie Gespräche)'), '');
+
+    await tester.tap(find.text('Latenz jetzt prüfen'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Nicht erreichbar'), findsOneWidget);
+    expect(find.textContaining('Kein eigener Server konfiguriert'), findsOneWidget);
   });
 }

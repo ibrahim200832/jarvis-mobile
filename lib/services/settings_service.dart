@@ -68,6 +68,8 @@ class SettingsService {
   static const _keyAiTemperature = 'ai_temperature';
   static const _keyMaxHistoryTurns = 'ai_max_history_turns';
   static const _keyAiModelTier = 'ai_model_tier';
+  static const _keyAiRequestCountDate = 'ai_request_count_date';
+  static const _keyAiRequestCountValue = 'ai_request_count_value';
 
   /// Reads a secret from secure (AES-256) storage. If it hasn't been
   /// migrated yet, transparently pulls a legacy plaintext SharedPreferences
@@ -709,5 +711,25 @@ class SettingsService {
   Future<void> setAiModelTier(String value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyAiModelTier, value);
+  }
+
+  /// Local, app-side counter of AI requests made today — NOT a real
+  /// provider quota (Cloudflare doesn't expose Workers AI usage to the
+  /// Worker itself, see ApiHealthScreen). Resets automatically whenever
+  /// the stored date no longer matches today.
+  Future<void> recordAiRequestToday({DateTime? now}) async {
+    final today = (now ?? DateTime.now()).toIso8601String().substring(0, 10);
+    final prefs = await SharedPreferences.getInstance();
+    final storedDate = prefs.getString(_keyAiRequestCountDate);
+    final currentCount = (storedDate == today) ? (prefs.getInt(_keyAiRequestCountValue) ?? 0) : 0;
+    await prefs.setString(_keyAiRequestCountDate, today);
+    await prefs.setInt(_keyAiRequestCountValue, currentCount + 1);
+  }
+
+  Future<int> getAiRequestCountToday({DateTime? now}) async {
+    final today = (now ?? DateTime.now()).toIso8601String().substring(0, 10);
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getString(_keyAiRequestCountDate) != today) return 0;
+    return prefs.getInt(_keyAiRequestCountValue) ?? 0;
   }
 }

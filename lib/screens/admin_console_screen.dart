@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../services/api_health_service.dart';
 import '../services/settings_service.dart';
 import '../services/tls_pinning_service.dart';
 
@@ -30,10 +31,14 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
   final _certPinsCtrl = TextEditingController();
   final _systemPromptOverrideCtrl = TextEditingController();
   final _tlsPinning = TlsPinningService();
+  final _apiHealth = ApiHealthService();
   String _aiModel = 'openai';
   double _aiTemperature = 0.3;
   int _maxHistoryTurns = 8;
   String _aiModelTier = 'smart';
+  int _todaysRequestCount = 0;
+  ApiHealthResult? _healthResult;
+  bool _checkingHealth = false;
   bool _checkingCertPin = false;
   bool _savingServerSection = false;
   bool _savingBehaviorSection = false;
@@ -64,7 +69,23 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
     _aiTemperature = await widget.settings.getAiTemperature();
     _maxHistoryTurns = await widget.settings.getMaxHistoryTurns();
     _aiModelTier = await widget.settings.getAiModelTier();
+    _todaysRequestCount = await widget.settings.getAiRequestCountToday();
     if (mounted) setState(() {});
+  }
+
+  Future<void> _checkHealth() async {
+    setState(() => _checkingHealth = true);
+    final certPins = _certPinsCtrl.text
+        .split(RegExp(r'[\n,]'))
+        .map((p) => p.trim())
+        .where((p) => p.isNotEmpty)
+        .toList();
+    final result = await _apiHealth.check(_aiBackendCtrl.text.trim(), certPins: certPins);
+    if (!mounted) return;
+    setState(() {
+      _healthResult = result;
+      _checkingHealth = false;
+    });
   }
 
   Future<void> _saveBehaviorSection() async {
@@ -321,6 +342,33 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
             onPressed: _savingServerSection ? null : _saveServerSection,
             child: const Text('Speichern'),
           ),
+          const SizedBox(height: 24),
+          Text('System-Status', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 4),
+          const Text(
+            'Anfragen heute: App-interner Zähler, kein echtes Anbieter-Kontingent (Cloudflare zeigt Workers AI '
+            'keine Kontingent-Daten gegenüber dem Worker an).',
+            style: TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          Text('Anfragen heute: $_todaysRequestCount', style: const TextStyle(fontSize: 12)),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: _checkingHealth ? null : _checkHealth,
+            icon: _checkingHealth
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.monitor_heart_outlined),
+            label: const Text('Latenz jetzt prüfen'),
+          ),
+          if (_healthResult != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              _healthResult!.reachable
+                  ? 'Online, ${_healthResult!.latency?.inMilliseconds}ms'
+                  : 'Nicht erreichbar${_healthResult!.error != null ? ': ${_healthResult!.error}' : ''}',
+              style: const TextStyle(fontSize: 12),
+            ),
+          ],
         ],
       ),
     );

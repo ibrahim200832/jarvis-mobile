@@ -1064,6 +1064,7 @@ Das kann ich für dich tun:
         temperature: temperature,
         modelTier: modelTier,
       );
+      await settings.recordAiRequestToday();
       _aiHistory.add(AiTurn(role: 'user', content: text));
       _aiHistory.add(AiTurn(role: 'assistant', content: aiResult.reply));
       final maxHistoryTurns = await settings.getMaxHistoryTurns();
@@ -1112,6 +1113,7 @@ Das kann ich für dich tun:
         hmacSecret: await settings.getAiHmacSecret(),
         certPins: await settings.getCertPins(),
       );
+      await settings.recordAiRequestToday();
       _storyHistory.add(AiTurn(role: 'user', content: kickoff));
       _storyHistory.add(AiTurn(role: 'assistant', content: result.reply));
       _storyMode = true;
@@ -1137,6 +1139,7 @@ Das kann ich für dich tun:
         hmacSecret: await settings.getAiHmacSecret(),
         certPins: await settings.getCertPins(),
       );
+      await settings.recordAiRequestToday();
       _storyHistory.add(AiTurn(role: 'user', content: text));
       _storyHistory.add(AiTurn(role: 'assistant', content: result.reply));
       while (_storyHistory.length > _maxStoryTurns * 2) {
@@ -1374,6 +1377,7 @@ Das kann ich für dich tun:
       hmacSecret: await settings.getAiHmacSecret(),
       certPins: await settings.getCertPins(),
     );
+    await settings.recordAiRequestToday();
     await journal.add(entryText, result.reply);
     return result.reply;
   }
@@ -1532,6 +1536,7 @@ Das kann ich für dich tun:
         hmacSecret: await settings.getAiHmacSecret(),
         certPins: await settings.getCertPins(),
       );
+      await settings.recordAiRequestToday();
       _rpgHistory.add(AiTurn(role: 'user', content: kickoff));
       _rpgHistory.add(AiTurn(role: 'assistant', content: result.reply));
       await rpg.saveHistory(_rpgHistory);
@@ -1609,6 +1614,7 @@ Das kann ich für dich tun:
         hmacSecret: await settings.getAiHmacSecret(),
         certPins: await settings.getCertPins(),
       );
+      await settings.recordAiRequestToday();
       _rpgHistory.add(AiTurn(role: 'user', content: text));
       _rpgHistory.add(AiTurn(role: 'assistant', content: result.reply));
       while (_rpgHistory.length > _maxRpgTurns * 2) {

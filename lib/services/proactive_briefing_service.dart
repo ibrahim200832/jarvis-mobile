@@ -127,14 +127,18 @@ class ProactiveBriefingService {
       final backendUrl = await settings.getAiBackendUrl();
       final hasCustomBackend = backendUrl != null && backendUrl.trim().isNotEmpty;
 
-      final digest = (aiEnabled && hasCustomBackend)
-          ? (await aiChat.askNotificationDigest(
-              backendUrl,
-              ruleBasedDigest,
-              hmacSecret: await settings.getAiHmacSecret(),
-              certPins: await settings.getCertPins(),
-            )).reply
-          : ruleBasedDigest;
+      String digest;
+      if (aiEnabled && hasCustomBackend) {
+        digest = (await aiChat.askNotificationDigest(
+          backendUrl,
+          ruleBasedDigest,
+          hmacSecret: await settings.getAiHmacSecret(),
+          certPins: await settings.getCertPins(),
+        )).reply;
+        await settings.recordAiRequestToday();
+      } else {
+        digest = ruleBasedDigest;
+      }
 
       return '\n\nBenachrichtigungen: $digest';
     } catch (_) {

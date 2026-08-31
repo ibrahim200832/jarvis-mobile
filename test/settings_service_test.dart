@@ -212,6 +212,24 @@ void main() {
       await settings.setAiModelTier('fast');
       expect(await settings.getAiModelTier(), 'fast');
     });
+
+    test('AI request count starts at 0 and increments on each record', () async {
+      final today = DateTime(2026, 8, 31);
+      expect(await settings.getAiRequestCountToday(now: today), 0);
+      await settings.recordAiRequestToday(now: today);
+      await settings.recordAiRequestToday(now: today);
+      expect(await settings.getAiRequestCountToday(now: today), 2);
+    });
+
+    test('the request count resets on a new day', () async {
+      final day1 = DateTime(2026, 8, 31);
+      final day2 = DateTime(2026, 9, 1);
+      await settings.recordAiRequestToday(now: day1);
+      await settings.recordAiRequestToday(now: day1);
+      expect(await settings.getAiRequestCountToday(now: day2), 0);
+      await settings.recordAiRequestToday(now: day2);
+      expect(await settings.getAiRequestCountToday(now: day2), 1);
+    });
   });
 
   group('legacy plaintext migration', () {

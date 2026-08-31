@@ -1725,6 +1725,12 @@ void main() {
       await router.handle('freie frage an die ki');
       expect(aiChat.lastModelTier, 'fast');
     });
+
+    test('a successful ask() records a local daily request', () async {
+      expect(await settings.getAiRequestCountToday(), 0);
+      await router.handle('freie frage an die ki');
+      expect(await settings.getAiRequestCountToday(), 1);
+    });
   });
 
   group('Kontextabhängige Spätnacht-Reaktion', () {
