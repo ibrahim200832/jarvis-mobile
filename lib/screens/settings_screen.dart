@@ -15,7 +15,6 @@ import '../services/settings_service.dart';
 import '../services/spotify_service.dart';
 import '../services/tiktok_upload_service.dart';
 import '../services/offline_llm_service.dart';
-import '../services/tls_pinning_service.dart';
 import '../services/tts_service.dart';
 import '../services/webdav_sync_service.dart';
 import '../widgets/admin_gate_screen.dart';
@@ -63,10 +62,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _newsKeyCtrl = TextEditingController();
   final _weatherKeyCtrl = TextEditingController();
   final _nameCtrl = TextEditingController();
-  final _aiBackendCtrl = TextEditingController();
-  final _aiHmacSecretCtrl = TextEditingController();
-  final _certPinsCtrl = TextEditingController();
-  final _tlsPinning = TlsPinningService();
   final _googleCloudProjectNumberCtrl = TextEditingController();
   final _youtubeClientIdCtrl = TextEditingController();
   final _spotifyClientIdCtrl = TextEditingController();
@@ -85,7 +80,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _biometricAuth = BiometricAuthService();
   List<Contact> _contacts = [];
   String _appVersion = '';
-  String _aiModel = 'openai';
   String _persona = 'standard';
   bool? _hasDeviceContacts;
   bool _spotifyConnected = false;
@@ -125,16 +119,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool? _offlineModelInstalled;
   bool _offlineModelBusy = false;
   int _offlineModelDownloadPercent = 0;
-  bool _checkingCertPin = false;
   bool _integrityCheckEnabled = false;
   bool _rssFeedCheckEnabled = false;
   bool _weeklyBackupExportEnabled = false;
-
-  static const _aiModels = {
-    'openai': 'ChatGPT (Standard)',
-    'mistral': 'Mistral',
-    'llama': 'Llama',
-  };
 
   static const _personas = {
     'standard': 'JARVIS (Standard)',
@@ -167,9 +154,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _newsKeyCtrl.text = await widget.settings.getNewsApiKey() ?? '';
     _weatherKeyCtrl.text = await widget.settings.getWeatherApiKey() ?? '';
     _nameCtrl.text = await widget.settings.getUserName();
-    _aiBackendCtrl.text = await widget.settings.getAiBackendUrl() ?? '';
-    _aiHmacSecretCtrl.text = await widget.settings.getAiHmacSecret() ?? '';
-    _certPinsCtrl.text = (await widget.settings.getCertPins()).join('\n');
     _googleCloudProjectNumberCtrl.text = await widget.settings.getGoogleCloudProjectNumber() ?? '';
     _integrityCheckEnabled = await widget.settings.getIntegrityCheckEnabled();
     _youtubeClientIdCtrl.text = await widget.settings.getYoutubeClientId() ?? '';
@@ -182,7 +166,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _webDavPasswordCtrl.text = await widget.settings.getWebDavPassword() ?? '';
     _offlineModelUrlCtrl.text = await widget.settings.getOfflineLlmModelUrl() ?? '';
     _offlineModelInstalled = await widget.offlineLlm.isModelInstalled();
-    _aiModel = await widget.settings.getAiModel();
     _persona = await widget.settings.getPersona();
     _contacts = await widget.contacts.all();
     _spotifyConnected = await widget.spotify.isConnected();
@@ -248,18 +231,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await widget.settings.setNewsApiKey(_newsKeyCtrl.text.trim());
     await widget.settings.setWeatherApiKey(_weatherKeyCtrl.text.trim());
     await widget.settings.setUserName(_nameCtrl.text.trim());
-    await widget.settings.setAiBackendUrl(_aiBackendCtrl.text.trim());
-    if (_aiHmacSecretCtrl.text.trim().isEmpty) {
-      await widget.settings.clearAiHmacSecret();
-    } else {
-      await widget.settings.setAiHmacSecret(_aiHmacSecretCtrl.text.trim());
-    }
-    final certPins = _certPinsCtrl.text
-        .split(RegExp(r'[\n,]'))
-        .map((p) => p.trim())
-        .where((p) => p.isNotEmpty)
-        .toList();
-    await widget.settings.setCertPins(certPins);
     await widget.settings.setGoogleCloudProjectNumber(_googleCloudProjectNumberCtrl.text.trim());
     await widget.settings.setIntegrityCheckEnabled(_integrityCheckEnabled);
     await widget.settings.setYoutubeClientId(_youtubeClientIdCtrl.text.trim());
@@ -271,7 +242,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await widget.settings.setWebDavUsername(_webDavUsernameCtrl.text.trim());
     await widget.settings.setWebDavPassword(_webDavPasswordCtrl.text.trim());
     await widget.settings.setOfflineLlmModelUrl(_offlineModelUrlCtrl.text.trim());
-    await widget.settings.setAiModel(_aiModel);
     await widget.settings.setPersona(_persona);
     final voice = _selectedVoiceKey == _defaultVoiceKey || _selectedVoiceKey == null
         ? null
@@ -553,69 +523,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!mounted) return;
     setState(() => _notificationHubBusy = false);
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Erfasste Benachrichtigungen gelöscht.')));
-  }
-
-  /// Trust-on-first-use helper: connects once to the configured AI-backend
-  /// host to read its currently-presented certificate's SPKI pin, then lets
-  /// the user review and explicitly add it to the pin list — pinning only
-  /// activates once at least one pin is saved (see TlsPinningService).
-  Future<void> _fetchCurrentPin() async {
-    final host = Uri.tryParse(_aiBackendCtrl.text.trim())?.host;
-    if (host == null || host.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Bitte zuerst eine gültige KI-Server-Adresse eintragen.')));
-      return;
-    }
-    setState(() => _checkingCertPin = true);
-    final pin = await _tlsPinning.currentPin(host);
-    if (!mounted) return;
-    setState(() => _checkingCertPin = false);
-    if (pin == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Fingerabdruck konnte nicht ermittelt werden (Server nicht erreichbar, oder im Web-Build, wo das '
-            'aus dem Browser heraus technisch nicht möglich ist).',
-          ),
-        ),
-      );
-      return;
-    }
-    if (!mounted) return;
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Aktueller Zertifikats-Fingerabdruck'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Für $host:'),
-            const SizedBox(height: 8),
-            SelectableText(pin, style: const TextStyle(fontFamily: 'monospace')),
-            const SizedBox(height: 12),
-            const Text(
-              'Nur übernehmen, wenn du dieser Verbindung gerade vertraust (z. B. direkt nach dem Deploy). '
-              'Rotiert Cloudflare später das Zertifikat, muss hier ein neuer Fingerabdruck ergänzt werden, '
-              'sonst verweigert die App die Verbindung.',
-              style: TextStyle(fontSize: 12),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Schließen')),
-          TextButton(
-            onPressed: () {
-              final existing = _certPinsCtrl.text.trim();
-              _certPinsCtrl.text = existing.isEmpty ? pin : '$existing\n$pin';
-              Navigator.pop(dialogContext);
-            },
-            child: const Text('Als Pin übernehmen'),
-          ),
-        ],
-      ),
-    );
   }
 
   Future<void> _connectTiktok() async {
@@ -1268,63 +1175,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               helperText: 'Kostenlos unter openweathermap.org',
               border: OutlineInputBorder(),
             ),
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _aiBackendCtrl,
-            decoration: const InputDecoration(
-              labelText: 'KI-Server-Adresse (für freie Gespräche)',
-              helperText: 'Die Worker-URL aus der Cloudflare-Bereitstellung, siehe README',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _aiHmacSecretCtrl,
-            obscureText: true,
-            decoration: const InputDecoration(
-              labelText: 'KI-Server-Schlüssel (Request-Signierung)',
-              helperText:
-                  'Optional. Muss exakt mit dem HMAC_SECRET im Worker übereinstimmen (siehe README) — '
-                  'sobald dort gesetzt, lehnt der Worker unsignierte/gefälschte Anfragen ab.',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _certPinsCtrl,
-            maxLines: 3,
-            decoration: const InputDecoration(
-              labelText: 'TLS-Zertifikat-Pins (Certificate Pinning)',
-              helperText:
-                  'Optional, ein Fingerabdruck pro Zeile. Leer = normale TLS-Prüfung (aus). Nur auf Handy/Desktop '
-                  'wirksam, nicht im Web-Build. Rotiert das Zertifikat, verweigert die App die Verbindung, bis '
-                  'hier ein neuer Fingerabdruck ergänzt wird — deshalb am besten zwei Pins gleichzeitig pflegen.',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: _checkingCertPin ? null : _fetchCurrentPin,
-            icon: _checkingCertPin
-                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.fingerprint),
-            label: const Text('Aktuellen Fingerabdruck anzeigen'),
-          ),
-          const SizedBox(height: 16),
-          DropdownButtonFormField<String>(
-            initialValue: _aiModel,
-            decoration: const InputDecoration(
-              labelText: 'KI-Modell (kostenlos, ohne Server-Adresse)',
-              helperText: 'Nur wenn oben keine eigene KI-Server-Adresse eingetragen ist',
-              border: OutlineInputBorder(),
-            ),
-            items: _aiModels.entries
-                .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
-                .toList(),
-            onChanged: (value) {
-              if (value != null) setState(() => _aiModel = value);
-            },
           ),
           const SizedBox(height: 16),
           TextField(

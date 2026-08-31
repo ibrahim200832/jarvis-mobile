@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/settings_service.dart';
+import '../services/tls_pinning_service.dart';
 
 /// Advanced/sensitive settings gated behind the Admin-PIN (see
 /// AdminAuthService/AdminGateScreen) — reachable only via the
@@ -9,6 +10,11 @@ import '../services/settings_service.dart';
 /// constructed inline at point of use here, matching the rest of this
 /// app's screens-navigated-from-settings convention rather than growing
 /// this constructor with every new section.
+///
+/// Unlike the normal settings screen (one shared "Speichern" button for
+/// every field on the page), each section here saves independently — this
+/// screen is reached far less often, and a single shared save button would
+/// mean re-navigating through the PIN gate just to tweak one field.
 class AdminConsoleScreen extends StatefulWidget {
   const AdminConsoleScreen({super.key, required this.settings});
 
@@ -19,15 +25,193 @@ class AdminConsoleScreen extends StatefulWidget {
 }
 
 class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
+  final _aiBackendCtrl = TextEditingController();
+  final _aiHmacSecretCtrl = TextEditingController();
+  final _certPinsCtrl = TextEditingController();
+  final _tlsPinning = TlsPinningService();
+  String _aiModel = 'openai';
+  bool _checkingCertPin = false;
+  bool _savingServerSection = false;
+
+  static const _aiModels = {
+    'openai': 'ChatGPT (Standard)',
+    'mistral': 'Mistral',
+    'llama': 'Llama',
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    _aiBackendCtrl.text = await widget.settings.getAiBackendUrl() ?? '';
+    _aiHmacSecretCtrl.text = await widget.settings.getAiHmacSecret() ?? '';
+    _certPinsCtrl.text = (await widget.settings.getCertPins()).join('\n');
+    _aiModel = await widget.settings.getAiModel();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _saveServerSection() async {
+    setState(() => _savingServerSection = true);
+    await widget.settings.setAiBackendUrl(_aiBackendCtrl.text.trim());
+    if (_aiHmacSecretCtrl.text.trim().isEmpty) {
+      await widget.settings.clearAiHmacSecret();
+    } else {
+      await widget.settings.setAiHmacSecret(_aiHmacSecretCtrl.text.trim());
+    }
+    final certPins = _certPinsCtrl.text
+        .split(RegExp(r'[\n,]'))
+        .map((p) => p.trim())
+        .where((p) => p.isNotEmpty)
+        .toList();
+    await widget.settings.setCertPins(certPins);
+    await widget.settings.setAiModel(_aiModel);
+    if (!mounted) return;
+    setState(() => _savingServerSection = false);
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gespeichert.')));
+  }
+
+  /// Trust-on-first-use helper: connects once to the configured AI-backend
+  /// host to read its currently-presented certificate's SPKI pin, then lets
+  /// the user review and explicitly add it to the pin list — pinning only
+  /// activates once at least one pin is saved (see TlsPinningService).
+  Future<void> _fetchCurrentPin() async {
+    final host = Uri.tryParse(_aiBackendCtrl.text.trim())?.host;
+    if (host == null || host.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Bitte zuerst eine gültige KI-Server-Adresse eintragen.')));
+      return;
+    }
+    setState(() => _checkingCertPin = true);
+    final pin = await _tlsPinning.currentPin(host);
+    if (!mounted) return;
+    setState(() => _checkingCertPin = false);
+    if (pin == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Fingerabdruck konnte nicht ermittelt werden (Server nicht erreichbar, oder im Web-Build, wo das '
+            'aus dem Browser heraus technisch nicht möglich ist).',
+          ),
+        ),
+      );
+      return;
+    }
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Aktueller Zertifikats-Fingerabdruck'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Für $host:'),
+            const SizedBox(height: 8),
+            SelectableText(pin, style: const TextStyle(fontFamily: 'monospace')),
+            const SizedBox(height: 12),
+            const Text(
+              'Nur übernehmen, wenn du dieser Verbindung gerade vertraust (z. B. direkt nach dem Deploy). '
+              'Rotiert Cloudflare später das Zertifikat, muss hier ein neuer Fingerabdruck ergänzt werden, '
+              'sonst verweigert die App die Verbindung.',
+              style: TextStyle(fontSize: 12),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Schließen')),
+          TextButton(
+            onPressed: () {
+              final existing = _certPinsCtrl.text.trim();
+              _certPinsCtrl.text = existing.isEmpty ? pin : '$existing\n$pin';
+              Navigator.pop(dialogContext);
+            },
+            child: const Text('Als Pin übernehmen'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Admin-Konsole')),
-      body: const Center(
-        child: Padding(
-          padding: EdgeInsets.all(32),
-          child: Text('Weitere Admin-Funktionen folgen in den nächsten Einheiten dieser Runde.'),
-        ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Text('KI-Server & Sicherheit', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 4),
+          const Text(
+            'Aus den normalen Einstellungen hierher verschoben — sensible/fortgeschrittene Werte.',
+            style: TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _aiBackendCtrl,
+            decoration: const InputDecoration(
+              labelText: 'KI-Server-Adresse (für freie Gespräche)',
+              helperText: 'Die Worker-URL aus der Cloudflare-Bereitstellung, siehe README',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _aiHmacSecretCtrl,
+            obscureText: true,
+            decoration: const InputDecoration(
+              labelText: 'KI-Server-Schlüssel (Request-Signierung)',
+              helperText:
+                  'Optional. Muss exakt mit dem HMAC_SECRET im Worker übereinstimmen (siehe README) — '
+                  'sobald dort gesetzt, lehnt der Worker unsignierte/gefälschte Anfragen ab.',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _certPinsCtrl,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: 'TLS-Zertifikat-Pins (Certificate Pinning)',
+              helperText:
+                  'Optional, ein Fingerabdruck pro Zeile. Leer = normale TLS-Prüfung (aus). Nur auf Handy/Desktop '
+                  'wirksam, nicht im Web-Build. Rotiert das Zertifikat, verweigert die App die Verbindung, bis '
+                  'hier ein neuer Fingerabdruck ergänzt wird — deshalb am besten zwei Pins gleichzeitig pflegen.',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _checkingCertPin ? null : _fetchCurrentPin,
+            icon: _checkingCertPin
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.fingerprint),
+            label: const Text('Aktuellen Fingerabdruck anzeigen'),
+          ),
+          const SizedBox(height: 16),
+          DropdownButtonFormField<String>(
+            initialValue: _aiModel,
+            decoration: const InputDecoration(
+              labelText: 'KI-Modell (kostenlos, ohne Server-Adresse)',
+              helperText: 'Nur wenn oben keine eigene KI-Server-Adresse eingetragen ist',
+              border: OutlineInputBorder(),
+            ),
+            items: _aiModels.entries
+                .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
+                .toList(),
+            onChanged: (value) {
+              if (value != null) setState(() => _aiModel = value);
+            },
+          ),
+          const SizedBox(height: 12),
+          FilledButton(
+            onPressed: _savingServerSection ? null : _saveServerSection,
+            child: const Text('Speichern'),
+          ),
+        ],
       ),
     );
   }
