@@ -200,6 +200,12 @@ void main() {
       await settings.setAiTemperature(0.9);
       expect(await settings.getAiTemperature(), 0.9);
     });
+
+    test('max history turns defaults to 8 and round-trips', () async {
+      expect(await settings.getMaxHistoryTurns(), 8);
+      await settings.setMaxHistoryTurns(4);
+      expect(await settings.getMaxHistoryTurns(), 4);
+    });
   });
 
   group('legacy plaintext migration', () {

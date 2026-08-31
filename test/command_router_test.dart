@@ -1702,6 +1702,15 @@ void main() {
       await router.handle('freie frage an die ki');
       expect(aiChat.lastTemperature, closeTo(0.9, 0.001));
     });
+
+    test('a lower max history turns setting trims the kept conversation history sooner', () async {
+      await settings.setMaxHistoryTurns(1);
+      await router.handle('freie frage eins');
+      await router.handle('freie frage zwei');
+      await router.handle('freie frage drei');
+      // 1 turn kept = at most 1 user + 1 assistant entry.
+      expect(aiChat.lastHistory!.length, lessThanOrEqualTo(2));
+    });
   });
 
   group('Kontextabhängige Spätnacht-Reaktion', () {

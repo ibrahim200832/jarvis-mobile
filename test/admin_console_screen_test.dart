@@ -140,4 +140,23 @@ void main() {
 
     expect(await settings.getAiTemperature(), closeTo(0.3, 0.001));
   });
+
+  testWidgets('saving the default context length persists 8', (tester) async {
+    await _pumpConsole(tester, settings);
+
+    expect(find.text('Kontext-Länge: 8 Gesprächsrunden'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('save-behavior-section')));
+    await tester.pumpAndSettle();
+
+    expect(await settings.getMaxHistoryTurns(), 8);
+  });
+
+  testWidgets('loads a previously saved context length', (tester) async {
+    await settings.setMaxHistoryTurns(3);
+
+    await _pumpConsole(tester, settings);
+
+    expect(find.text('Kontext-Länge: 3 Gesprächsrunden'), findsOneWidget);
+  });
 }

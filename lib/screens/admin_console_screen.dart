@@ -32,6 +32,7 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
   final _tlsPinning = TlsPinningService();
   String _aiModel = 'openai';
   double _aiTemperature = 0.3;
+  int _maxHistoryTurns = 8;
   bool _checkingCertPin = false;
   bool _savingServerSection = false;
   bool _savingBehaviorSection = false;
@@ -55,6 +56,7 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
     _aiModel = await widget.settings.getAiModel();
     _systemPromptOverrideCtrl.text = await widget.settings.getSystemPromptOverride() ?? '';
     _aiTemperature = await widget.settings.getAiTemperature();
+    _maxHistoryTurns = await widget.settings.getMaxHistoryTurns();
     if (mounted) setState(() {});
   }
 
@@ -67,6 +69,7 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
       await widget.settings.setSystemPromptOverride(override);
     }
     await widget.settings.setAiTemperature(_aiTemperature);
+    await widget.settings.setMaxHistoryTurns(_maxHistoryTurns);
     if (!mounted) return;
     setState(() => _savingBehaviorSection = false);
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gespeichert.')));
@@ -201,6 +204,21 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
           ),
           const Text(
             '0,0 = präzise/vorhersagbar, 1,0 = kreativer/verspielter.',
+            style: TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          Text('Kontext-Länge: $_maxHistoryTurns Gesprächsrunden', style: const TextStyle(fontSize: 12)),
+          Slider(
+            value: _maxHistoryTurns.toDouble(),
+            min: 2,
+            max: 20,
+            divisions: 18,
+            label: '$_maxHistoryTurns',
+            onChanged: (value) => setState(() => _maxHistoryTurns = value.round()),
+          ),
+          const Text(
+            'Wie viele vergangene Gesprächsrunden JARVIS sich merkt. Mehr = besserer Kontext bei '
+            'Rückfragen, aber längere/teurere Anfragen an die KI.',
             style: TextStyle(fontSize: 12),
           ),
           const SizedBox(height: 12),

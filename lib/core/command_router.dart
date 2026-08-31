@@ -188,7 +188,6 @@ class CommandRouter {
   /// AI fallback are kept — keyword-matched commands (weather, notes, ...)
   /// aren't relevant conversational context for it.
   final _aiHistory = <AiTurn>[];
-  static const _maxHistoryTurns = 8;
 
   /// Interaktives Storytelling: while active, every input (except the exit
   /// phrase) is treated as the player's story action instead of going
@@ -1065,7 +1064,8 @@ Das kann ich für dich tun:
       );
       _aiHistory.add(AiTurn(role: 'user', content: text));
       _aiHistory.add(AiTurn(role: 'assistant', content: aiResult.reply));
-      while (_aiHistory.length > _maxHistoryTurns * 2) {
+      final maxHistoryTurns = await settings.getMaxHistoryTurns();
+      while (_aiHistory.length > maxHistoryTurns * 2) {
         _aiHistory.removeAt(0);
       }
       return await _handleAiResult(aiResult);

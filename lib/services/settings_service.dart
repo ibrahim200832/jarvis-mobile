@@ -66,6 +66,7 @@ class SettingsService {
   static const _keyAdminBiometricEnabled = 'admin_biometric_enabled';
   static const _keySystemPromptOverride = 'admin_system_prompt_override';
   static const _keyAiTemperature = 'ai_temperature';
+  static const _keyMaxHistoryTurns = 'ai_max_history_turns';
 
   /// Reads a secret from secure (AES-256) storage. If it hasn't been
   /// migrated yet, transparently pulls a legacy plaintext SharedPreferences
@@ -676,5 +677,21 @@ class SettingsService {
   Future<void> setAiTemperature(double value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_keyAiTemperature, value);
+  }
+
+  /// How many past conversation turns (user+assistant pairs) CommandRouter
+  /// keeps and sends as context on every ask() call. Default 8 matches the
+  /// value that used to be a hard-coded constant. The worker's own
+  /// MAX_HISTORY_MESSAGES=16 stays a fixed, independent server-side ceiling
+  /// regardless of this value — deliberately not configurable from here,
+  /// see worker/ai-proxy.js.
+  Future<int> getMaxHistoryTurns() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_keyMaxHistoryTurns) ?? 8;
+  }
+
+  Future<void> setMaxHistoryTurns(int value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keyMaxHistoryTurns, value);
   }
 }
