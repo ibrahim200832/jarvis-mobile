@@ -41,6 +41,8 @@ dependencies:
   path_provider: ^2.1.5
   workmanager: ^0.10.9
   xml: ^6.6.1
+  archive: ^4.2.0
+  encrypt: ^5.0.3
 
 dev_dependencies:
   flutter_test:

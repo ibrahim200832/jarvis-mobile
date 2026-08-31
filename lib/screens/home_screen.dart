@@ -16,6 +16,7 @@ import '../services/anime_service.dart';
 import '../services/app_integrity_service.dart';
 import '../services/app_launcher_service.dart';
 import '../services/background_task_service.dart';
+import '../services/backup_export_service.dart';
 import '../services/call_service.dart';
 import '../services/challenge_service.dart';
 import '../services/code_snippet_service.dart';
@@ -97,6 +98,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _securityBreach = SecurityBreachService();
   final _backgroundTasks = BackgroundTaskService();
   final _feeds = RssFeedService();
+  final _backup = BackupExportService();
   final _contacts = ContactsService();
   final _timer = TimerService();
   final _spotify = SpotifyService();
@@ -164,6 +166,7 @@ class _HomeScreenState extends State<HomeScreen> {
       moodCapture: MoodCaptureService(),
       securityBreach: _securityBreach,
       feeds: _feeds,
+      backup: _backup,
     );
     _timer.onFire = _onTimerFired;
     _speech.init();
@@ -186,6 +189,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _syncBackgroundTasks() async {
     await _backgroundTasks.initialize();
     await _backgroundTasks.syncRssFeedTask();
+    await _backgroundTasks.syncBackupExportTask();
   }
 
   /// App-Integritäts-Check (Google Play Integrity API, Android only): if

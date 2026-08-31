@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jarvis_mobile/services/background_task_service.dart';
+import 'package:jarvis_mobile/services/backup_export_service.dart';
 import 'package:jarvis_mobile/services/notification_service.dart';
 import 'package:jarvis_mobile/services/rss_feed_service.dart';
 
@@ -11,6 +14,18 @@ class _FakeRssFeedService extends RssFeedService {
 
   @override
   Future<List<RssItem>> checkForNewItems() async => itemsToReturn;
+}
+
+class _FakeBackupExportService extends BackupExportService {
+  int exportCount = 0;
+
+  @override
+  Future<File> exportNow() async {
+    exportCount++;
+    final file = File('${Directory.systemTemp.path}/fake_dispatch_backup_test.bin');
+    await file.writeAsBytes([0]);
+    return file;
+  }
 }
 
 class _FakeNotificationService extends NotificationService {
@@ -66,8 +81,17 @@ void main() {
       expect(notifications.callCount, 0);
     });
 
-    test('reports success for the weekly backup export task', () async {
-      expect(await dispatchBackgroundTask(BackgroundTaskNames.weeklyBackupExport, null), isTrue);
+    test('reports success for the weekly backup export task and runs the export', () async {
+      final backup = _FakeBackupExportService();
+
+      final result = await dispatchBackgroundTask(
+        BackgroundTaskNames.weeklyBackupExport,
+        null,
+        backupExportService: backup,
+      );
+
+      expect(result, isTrue);
+      expect(backup.exportCount, 1);
     });
 
     test('defaults to success for an unknown task name instead of throwing', () async {

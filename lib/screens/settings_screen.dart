@@ -82,6 +82,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _checkingCertPin = false;
   bool _integrityCheckEnabled = false;
   bool _rssFeedCheckEnabled = false;
+  bool _weeklyBackupExportEnabled = false;
 
   static const _aiModels = {
     'openai': 'ChatGPT (Standard)',
@@ -147,6 +148,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _hudEffectsEnabled = await widget.settings.getHudEffectsEnabled();
     _moodAutoAdjustEnabled = await widget.settings.getMoodAutoAdjustEnabled();
     _rssFeedCheckEnabled = await widget.settings.getRssFeedCheckEnabled();
+    _weeklyBackupExportEnabled = await widget.settings.getWeeklyBackupExportEnabled();
     final savedVoiceName = await widget.settings.getTtsVoiceName();
     final savedVoiceLocale = await widget.settings.getTtsVoiceLocale();
     if (savedVoiceName != null && savedVoiceLocale != null) {
@@ -224,8 +226,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await widget.settings.setHudEffectsEnabled(_hudEffectsEnabled);
     await widget.settings.setMoodAutoAdjustEnabled(_moodAutoAdjustEnabled);
     await widget.settings.setRssFeedCheckEnabled(_rssFeedCheckEnabled);
+    await widget.settings.setWeeklyBackupExportEnabled(_weeklyBackupExportEnabled);
     await widget.briefing.rescheduleAll();
     await widget.backgroundTasks.syncRssFeedTask();
+    await widget.backgroundTasks.syncBackupExportTask();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gespeichert.')));
   }
@@ -566,6 +570,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             value: _rssFeedCheckEnabled,
             onChanged: (value) => setState(() => _rssFeedCheckEnabled = value),
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Wöchentlicher Backup-Export'),
+            subtitle: const Text(
+              'Sichert Notizen, Journal, XP/Erfolge, RPG-Spielstand, Feeds und Einstellungen wöchentlich als '
+              'AES-256-verschlüsselte Datei — rein lokal auf dem Gerät, kein Mail-/Bot-Versand. Auch jederzeit '
+              'manuell per "erstelle jetzt ein backup".',
+              style: TextStyle(fontSize: 12),
+            ),
+            value: _weeklyBackupExportEnabled,
+            onChanged: (value) => setState(() => _weeklyBackupExportEnabled = value),
           ),
           const SizedBox(height: 24),
           Text('HUD-Optik', style: Theme.of(context).textTheme.titleMedium),

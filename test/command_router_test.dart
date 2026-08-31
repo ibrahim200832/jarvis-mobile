@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -7,6 +8,7 @@ import 'package:jarvis_mobile/services/ai_chat_service.dart';
 import 'package:jarvis_mobile/services/ambient_sound_service.dart';
 import 'package:jarvis_mobile/services/anime_service.dart';
 import 'package:jarvis_mobile/services/app_launcher_service.dart';
+import 'package:jarvis_mobile/services/backup_export_service.dart';
 import 'package:jarvis_mobile/services/call_service.dart';
 import 'package:jarvis_mobile/services/challenge_service.dart';
 import 'package:jarvis_mobile/services/code_snippet_service.dart';
@@ -130,6 +132,31 @@ class FakeRssFeedService extends RssFeedService {
 
   @override
   Future<List<RssItem>> checkForNewItems() async => nextNewItems;
+}
+
+/// In-memory-ish stand-in for BackupExportService. exportNow() still writes
+/// a small real temp file (so `File.length()` in CommandRouter works
+/// without throwing) but skips the real archive/encrypt logic — that gets
+/// its own dedicated backup_export_service_test.dart instead.
+class FakeBackupExportService extends BackupExportService {
+  int exportCount = 0;
+  bool restoreResult = true;
+  DateTime? fakeLastExport;
+
+  @override
+  Future<File> exportNow() async {
+    exportCount++;
+    fakeLastExport = DateTime.now();
+    final file = File('${Directory.systemTemp.path}/fake_jarvis_backup_test.bin');
+    await file.writeAsBytes(List.filled(2048, 0));
+    return file;
+  }
+
+  @override
+  Future<bool> restoreFromDisk() async => restoreResult;
+
+  @override
+  Future<DateTime?> lastExportTime() async => fakeLastExport;
 }
 
 class FakeWebSearchService extends WebSearchService {
@@ -494,6 +521,7 @@ void main() {
   late FakeMoodCaptureService moodCapture;
   late SecurityBreachService securityBreach;
   late FakeRssFeedService feeds;
+  late FakeBackupExportService backup;
   late CommandRouter router;
 
   // Builds a CommandRouter from the shared setUp() fakes, with optional
@@ -542,6 +570,7 @@ void main() {
     moodCapture: moodCapture,
     securityBreach: securityBreach,
     feeds: feeds,
+    backup: backup,
   );
 
   setUp(() async {
@@ -581,6 +610,7 @@ void main() {
     moodCapture = FakeMoodCaptureService()..nextSample = _loudSquareWaveSample();
     securityBreach = SecurityBreachService();
     feeds = FakeRssFeedService();
+    backup = FakeBackupExportService();
 
     router = buildRouter();
     // Pre-claim today's gamification bonus so it doesn't prepend a "🎉
@@ -1091,6 +1121,38 @@ void main() {
     test('reports no new headlines when there are none', () async {
       final result = await router.handle('rss updates');
       expect(result.reply, contains('Keine neuen Schlagzeilen'));
+    });
+  });
+
+  group('Backup-Export', () {
+    test('erstelle jetzt ein backup triggers an export and reports the size', () async {
+      final result = await router.handle('erstelle jetzt ein backup');
+      expect(backup.exportCount, 1);
+      expect(result.reply, contains('Backup erstellt'));
+      expect(result.reply, contains('KB'));
+    });
+
+    test('backup wiederherstellen reports success when a backup exists', () async {
+      backup.restoreResult = true;
+      final result = await router.handle('backup wiederherstellen');
+      expect(result.reply, contains('wiederhergestellt'));
+    });
+
+    test('backup wiederherstellen reports when there is nothing to restore', () async {
+      backup.restoreResult = false;
+      final result = await router.handle('backup wiederherstellen');
+      expect(result.reply, contains('noch kein gespeichertes Backup'));
+    });
+
+    test('backup status reports emptiness before any export', () async {
+      final result = await router.handle('backup status');
+      expect(result.reply, contains('noch kein gespeichertes Backup'));
+    });
+
+    test('backup status reports the last export time after one exists', () async {
+      await router.handle('erstelle jetzt ein backup');
+      final result = await router.handle('backup status');
+      expect(result.reply, contains('Letztes Backup'));
     });
   });
 

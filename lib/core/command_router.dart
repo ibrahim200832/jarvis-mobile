@@ -4,6 +4,7 @@ import '../services/ai_chat_service.dart';
 import '../services/ambient_sound_service.dart';
 import '../services/anime_service.dart';
 import '../services/app_launcher_service.dart';
+import '../services/backup_export_service.dart';
 import '../services/calculator_service.dart';
 import '../services/call_service.dart';
 import '../services/challenge_service.dart';
@@ -112,6 +113,7 @@ class CommandRouter {
     required this.moodCapture,
     required this.securityBreach,
     required this.feeds,
+    required this.backup,
   });
 
   final WikipediaService wikipedia;
@@ -151,6 +153,7 @@ class CommandRouter {
   final MoodCaptureService moodCapture;
   final SecurityBreachService securityBreach;
   final RssFeedService feeds;
+  final BackupExportService backup;
 
   /// Session-scoped, in-memory only (reset on cold start, like _storyMode/
   /// _aiHistory — CommandRouter itself is rebuilt fresh on every app
@@ -267,6 +270,7 @@ Das kann ich für dich tun:
 • "stimmungscheck" (hört 4 Sekunden zu und schätzt Tonfall/Stimmung anhand echter Audioanalyse ein, passt bei Bedarf den Sarkasmus-Ton an)
 • "simuliere einen sicherheitsbruch" / "teste die firewall" (Mini-Code-Challenge, verteidige die Firewall für XP; passiert auch gelegentlich zufällig beim App-Start, abschaltbar in Einstellungen)
 • "abonniere feed <URL>" (RSS/Atom-Feed oder normale Website mit Feed-Verweis) / "meine feeds" / "entferne feed <URL>" / "was gibt's neues in meinen feeds" / "rss updates" (regelmäßige Hintergrundprüfung in Einstellungen aktivierbar)
+• "erstelle jetzt ein backup" (verschlüsseltes, rein lokales Backup deiner Notizen/App-Daten) / "backup wiederherstellen" / "backup status" (wöchentlicher automatischer Export in Einstellungen aktivierbar)
 • alles andere: frag mich einfach frei, ich antworte mit echter KI und kann
   dabei auch direkt anrufen, WhatsApp schreiben oder Apps öffnen
 ''';
@@ -857,6 +861,32 @@ Das kann ich für dich tun:
         final notification = buildRssNotification(newItems);
         if (notification == null) return CommandResult('Keine neuen Schlagzeilen in deinen Feeds.');
         return CommandResult('${notification.title}:\n${notification.body}');
+      }
+
+      if (_matchesAny(lower, ['erstelle jetzt ein backup', 'backup jetzt erstellen', 'sichere meine daten'])) {
+        final file = await backup.exportNow();
+        final sizeKb = (await file.length()) / 1024;
+        return CommandResult(
+          'Backup erstellt (${sizeKb.toStringAsFixed(1)} KB, AES-256-verschlüsselt, nur lokal gespeichert).',
+        );
+      }
+
+      if (_matchesAny(lower, ['stelle mein backup wieder her', 'backup wiederherstellen'])) {
+        final restored = await backup.restoreFromDisk();
+        return CommandResult(
+          restored
+              ? 'Backup wiederhergestellt. Ein Neustart der App wird empfohlen, damit alle Bildschirme den wiederhergestellten Stand laden.'
+              : 'Es gibt noch kein gespeichertes Backup. Sag "erstelle jetzt ein backup", um eins anzulegen.',
+        );
+      }
+
+      if (_matchesAny(lower, ['wann wurde mein backup erstellt', 'backup status'])) {
+        final last = await backup.lastExportTime();
+        return CommandResult(
+          last == null
+              ? 'Es gibt noch kein gespeichertes Backup.'
+              : 'Letztes Backup: ${DateFormat('dd.MM.yyyy HH:mm').format(last)} Uhr.',
+        );
       }
 
       if (_matchesAny(lower, ['wirf eine münze', 'münze werfen', 'kopf oder zahl', 'münze'])) {

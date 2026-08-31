@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:workmanager/workmanager.dart';
 
+import 'backup_export_service.dart';
 import 'notification_service.dart';
 import 'rss_feed_service.dart';
 import 'settings_service.dart';
@@ -63,6 +64,23 @@ class BackgroundTaskService {
     }
   }
 
+  /// Registers or cancels the weekly encrypted backup export task to match
+  /// the current Einstellungen toggle (see
+  /// SettingsService.getWeeklyBackupExportEnabled) — same on-every-app-start
+  /// + on-toggle-save convention as [syncRssFeedTask].
+  Future<void> syncBackupExportTask() async {
+    if (kIsWeb) return;
+    if (await _settings.getWeeklyBackupExportEnabled()) {
+      await registerPeriodic(
+        BackgroundTaskNames.weeklyBackupExport,
+        BackgroundTaskNames.weeklyBackupExport,
+        frequency: const Duration(days: 7),
+      );
+    } else {
+      await cancelByUniqueName(BackgroundTaskNames.weeklyBackupExport);
+    }
+  }
+
   Future<void> registerPeriodic(
     String uniqueName,
     String taskName, {
@@ -106,18 +124,19 @@ void callbackDispatcher() {
 /// plugin singleton, which has no platform-channel implementation available
 /// under `flutter test`.
 ///
-/// [rssFeedService]/[notificationService] are test-only injection points
-/// (real instances are constructed when omitted, exactly what
-/// [callbackDispatcher] does) — this headless isolate has no DI container to
-/// pull real ones from anyway, and `flutter test` has no platform-channel
-/// implementation for either plugin, so a plain call with no overrides would
-/// throw under test.
+/// [rssFeedService]/[notificationService]/[backupExportService] are
+/// test-only injection points (real instances are constructed when
+/// omitted, exactly what [callbackDispatcher] does) — this headless
+/// isolate has no DI container to pull real ones from anyway, and
+/// `flutter test` has no platform-channel implementation for any of these
+/// plugins, so a plain call with no overrides would throw under test.
 @visibleForTesting
 Future<bool> dispatchBackgroundTask(
   String task,
   Map<String, dynamic>? inputData, {
   RssFeedService? rssFeedService,
   NotificationService? notificationService,
+  BackupExportService? backupExportService,
 }) async {
   switch (task) {
     case BackgroundTaskNames.rssFeedCheck:
@@ -132,7 +151,7 @@ Future<bool> dispatchBackgroundTask(
       }
       return true;
     case BackgroundTaskNames.weeklyBackupExport:
-      // Wired up in Runde 13, Einheit 5 (verschlüsselter Backup-Export).
+      await (backupExportService ?? BackupExportService()).exportNow();
       return true;
     default:
       return true;

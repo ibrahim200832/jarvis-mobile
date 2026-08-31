@@ -43,6 +43,7 @@ class SettingsService {
   static const _keyGoogleCloudProjectNumber = 'google_cloud_project_number';
   static const _keyIntegrityCheckEnabled = 'integrity_check_enabled';
   static const _keyRssFeedCheckEnabled = 'rss_feed_check_enabled';
+  static const _keyWeeklyBackupExportEnabled = 'weekly_backup_export_enabled';
 
   /// Reads a secret from secure (AES-256) storage. If it hasn't been
   /// migrated yet, transparently pulls a legacy plaintext SharedPreferences
@@ -318,6 +319,20 @@ class SettingsService {
   Future<void> setRssFeedCheckEnabled(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyRssFeedCheckEnabled, value);
+  }
+
+  /// Opt-in, default off: whether BackgroundTaskService should run a
+  /// weekly encrypted local backup export (see BackupExportService). Off
+  /// by default, same reasoning as the RSS check toggle above — periodic
+  /// background work shouldn't run for users who never asked for it.
+  Future<bool> getWeeklyBackupExportEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyWeeklyBackupExportEnabled) ?? false;
+  }
+
+  Future<void> setWeeklyBackupExportEnabled(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyWeeklyBackupExportEnabled, value);
   }
 
   /// Which fixed JARVIS persona is active: 'standard', 'drill_sergeant',
