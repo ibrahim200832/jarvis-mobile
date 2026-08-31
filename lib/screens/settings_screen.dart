@@ -5,6 +5,7 @@ import '../services/api_health_service.dart';
 import '../services/background_task_service.dart';
 import '../services/contacts_service.dart';
 import '../services/home_assistant_service.dart';
+import '../services/home_widget_service.dart';
 import '../services/log_service.dart';
 import '../services/notification_hub_service.dart';
 import '../services/proactive_briefing_service.dart';
@@ -34,6 +35,7 @@ class SettingsScreen extends StatefulWidget {
     required this.webdav,
     required this.offlineLlm,
     required this.notificationHub,
+    required this.homeWidget,
   });
 
   final SettingsService settings;
@@ -47,6 +49,7 @@ class SettingsScreen extends StatefulWidget {
   final WebDavSyncService webdav;
   final OfflineLlmService offlineLlm;
   final NotificationHubService notificationHub;
+  final HomeWidgetService homeWidget;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -96,6 +99,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _notificationDigestAiEnabled = false;
   bool _notificationListenerActive = false;
   bool _notificationHubBusy = false;
+  bool _widgetPinSupported = false;
   bool _hudEffectsEnabled = true;
   bool _reactiveOrbEnabled = true;
   bool _faceDownFocusEnabled = false;
@@ -193,6 +197,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _notificationHubEnabled = await widget.settings.getNotificationHubEnabled();
     _notificationDigestAiEnabled = await widget.settings.getNotificationDigestAiEnabled();
     _notificationListenerActive = await widget.notificationHub.isListenerEnabled();
+    _widgetPinSupported = await widget.homeWidget.isPinSupported();
     final savedVoiceName = await widget.settings.getTtsVoiceName();
     final savedVoiceLocale = await widget.settings.getTtsVoiceLocale();
     if (savedVoiceName != null && savedVoiceLocale != null) {
@@ -871,6 +876,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ],
           ),
+          const SizedBox(height: 24),
+          Text('Homescreen-Widget', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 4),
+          const Text(
+            'Zeigt Server-Status/Latenz und offene Aufgaben direkt auf dem Startbildschirm, mit einer '
+            '"Blitz-Notiz"-Schnellaktion — ganz ohne die App zu öffnen. Lang auf den Startbildschirm drücken → '
+            'Widgets → J.A.R.V.I.S., um es hinzuzufügen.',
+            style: TextStyle(fontSize: 12),
+          ),
+          if (_widgetPinSupported) ...[
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () => widget.homeWidget.requestPin(),
+              icon: const Icon(Icons.add_to_home_screen_outlined),
+              label: const Text('Widget anheften'),
+            ),
+          ],
           const SizedBox(height: 24),
           Text('App-Integrität (Play Integrity)', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 4),

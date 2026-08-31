@@ -28,6 +28,7 @@ import '../services/device_info_service.dart';
 import '../services/email_service.dart';
 import '../services/gamification_service.dart';
 import '../services/home_assistant_service.dart';
+import '../services/home_widget_service.dart';
 import '../services/ip_service.dart';
 import '../services/joke_service.dart';
 import '../services/journal_service.dart';
@@ -119,6 +120,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     apiHealth: ApiHealthService(),
     settings: SettingsService(),
   );
+  final _homeWidget = HomeWidgetService();
+  StreamSubscription<Uri?>? _widgetClickSubscription;
   final _feeds = RssFeedService();
   final _backup = BackupExportService();
   final _webdav = WebDavSyncService();
@@ -235,6 +238,61 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     unawaited(_syncMotionActions());
     unawaited(_checkAppLockState());
     unawaited(_dashboardNotification.refresh());
+    unawaited(_refreshHomeWidget());
+    _widgetClickSubscription = _homeWidget.widgetClicks.listen(_handleWidgetClick);
+    unawaited(_handleColdStartFromWidget());
+  }
+
+  /// Pushes the same status/latency + open-to-do content shown in the
+  /// dashboard notification (see DashboardNotificationService) to the
+  /// native home-screen widget (Einheit 9 — no-op until that native side
+  /// exists, and always a no-op on web, see HomeWidgetService).
+  Future<void> _refreshHomeWidget() async {
+    final statusLine = await _dashboardNotification.currentStatusLine();
+    final openCount = (await TodoService().openItems()).length;
+    await _homeWidget.refresh(statusLine: statusLine, openTodoCount: openCount);
+  }
+
+  /// Handles a tap on the widget's "Blitz-Notiz" quick action while the app
+  /// is already running — see _handleColdStartFromWidget for the
+  /// app-was-closed case.
+  void _handleWidgetClick(Uri? uri) {
+    if (uri?.host == 'quicknote' && mounted) {
+      unawaited(_showQuickNoteDialog());
+    }
+  }
+
+  /// If the app was cold-started by tapping the widget, handles it exactly
+  /// like a live tap (see _handleWidgetClick) once the first frame is up.
+  Future<void> _handleColdStartFromWidget() async {
+    final uri = await _homeWidget.initiallyLaunchedFromWidget();
+    if (uri?.host == 'quicknote' && mounted) {
+      unawaited(_showQuickNoteDialog());
+    }
+  }
+
+  /// The widget's "Blitz-Notiz" quick action — adds a to-do without going
+  /// through the full chat/CommandRouter flow.
+  Future<void> _showQuickNoteDialog() async {
+    final controller = TextEditingController();
+    final text = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Blitz-Notiz'),
+        content: TextField(controller: controller, autofocus: true, decoration: const InputDecoration(hintText: 'Was steht an?')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Abbrechen')),
+          TextButton(onPressed: () => Navigator.pop(context, controller.text), child: const Text('Speichern')),
+        ],
+      ),
+    );
+    controller.dispose();
+    final trimmed = text?.trim();
+    if (trimmed == null || trimmed.isEmpty) return;
+    await TodoService().add(trimmed);
+    unawaited(_refreshHomeWidget());
+    unawaited(_dashboardNotification.refresh());
+    if (mounted) _showSnack('Aufgabe gespeichert: $trimmed');
   }
 
   /// The emergency lock (unlike everything else in this screen's state)
@@ -504,6 +562,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _motionActions.stop();
+    unawaited(_widgetClickSubscription?.cancel());
     _timer.cancelAll();
     _textCtrl.dispose();
     _scrollCtrl.dispose();
@@ -753,10 +812,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
     _scrollToBottom();
     // Cheap enough to run after every reply, and the simplest way to keep
-    // the dashboard notification (status/latency/open-to-do-count) fresh
-    // after a chat command mutates to-dos — CommandRouter has no per-
-    // mutation callback to hook into instead.
+    // the dashboard notification/widget (status/latency/open-to-do-count)
+    // fresh after a chat command mutates to-dos — CommandRouter has no
+    // per-mutation callback to hook into instead.
     unawaited(_dashboardNotification.refresh());
+    unawaited(_refreshHomeWidget());
 
     if (_callActive) {
       setState(() => _speaking = true);
@@ -1011,6 +1071,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           webdav: _webdav,
                           offlineLlm: _offlineLlm,
                           notificationHub: NotificationHubService(),
+                          homeWidget: _homeWidget,
                         ),
                       ),
                     )

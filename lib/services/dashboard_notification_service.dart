@@ -38,6 +38,11 @@ class DashboardNotificationService {
     );
   }
 
+  /// Public so HomeWidgetService's refresh (Einheit 7) can show the exact
+  /// same status text as this notification, without a second, differently-
+  /// worded implementation of the same API-health check.
+  Future<String> currentStatusLine() => _statusLine();
+
   Future<String> _statusLine() async {
     final backendUrl = await settings.getAiBackendUrl();
     if (backendUrl == null || backendUrl.trim().isEmpty) return 'Kein eigener Server konfiguriert';

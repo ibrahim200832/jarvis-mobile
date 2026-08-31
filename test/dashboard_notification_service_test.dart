@@ -96,6 +96,17 @@ void main() {
     expect(notifications.lastBody, contains('Online, 142ms'));
   });
 
+  test('currentStatusLine() exposes the same text used in the notification body', () async {
+    settings.backendUrl = 'https://example.com';
+    apiHealth.nextResult = ApiHealthResult(
+      reachable: true,
+      checkedAt: DateTime.now(),
+      statusCode: 200,
+      latency: const Duration(milliseconds: 99),
+    );
+    expect(await dashboard.currentStatusLine(), 'Online, 99ms');
+  });
+
   test('reports unreachable when the backend check fails', () async {
     settings.backendUrl = 'https://example.com';
     apiHealth.nextResult = ApiHealthResult(reachable: false, checkedAt: DateTime.now(), error: 'timeout');
