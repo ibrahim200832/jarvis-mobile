@@ -68,6 +68,21 @@
                 <data android:scheme="jarvismobile"/>
             </intent-filter>
         </activity>
+        <!-- Benachrichtigungs-Zusammenfasser (Runde 14, Einheiten 6+8):
+             "Benachrichtigungszugriff" ist eine besondere, vom Nutzer manuell
+             in den System-Einstellungen erteilte Berechtigung
+             (Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS) — kein normaler
+             Laufzeit-Dialog. Erfasst nur, solange zusätzlich die
+             "Benachrichtigungen erfassen"-Einstellung in der App aktiv ist. -->
+        <service
+            android:name=".NotificationListenerBridgeService"
+            android:label="J.A.R.V.I.S. Benachrichtigungs-Zusammenfasser"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService"/>
+            </intent-filter>
+        </service>
     </application>
     <queries>
         <intent>
