@@ -44,6 +44,9 @@ class SettingsService {
   static const _keyIntegrityCheckEnabled = 'integrity_check_enabled';
   static const _keyRssFeedCheckEnabled = 'rss_feed_check_enabled';
   static const _keyWeeklyBackupExportEnabled = 'weekly_backup_export_enabled';
+  static const _keyWebDavUrl = 'webdav_url';
+  static const _keyWebDavUsername = 'webdav_username';
+  static const _keyWebDavPassword = 'webdav_password';
 
   /// Reads a secret from secure (AES-256) storage. If it hasn't been
   /// migrated yet, transparently pulls a legacy plaintext SharedPreferences
@@ -246,6 +249,34 @@ class SettingsService {
   Future<String?> getHomeAssistantToken() => _secureGet(_keyHomeAssistantToken);
 
   Future<void> setHomeAssistantToken(String value) => _secureSet(_keyHomeAssistantToken, value);
+
+  /// The user's own WebDAV server for end-to-end-encrypted cloud sync of
+  /// the local backup (see BackupExportService/WebDavSyncService). URL and
+  /// username aren't secret; the password is (SecureStorageService-backed,
+  /// same convention as the Home Assistant token above).
+  Future<String?> getWebDavUrl() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyWebDavUrl);
+  }
+
+  Future<void> setWebDavUrl(String value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyWebDavUrl, value);
+  }
+
+  Future<String?> getWebDavUsername() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyWebDavUsername);
+  }
+
+  Future<void> setWebDavUsername(String value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyWebDavUsername, value);
+  }
+
+  Future<String?> getWebDavPassword() => _secureGet(_keyWebDavPassword);
+
+  Future<void> setWebDavPassword(String value) => _secureSet(_keyWebDavPassword, value);
 
   /// Shared secret for signing requests to the user's own AI backend Worker
   /// with an HMAC (see request_signing_service.dart) — proves a request

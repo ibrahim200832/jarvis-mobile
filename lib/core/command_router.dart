@@ -38,6 +38,7 @@ import '../services/timer_service.dart';
 import '../services/voice_tone_analyzer.dart';
 import '../services/weather_service.dart';
 import '../services/web_search_service.dart';
+import '../services/webdav_sync_service.dart';
 import '../services/whatsapp_service.dart';
 import '../services/wikipedia_service.dart';
 import '../services/youtube_service.dart';
@@ -114,6 +115,7 @@ class CommandRouter {
     required this.securityBreach,
     required this.feeds,
     required this.backup,
+    required this.webdav,
   });
 
   final WikipediaService wikipedia;
@@ -154,6 +156,7 @@ class CommandRouter {
   final SecurityBreachService securityBreach;
   final RssFeedService feeds;
   final BackupExportService backup;
+  final WebDavSyncService webdav;
 
   /// Session-scoped, in-memory only (reset on cold start, like _storyMode/
   /// _aiHistory — CommandRouter itself is rebuilt fresh on every app
@@ -271,6 +274,7 @@ Das kann ich für dich tun:
 • "simuliere einen sicherheitsbruch" / "teste die firewall" (Mini-Code-Challenge, verteidige die Firewall für XP; passiert auch gelegentlich zufällig beim App-Start, abschaltbar in Einstellungen)
 • "abonniere feed <URL>" (RSS/Atom-Feed oder normale Website mit Feed-Verweis) / "meine feeds" / "entferne feed <URL>" / "was gibt's neues in meinen feeds" / "rss updates" (regelmäßige Hintergrundprüfung in Einstellungen aktivierbar)
 • "erstelle jetzt ein backup" (verschlüsseltes, rein lokales Backup deiner Notizen/App-Daten) / "backup wiederherstellen" / "backup status" (wöchentlicher automatischer Export in Einstellungen aktivierbar)
+• "cloud-backup hochladen" / "cloud-backup herunterladen" (Ende-zu-Ende-verschlüsselte Synchronisation mit deinem eigenen WebDAV-Server, URL/Zugangsdaten in Einstellungen nötig)
 • alles andere: frag mich einfach frei, ich antworte mit echter KI und kann
   dabei auch direkt anrufen, WhatsApp schreiben oder Apps öffnen
 ''';
@@ -889,6 +893,14 @@ Das kann ich für dich tun:
         );
       }
 
+      if (_matchesAny(lower, ['cloud-backup hochladen', 'backup in die cloud hochladen', 'synchronisiere mein backup mit webdav'])) {
+        return CommandResult(await _syncWebDavUpload());
+      }
+
+      if (_matchesAny(lower, ['cloud-backup herunterladen', 'backup aus der cloud herunterladen', 'hole mein cloud-backup'])) {
+        return CommandResult(await _syncWebDavDownload());
+      }
+
       if (_matchesAny(lower, ['wirf eine münze', 'münze werfen', 'kopf oder zahl', 'münze'])) {
         return CommandResult('${fun.flipCoin()}!');
       }
@@ -1178,6 +1190,38 @@ Das kann ich für dich tun:
       return 'Home Assistant ist nicht eingerichtet. Bitte URL und Token in den Einstellungen eintragen.';
     }
     return homeAssistant.status(creds.$1, creds.$2, name);
+  }
+
+  Future<(String, String, String)?> _webDavCredentials() async {
+    final url = await settings.getWebDavUrl();
+    final username = await settings.getWebDavUsername();
+    final password = await settings.getWebDavPassword();
+    if (url == null || url.isEmpty || username == null || username.isEmpty || password == null || password.isEmpty) {
+      return null;
+    }
+    return (url, username, password);
+  }
+
+  Future<String> _syncWebDavUpload() async {
+    final creds = await _webDavCredentials();
+    if (creds == null) return 'WebDAV ist nicht eingerichtet. Bitte URL, Benutzername und Passwort in den Einstellungen eintragen.';
+    try {
+      await webdav.upload(baseUrl: creds.$1, username: creds.$2, password: creds.$3);
+      return 'Backup Ende-zu-Ende-verschlüsselt zum WebDAV-Server hochgeladen.';
+    } catch (e) {
+      return 'Upload zum WebDAV-Server fehlgeschlagen: ${e is StateError ? e.message : 'Verbindung nicht möglich.'}';
+    }
+  }
+
+  Future<String> _syncWebDavDownload() async {
+    final creds = await _webDavCredentials();
+    if (creds == null) return 'WebDAV ist nicht eingerichtet. Bitte URL, Benutzername und Passwort in den Einstellungen eintragen.';
+    try {
+      await webdav.download(baseUrl: creds.$1, username: creds.$2, password: creds.$3);
+      return 'Backup vom WebDAV-Server heruntergeladen und wiederhergestellt.';
+    } catch (e) {
+      return 'Download vom WebDAV-Server fehlgeschlagen: ${e is StateError ? e.message : 'Verbindung nicht möglich.'}';
+    }
   }
 
   Future<String> _lookupAnime(String title, {required bool isManga}) async {

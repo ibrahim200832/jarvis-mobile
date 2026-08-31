@@ -12,6 +12,7 @@ import '../services/spotify_service.dart';
 import '../services/tiktok_upload_service.dart';
 import '../services/tls_pinning_service.dart';
 import '../services/tts_service.dart';
+import '../services/webdav_sync_service.dart';
 import 'api_health_screen.dart';
 import 'changelog_screen.dart';
 import 'dashboard_screen.dart';
@@ -28,6 +29,7 @@ class SettingsScreen extends StatefulWidget {
     required this.briefing,
     required this.homeAssistant,
     required this.backgroundTasks,
+    required this.webdav,
   });
 
   final SettingsService settings;
@@ -38,6 +40,7 @@ class SettingsScreen extends StatefulWidget {
   final ProactiveBriefingService briefing;
   final HomeAssistantService homeAssistant;
   final BackgroundTaskService backgroundTasks;
+  final WebDavSyncService webdav;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -57,6 +60,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _tiktokClientKeyCtrl = TextEditingController();
   final _homeAssistantUrlCtrl = TextEditingController();
   final _homeAssistantTokenCtrl = TextEditingController();
+  final _webDavUrlCtrl = TextEditingController();
+  final _webDavUsernameCtrl = TextEditingController();
+  final _webDavPasswordCtrl = TextEditingController();
   List<Contact> _contacts = [];
   String _appVersion = '';
   String _aiModel = 'openai';
@@ -79,6 +85,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _hudEffectsEnabled = true;
   bool _moodAutoAdjustEnabled = true;
   bool _testingHomeAssistant = false;
+  bool _testingWebDav = false;
   bool _checkingCertPin = false;
   bool _integrityCheckEnabled = false;
   bool _rssFeedCheckEnabled = false;
@@ -131,6 +138,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _tiktokClientKeyCtrl.text = await widget.settings.getTiktokClientKey() ?? '';
     _homeAssistantUrlCtrl.text = await widget.settings.getHomeAssistantUrl() ?? '';
     _homeAssistantTokenCtrl.text = await widget.settings.getHomeAssistantToken() ?? '';
+    _webDavUrlCtrl.text = await widget.settings.getWebDavUrl() ?? '';
+    _webDavUsernameCtrl.text = await widget.settings.getWebDavUsername() ?? '';
+    _webDavPasswordCtrl.text = await widget.settings.getWebDavPassword() ?? '';
     _aiModel = await widget.settings.getAiModel();
     _persona = await widget.settings.getPersona();
     _contacts = await widget.contacts.all();
@@ -203,6 +213,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await widget.settings.setTiktokClientKey(_tiktokClientKeyCtrl.text.trim());
     await widget.settings.setHomeAssistantUrl(_homeAssistantUrlCtrl.text.trim());
     await widget.settings.setHomeAssistantToken(_homeAssistantTokenCtrl.text.trim());
+    await widget.settings.setWebDavUrl(_webDavUrlCtrl.text.trim());
+    await widget.settings.setWebDavUsername(_webDavUsernameCtrl.text.trim());
+    await widget.settings.setWebDavPassword(_webDavPasswordCtrl.text.trim());
     await widget.settings.setAiModel(_aiModel);
     await widget.settings.setPersona(_persona);
     final voice = _selectedVoiceKey == _defaultVoiceKey || _selectedVoiceKey == null
@@ -276,6 +289,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(ok ? 'Verbindung zu Home Assistant erfolgreich.' : 'Verbindung fehlgeschlagen.')),
     );
+  }
+
+  Future<void> _testWebDav() async {
+    final url = _webDavUrlCtrl.text.trim();
+    final username = _webDavUsernameCtrl.text.trim();
+    final password = _webDavPasswordCtrl.text.trim();
+    if (url.isEmpty || username.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Bitte zuerst URL, Benutzername und Passwort eintragen.')));
+      return;
+    }
+    setState(() => _testingWebDav = true);
+    final ok = await widget.webdav.testConnection(baseUrl: url, username: username, password: password);
+    if (!mounted) return;
+    setState(() => _testingWebDav = false);
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(ok ? 'Verbindung zum WebDAV-Server erfolgreich.' : 'Verbindung fehlgeschlagen.')));
   }
 
   /// Trust-on-first-use helper: connects once to the configured AI-backend
@@ -646,6 +678,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
             icon: _testingHomeAssistant
                 ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.home_outlined),
+            label: const Text('Verbindung testen'),
+          ),
+          const SizedBox(height: 24),
+          Text('WebDAV-Cloud-Sync', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 4),
+          const Text(
+            'Ende-zu-Ende-verschlüsselt: dein Backup wird bereits auf dem Gerät verschlüsselt, bevor es zum '
+            'Server geht — dieser sieht nur Chiffretext. Sync per Chat: "cloud-backup hochladen" / '
+            '"cloud-backup herunterladen".',
+            style: TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _webDavUrlCtrl,
+            decoration: const InputDecoration(
+              labelText: 'WebDAV-Server-URL',
+              helperText: 'z.B. https://cloud.example.com/remote.php/dav/files/nutzername/',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _webDavUsernameCtrl,
+            decoration: const InputDecoration(labelText: 'WebDAV-Benutzername', border: OutlineInputBorder()),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _webDavPasswordCtrl,
+            obscureText: true,
+            decoration: const InputDecoration(labelText: 'WebDAV-Passwort', border: OutlineInputBorder()),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _testingWebDav ? null : _testWebDav,
+            icon: _testingWebDav
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.cloud_sync_outlined),
             label: const Text('Verbindung testen'),
           ),
           const SizedBox(height: 16),

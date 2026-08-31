@@ -40,6 +40,7 @@ import 'package:jarvis_mobile/services/spotify_service.dart';
 import 'package:jarvis_mobile/services/timer_service.dart';
 import 'package:jarvis_mobile/services/weather_service.dart';
 import 'package:jarvis_mobile/services/web_search_service.dart';
+import 'package:jarvis_mobile/services/webdav_sync_service.dart';
 import 'package:jarvis_mobile/services/whatsapp_service.dart';
 import 'package:jarvis_mobile/services/wikipedia_service.dart';
 import 'package:jarvis_mobile/services/youtube_service.dart';
@@ -157,6 +158,27 @@ class FakeBackupExportService extends BackupExportService {
 
   @override
   Future<DateTime?> lastExportTime() async => fakeLastExport;
+}
+
+/// In-memory stand-in for WebDavSyncService — real network calls are never
+/// touched by these tests.
+class FakeWebDavSyncService extends WebDavSyncService {
+  int uploadCount = 0;
+  int downloadCount = 0;
+  bool throwOnUpload = false;
+  bool throwOnDownload = false;
+
+  @override
+  Future<void> upload({required String baseUrl, required String username, required String password}) async {
+    if (throwOnUpload) throw StateError('WebDAV-Upload fehlgeschlagen (Code 500).');
+    uploadCount++;
+  }
+
+  @override
+  Future<void> download({required String baseUrl, required String username, required String password}) async {
+    if (throwOnDownload) throw StateError('Auf dem WebDAV-Server liegt noch kein Backup.');
+    downloadCount++;
+  }
 }
 
 class FakeWebSearchService extends WebSearchService {
@@ -522,6 +544,7 @@ void main() {
   late SecurityBreachService securityBreach;
   late FakeRssFeedService feeds;
   late FakeBackupExportService backup;
+  late FakeWebDavSyncService webdav;
   late CommandRouter router;
 
   // Builds a CommandRouter from the shared setUp() fakes, with optional
@@ -571,6 +594,7 @@ void main() {
     securityBreach: securityBreach,
     feeds: feeds,
     backup: backup,
+    webdav: webdav,
   );
 
   setUp(() async {
@@ -611,6 +635,7 @@ void main() {
     securityBreach = SecurityBreachService();
     feeds = FakeRssFeedService();
     backup = FakeBackupExportService();
+    webdav = FakeWebDavSyncService();
 
     router = buildRouter();
     // Pre-claim today's gamification bonus so it doesn't prepend a "🎉
@@ -1153,6 +1178,53 @@ void main() {
       await router.handle('erstelle jetzt ein backup');
       final result = await router.handle('backup status');
       expect(result.reply, contains('Letztes Backup'));
+    });
+  });
+
+  group('WebDAV-Cloud-Sync', () {
+    test('cloud-backup hochladen reports missing setup when WebDAV is not configured', () async {
+      final result = await router.handle('cloud-backup hochladen');
+      expect(result.reply, contains('nicht eingerichtet'));
+      expect(webdav.uploadCount, 0);
+    });
+
+    test('cloud-backup hochladen uploads once WebDAV is configured', () async {
+      await settings.setWebDavUrl('https://cloud.example.com/dav/');
+      await settings.setWebDavUsername('nutzer');
+      await settings.setWebDavPassword('geheim');
+
+      final result = await router.handle('cloud-backup hochladen');
+
+      expect(webdav.uploadCount, 1);
+      expect(result.reply, contains('hochgeladen'));
+    });
+
+    test('cloud-backup hochladen reports a failure from the server', () async {
+      await settings.setWebDavUrl('https://cloud.example.com/dav/');
+      await settings.setWebDavUsername('nutzer');
+      await settings.setWebDavPassword('geheim');
+      webdav.throwOnUpload = true;
+
+      final result = await router.handle('cloud-backup hochladen');
+
+      expect(result.reply, contains('fehlgeschlagen'));
+    });
+
+    test('cloud-backup herunterladen restores once WebDAV is configured', () async {
+      await settings.setWebDavUrl('https://cloud.example.com/dav/');
+      await settings.setWebDavUsername('nutzer');
+      await settings.setWebDavPassword('geheim');
+
+      final result = await router.handle('cloud-backup herunterladen');
+
+      expect(webdav.downloadCount, 1);
+      expect(result.reply, contains('heruntergeladen'));
+    });
+
+    test('cloud-backup herunterladen reports missing setup when WebDAV is not configured', () async {
+      final result = await router.handle('cloud-backup herunterladen');
+      expect(result.reply, contains('nicht eingerichtet'));
+      expect(webdav.downloadCount, 0);
     });
   });
 

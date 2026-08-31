@@ -51,6 +51,7 @@ import '../services/tts_service.dart';
 import '../services/update_service.dart';
 import '../services/weather_service.dart';
 import '../services/web_search_service.dart';
+import '../services/webdav_sync_service.dart';
 import '../services/whatsapp_service.dart';
 import '../services/wikipedia_service.dart';
 import '../services/youtube_service.dart';
@@ -99,6 +100,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _backgroundTasks = BackgroundTaskService();
   final _feeds = RssFeedService();
   final _backup = BackupExportService();
+  final _webdav = WebDavSyncService();
   final _contacts = ContactsService();
   final _timer = TimerService();
   final _spotify = SpotifyService();
@@ -167,6 +169,7 @@ class _HomeScreenState extends State<HomeScreen> {
       securityBreach: _securityBreach,
       feeds: _feeds,
       backup: _backup,
+      webdav: _webdav,
     );
     _timer.onFire = _onTimerFired;
     _speech.init();
@@ -781,6 +784,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           briefing: _briefing,
                           homeAssistant: HomeAssistantService(),
                           backgroundTasks: _backgroundTasks,
+                          webdav: _webdav,
                         ),
                       ),
                     )

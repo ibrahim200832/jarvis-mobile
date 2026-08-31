@@ -24,6 +24,7 @@ const backupExcludedKeys = {
   'spotify_refresh_token',
   'tiktok_access_token',
   'tiktok_refresh_token',
+  'webdav_password',
 };
 
 /// Zips [data] as a single JSON entry, encrypts the zip bytes with
@@ -133,12 +134,29 @@ class BackupExportService {
     }
   }
 
+  /// Builds an encrypted snapshot of the current app data without touching
+  /// the filesystem — shared by [exportNow] (writes it to disk) and
+  /// WebDavSyncService (uploads it), so both paths use the exact same
+  /// encryption and the exact same persisted key.
+  Future<Uint8List> buildEncryptedSnapshot() async {
+    final data = await collectBackupData();
+    final key = await _getOrCreateKey();
+    return buildEncryptedBackup(data, key);
+  }
+
+  /// Decrypts [bytes] (as produced by [buildEncryptedSnapshot]) and
+  /// restores it into SharedPreferences. Shared by [restoreFromDisk] and
+  /// WebDavSyncService's download path.
+  Future<void> restoreFromBytes(Uint8List bytes) async {
+    final key = await _getOrCreateKey();
+    final data = decryptBackup(bytes, key);
+    await restoreBackupData(data);
+  }
+
   /// Builds a fresh encrypted backup and writes it to disk, overwriting any
   /// previous one. Returns the file so callers can report its size.
   Future<File> exportNow() async {
-    final data = await collectBackupData();
-    final key = await _getOrCreateKey();
-    final bytes = buildEncryptedBackup(data, key);
+    final bytes = await buildEncryptedSnapshot();
     final file = await _file();
     await file.writeAsBytes(bytes, flush: true);
     return file;
@@ -149,9 +167,7 @@ class BackupExportService {
   Future<bool> restoreFromDisk() async {
     final file = await _file();
     if (!await file.exists()) return false;
-    final key = await _getOrCreateKey();
-    final data = decryptBackup(await file.readAsBytes(), key);
-    await restoreBackupData(data);
+    await restoreFromBytes(await file.readAsBytes());
     return true;
   }
 
