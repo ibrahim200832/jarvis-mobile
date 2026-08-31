@@ -276,6 +276,34 @@ void main() {
     expect(find.text('Live-Log-Viewer öffnen'), findsOneWidget);
   });
 
+  testWidgets('force-local-AI toggle defaults to off and persists when switched on', (tester) async {
+    await _pumpConsole(tester, settings);
+
+    expect(
+      tester.widget<SwitchListTile>(find.widgetWithText(SwitchListTile, 'Lokale KI erzwingen')).value,
+      isFalse,
+    );
+
+    await tester.tap(find.text('Lokale KI erzwingen'));
+    await tester.pumpAndSettle();
+
+    expect(await settings.getForceLocalAiEnabled(), isTrue);
+  });
+
+  testWidgets('Discord toggle defaults to off and persists when switched on', (tester) async {
+    await _pumpConsole(tester, settings);
+
+    expect(
+      tester.widget<SwitchListTile>(find.widgetWithText(SwitchListTile, 'Discord-Bot-Versand')).value,
+      isFalse,
+    );
+
+    await tester.tap(find.text('Discord-Bot-Versand'));
+    await tester.pumpAndSettle();
+
+    expect(await settings.getDiscordWebhookEnabled(), isTrue);
+  });
+
   testWidgets('defaults to the gold theme selected', (tester) async {
     await _pumpConsole(tester, settings);
 

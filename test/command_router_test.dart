@@ -348,6 +348,7 @@ class FakeAiChatService extends AiChatService {
   String? lastSystemPromptOverride;
   double? lastTemperature;
   String? lastModelTier;
+  bool? lastForceLocalAi;
 
   @override
   Future<AiChatResult> ask(
@@ -362,6 +363,7 @@ class FakeAiChatService extends AiChatService {
     String? systemPromptOverride,
     double? temperature,
     String modelTier = 'smart',
+    bool forceLocalAi = false,
   }) async {
     lastMessage = message;
     lastHistory = history;
@@ -372,6 +374,7 @@ class FakeAiChatService extends AiChatService {
     lastSystemPromptOverride = systemPromptOverride;
     lastModelTier = modelTier;
     lastTemperature = temperature;
+    lastForceLocalAi = forceLocalAi;
     return AiChatResult(reply: 'FAKE_AI:$message', action: nextAction);
   }
 
@@ -1730,6 +1733,17 @@ void main() {
       expect(await settings.getAiRequestCountToday(), 0);
       await router.handle('freie frage an die ki');
       expect(await settings.getAiRequestCountToday(), 1);
+    });
+
+    test('force-local-AI defaults to off', () async {
+      await router.handle('freie frage an die ki');
+      expect(aiChat.lastForceLocalAi, isFalse);
+    });
+
+    test('an enabled force-local-AI toggle reaches ask()', () async {
+      await settings.setForceLocalAiEnabled(true);
+      await router.handle('freie frage an die ki');
+      expect(aiChat.lastForceLocalAi, isTrue);
     });
   });
 

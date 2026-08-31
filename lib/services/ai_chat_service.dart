@@ -273,7 +273,23 @@ class AiChatService {
     String? systemPromptOverride,
     double? temperature,
     String modelTier = 'smart',
+    bool forceLocalAi = false,
   }) async {
+    // Admin-Konsole "Lokale KI erzwingen": go straight to the on-device
+    // model, skipping the cloud path entirely — unlike the automatic
+    // fallback below, this doesn't wait for a 30s-stale cloud-failure
+    // window first. No installed model means a clear error instead of a
+    // silent cloud detour, since the user explicitly asked to stay local.
+    if (forceLocalAi) {
+      if (!await _offlineModelReady()) {
+        return AiChatResult(
+          reply: 'Lokale KI ist erzwungen, aber es ist kein Offline-Modell installiert '
+              '(siehe Admin-Konsole → Entwickler-Tools bzw. Einstellungen → Offline-KI).',
+        );
+      }
+      return await _tryOffline(message) ??
+          AiChatResult(reply: 'Lokale KI ist erzwungen, aber die Offline-Anfrage ist fehlgeschlagen.');
+    }
     // Skip straight to the on-device model if the cloud was unreachable
     // moments ago and stayed that way — avoids re-paying the full request
     // timeout on every message while genuinely offline. Only skips when an

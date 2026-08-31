@@ -72,6 +72,8 @@ class SettingsService {
   static const _keyAiRequestCountDate = 'ai_request_count_date';
   static const _keyAiRequestCountValue = 'ai_request_count_value';
   static const _keyThemeVariant = 'theme_variant';
+  static const _keyForceLocalAiEnabled = 'force_local_ai_enabled';
+  static const _keyDiscordWebhookEnabled = 'discord_webhook_enabled';
 
   /// Reads a secret from secure (AES-256) storage. If it hasn't been
   /// migrated yet, transparently pulls a legacy plaintext SharedPreferences
@@ -725,6 +727,32 @@ class SettingsService {
   Future<void> setThemeVariant(ThemeVariant variant) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyThemeVariant, variant == ThemeVariant.cyan ? 'cyan' : 'gold');
+  }
+
+  /// Admin-Konsole "Lokale KI erzwingen" — see AiChatService.ask()'s
+  /// forceLocalAi parameter.
+  Future<bool> getForceLocalAiEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyForceLocalAiEnabled) ?? false;
+  }
+
+  Future<void> setForceLocalAiEnabled(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyForceLocalAiEnabled, value);
+  }
+
+  /// Admin-Konsole "Discord-Bot-Versand" — a placeholder toggle only,
+  /// nothing in the app actually sends to Discord yet (discord-bot/ is a
+  /// fully separate Node.js project with no connection to this app). No
+  /// webhook URL is persisted here, since there's nothing to send it to.
+  Future<bool> getDiscordWebhookEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyDiscordWebhookEnabled) ?? false;
+  }
+
+  Future<void> setDiscordWebhookEnabled(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyDiscordWebhookEnabled, value);
   }
 
   /// Local, app-side counter of AI requests made today — NOT a real

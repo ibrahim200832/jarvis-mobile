@@ -1056,6 +1056,7 @@ Das kann ich für dich tun:
       final systemPromptOverride = await settings.getSystemPromptOverride();
       final temperature = await settings.getAiTemperature();
       final modelTier = await settings.getAiModelTier();
+      final forceLocalAi = await settings.getForceLocalAiEnabled();
       final aiResult = await aiChat.ask(
         backendUrl ?? '',
         text,
@@ -1068,6 +1069,7 @@ Das kann ich für dich tun:
         systemPromptOverride: systemPromptOverride,
         temperature: temperature,
         modelTier: modelTier,
+        forceLocalAi: forceLocalAi,
       );
       await settings.recordAiRequestToday();
       _aiHistory.add(AiTurn(role: 'user', content: text));

@@ -222,6 +222,18 @@ void main() {
       expect(await settings.getThemeVariant(), ThemeVariant.gold);
     });
 
+    test('force-local-AI toggle defaults to false and round-trips', () async {
+      expect(await settings.getForceLocalAiEnabled(), isFalse);
+      await settings.setForceLocalAiEnabled(true);
+      expect(await settings.getForceLocalAiEnabled(), isTrue);
+    });
+
+    test('Discord-webhook placeholder toggle defaults to false and round-trips', () async {
+      expect(await settings.getDiscordWebhookEnabled(), isFalse);
+      await settings.setDiscordWebhookEnabled(true);
+      expect(await settings.getDiscordWebhookEnabled(), isTrue);
+    });
+
     test('AI request count starts at 0 and increments on each record', () async {
       final today = DateTime(2026, 8, 31);
       expect(await settings.getAiRequestCountToday(now: today), 0);

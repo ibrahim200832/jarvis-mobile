@@ -58,6 +58,8 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
   bool _clearingAiMemory = false;
   bool _runningBackup = false;
   ThemeVariant _themeVariant = ThemeVariant.gold;
+  bool _forceLocalAiEnabled = false;
+  bool _discordWebhookEnabled = false;
 
   static const _aiModels = {
     'openai': 'ChatGPT (Standard)',
@@ -87,6 +89,8 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
     _aiModelTier = await widget.settings.getAiModelTier();
     _todaysRequestCount = await widget.settings.getAiRequestCountToday();
     _themeVariant = await widget.settings.getThemeVariant();
+    _forceLocalAiEnabled = await widget.settings.getForceLocalAiEnabled();
+    _discordWebhookEnabled = await widget.settings.getDiscordWebhookEnabled();
     if (mounted) setState(() {});
   }
 
@@ -515,6 +519,32 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
             ),
             icon: const Icon(Icons.bug_report_outlined),
             label: const Text('Live-Log-Viewer öffnen'),
+          ),
+          const SizedBox(height: 12),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Lokale KI erzwingen'),
+            subtitle: const Text(
+              'Antworten kommen ausschließlich vom Offline-Modell — ohne installiertes Modell gibt es eine '
+              'klare Fehlermeldung statt einer stillen Cloud-Anfrage.',
+            ),
+            value: _forceLocalAiEnabled,
+            onChanged: (value) async {
+              setState(() => _forceLocalAiEnabled = value);
+              await widget.settings.setForceLocalAiEnabled(value);
+            },
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Discord-Bot-Versand'),
+            subtitle: const Text(
+              'Vorbereitet, noch nicht angebunden — sendet noch keine Nachrichten.',
+            ),
+            value: _discordWebhookEnabled,
+            onChanged: (value) async {
+              setState(() => _discordWebhookEnabled = value);
+              await widget.settings.setDiscordWebhookEnabled(value);
+            },
           ),
           const SizedBox(height: 24),
           Text('Erscheinungsbild', style: Theme.of(context).textTheme.titleMedium),
