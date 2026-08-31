@@ -849,6 +849,7 @@ Das kann ich für dich tun:
       final moodDelta = (await settings.getMoodAutoAdjustEnabled()) ? (_sessionMood?.sarcasmDelta ?? 0.0) : 0.0;
       final effectiveSarcasm = (sarcasm + moodDelta).clamp(0.0, 1.0);
       final hmacSecret = await settings.getAiHmacSecret();
+      final certPins = await settings.getCertPins();
       final aiResult = await aiChat.ask(
         backendUrl ?? '',
         text,
@@ -857,6 +858,7 @@ Das kann ich für dich tun:
         sarcasm: effectiveSarcasm,
         persona: persona,
         hmacSecret: hmacSecret,
+        certPins: certPins,
       );
       _aiHistory.add(AiTurn(role: 'user', content: text));
       _aiHistory.add(AiTurn(role: 'assistant', content: aiResult.reply));
@@ -903,6 +905,7 @@ Das kann ich für dich tun:
         genre: genre,
         history: const [],
         hmacSecret: await settings.getAiHmacSecret(),
+        certPins: await settings.getCertPins(),
       );
       _storyHistory.add(AiTurn(role: 'user', content: kickoff));
       _storyHistory.add(AiTurn(role: 'assistant', content: result.reply));
@@ -927,6 +930,7 @@ Das kann ich für dich tun:
         genre: _storyGenre,
         history: List.unmodifiable(_storyHistory),
         hmacSecret: await settings.getAiHmacSecret(),
+        certPins: await settings.getCertPins(),
       );
       _storyHistory.add(AiTurn(role: 'user', content: text));
       _storyHistory.add(AiTurn(role: 'assistant', content: result.reply));
@@ -1127,7 +1131,12 @@ Das kann ich für dich tun:
 
   Future<String> _submitJournalEntry(String entryText) async {
     final backendUrl = await settings.getAiBackendUrl();
-    final result = await aiChat.askJournal(backendUrl ?? '', entryText, hmacSecret: await settings.getAiHmacSecret());
+    final result = await aiChat.askJournal(
+      backendUrl ?? '',
+      entryText,
+      hmacSecret: await settings.getAiHmacSecret(),
+      certPins: await settings.getCertPins(),
+    );
     await journal.add(entryText, result.reply);
     return result.reply;
   }
@@ -1284,6 +1293,7 @@ Das kann ich für dich tun:
         statsSummary: stats.summary(),
         history: const [],
         hmacSecret: await settings.getAiHmacSecret(),
+        certPins: await settings.getCertPins(),
       );
       _rpgHistory.add(AiTurn(role: 'user', content: kickoff));
       _rpgHistory.add(AiTurn(role: 'assistant', content: result.reply));
@@ -1360,6 +1370,7 @@ Das kann ich für dich tun:
         statsSummary: stats.summary(),
         history: List.unmodifiable(_rpgHistory),
         hmacSecret: await settings.getAiHmacSecret(),
+        certPins: await settings.getCertPins(),
       );
       _rpgHistory.add(AiTurn(role: 'user', content: text));
       _rpgHistory.add(AiTurn(role: 'assistant', content: result.reply));

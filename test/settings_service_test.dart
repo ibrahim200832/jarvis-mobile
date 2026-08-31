@@ -62,6 +62,23 @@ void main() {
     });
   });
 
+  group('certificate pins', () {
+    test('defaults to an empty list when never set', () async {
+      expect(await settings.getCertPins(), isEmpty);
+    });
+
+    test('a saved pin list round-trips', () async {
+      await settings.setCertPins(['pin-a', 'pin-b']);
+      expect(await settings.getCertPins(), ['pin-a', 'pin-b']);
+    });
+
+    test('saving an empty list clears any previously saved pins', () async {
+      await settings.setCertPins(['pin-a']);
+      await settings.setCertPins([]);
+      expect(await settings.getCertPins(), isEmpty);
+    });
+  });
+
   group('legacy plaintext migration', () {
     test('an existing plaintext weather key is migrated into secure storage on first read', () async {
       SharedPreferences.setMockInitialValues({'weather_api_key': 'legacy-plaintext-key'});

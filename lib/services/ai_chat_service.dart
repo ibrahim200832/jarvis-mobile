@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'request_signing_service.dart';
+import 'tls_pinning_service.dart';
 
 /// An action the AI decided to trigger on the phone (call, WhatsApp, open app,
 /// timer, note, weather, camera) instead of just replying with text.
@@ -162,6 +163,22 @@ String journalSystemPrompt() =>
 /// just without the ability to trigger phone actions itself.
 class AiChatService {
   final _signer = RequestSigningService();
+  final _tlsPinning = TlsPinningService();
+
+  /// POSTs to the user's own backend Worker, using a certificate-pinned
+  /// client when [certPins] is non-empty (see TlsPinningService) and the
+  /// plain default client otherwise — pinning stays fully opt-in.
+  Future<http.Response> _post(Uri uri, {required Map<String, String> headers, required String body, List<String> certPins = const []}) async {
+    if (certPins.isEmpty) {
+      return http.post(uri, headers: headers, body: body);
+    }
+    final client = _tlsPinning.pinnedClient(certPins);
+    try {
+      return await client.post(uri, headers: headers, body: body);
+    } finally {
+      client.close();
+    }
+  }
 
   /// Builds the headers for a POST to the user's own backend Worker. Without
   /// an [hmacSecret] the request goes out unsigned — the Worker itself
@@ -188,6 +205,7 @@ class AiChatService {
     double sarcasm = 0.3,
     String persona = 'standard',
     String? hmacSecret,
+    List<String> certPins = const [],
   }) async {
     if (backendUrl.trim().isEmpty) {
       return _askFreeFallback(message, model, history, sarcasm, persona);
@@ -199,13 +217,12 @@ class AiChatService {
         'sarcasm': sarcasm,
         'persona': persona,
       });
-      final res = await http
-          .post(
-            Uri.parse(backendUrl.trim()),
-            headers: _headers(backendUrl, bodyJson, hmacSecret),
-            body: bodyJson,
-          )
-          .timeout(const Duration(seconds: 25));
+      final res = await _post(
+        Uri.parse(backendUrl.trim()),
+        headers: _headers(backendUrl, bodyJson, hmacSecret),
+        body: bodyJson,
+        certPins: certPins,
+      ).timeout(const Duration(seconds: 25));
       if (res.statusCode != 200) {
         return AiChatResult(reply: 'Die KI-Anfrage ist fehlgeschlagen (Code ${res.statusCode}).');
       }
@@ -267,6 +284,7 @@ class AiChatService {
     required String genre,
     List<AiTurn> history = const [],
     String? hmacSecret,
+    List<String> certPins = const [],
   }) async {
     if (backendUrl.trim().isEmpty) {
       return _askStoryFreeFallback(message, genre, history);
@@ -278,13 +296,12 @@ class AiChatService {
         'mode': 'story',
         'genre': genre,
       });
-      final res = await http
-          .post(
-            Uri.parse(backendUrl.trim()),
-            headers: _headers(backendUrl, bodyJson, hmacSecret),
-            body: bodyJson,
-          )
-          .timeout(const Duration(seconds: 25));
+      final res = await _post(
+        Uri.parse(backendUrl.trim()),
+        headers: _headers(backendUrl, bodyJson, hmacSecret),
+        body: bodyJson,
+        certPins: certPins,
+      ).timeout(const Duration(seconds: 25));
       if (res.statusCode != 200) {
         return AiChatResult(reply: 'Die Geschichte konnte nicht weitererzählt werden (Code ${res.statusCode}).');
       }
@@ -327,6 +344,7 @@ class AiChatService {
     required String statsSummary,
     List<AiTurn> history = const [],
     String? hmacSecret,
+    List<String> certPins = const [],
   }) async {
     if (backendUrl.trim().isEmpty) {
       return _askRpgFreeFallback(message, statsSummary, history);
@@ -338,13 +356,12 @@ class AiChatService {
         'mode': 'rpg',
         'statsSummary': statsSummary,
       });
-      final res = await http
-          .post(
-            Uri.parse(backendUrl.trim()),
-            headers: _headers(backendUrl, bodyJson, hmacSecret),
-            body: bodyJson,
-          )
-          .timeout(const Duration(seconds: 25));
+      final res = await _post(
+        Uri.parse(backendUrl.trim()),
+        headers: _headers(backendUrl, bodyJson, hmacSecret),
+        body: bodyJson,
+        certPins: certPins,
+      ).timeout(const Duration(seconds: 25));
       if (res.statusCode != 200) {
         return AiChatResult(reply: 'Das Überlebens-RPG konnte nicht weitererzählt werden (Code ${res.statusCode}).');
       }
@@ -381,19 +398,23 @@ class AiChatService {
   /// journalSystemPrompt). Deliberately stateless — no history parameter,
   /// unlike ask()/askStory()/askRpg() — since this is a one-off exchange,
   /// not an ongoing mode.
-  Future<AiChatResult> askJournal(String backendUrl, String dayText, {String? hmacSecret}) async {
+  Future<AiChatResult> askJournal(
+    String backendUrl,
+    String dayText, {
+    String? hmacSecret,
+    List<String> certPins = const [],
+  }) async {
     if (backendUrl.trim().isEmpty) {
       return _askJournalFreeFallback(dayText);
     }
     try {
       final bodyJson = jsonEncode({'message': dayText, 'history': const [], 'mode': 'journal'});
-      final res = await http
-          .post(
-            Uri.parse(backendUrl.trim()),
-            headers: _headers(backendUrl, bodyJson, hmacSecret),
-            body: bodyJson,
-          )
-          .timeout(const Duration(seconds: 25));
+      final res = await _post(
+        Uri.parse(backendUrl.trim()),
+        headers: _headers(backendUrl, bodyJson, hmacSecret),
+        body: bodyJson,
+        certPins: certPins,
+      ).timeout(const Duration(seconds: 25));
       if (res.statusCode != 200) {
         return AiChatResult(reply: 'Der Tagesrückblick konnte nicht erstellt werden (Code ${res.statusCode}).');
       }

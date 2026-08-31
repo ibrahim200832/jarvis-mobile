@@ -39,6 +39,7 @@ class SettingsService {
   static const _keyNightAlertEnabled = 'night_alert_enabled';
   static const _keySecurityBreachEnabled = 'security_breach_enabled';
   static const _keyAiHmacSecret = 'ai_hmac_secret';
+  static const _keyCertPins = 'ai_cert_pins';
 
   /// Reads a secret from secure (AES-256) storage. If it hasn't been
   /// migrated yet, transparently pulls a legacy plaintext SharedPreferences
@@ -255,6 +256,22 @@ class SettingsService {
     await _secure.delete(_keyAiHmacSecret);
     final prefs = await SharedPreferences.getInstance();
     if (prefs.containsKey(_keyAiHmacSecret)) await prefs.remove(_keyAiHmacSecret);
+  }
+
+  /// SPKI-SHA256 certificate pins for the AI backend Worker (see
+  /// tls_pinning_service.dart) — a list, not a single value, so a "backup"
+  /// pin can be added ahead of a planned certificate rotation. Not secret
+  /// (public-key hashes are, by design, safe to expose), so plain
+  /// SharedPreferences is fine here, unlike the HMAC secret above. An empty
+  /// list means pinning is inactive — normal TLS validation applies.
+  Future<List<String>> getCertPins() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getStringList(_keyCertPins) ?? const [];
+  }
+
+  Future<void> setCertPins(List<String> pins) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_keyCertPins, pins);
   }
 
   /// Which fixed JARVIS persona is active: 'standard', 'drill_sergeant',

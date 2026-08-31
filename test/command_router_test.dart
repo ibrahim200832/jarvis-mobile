@@ -244,6 +244,7 @@ class FakeAiChatService extends AiChatService {
   String? lastJournalDayText;
   int askJournalCallCount = 0;
   String? lastHmacSecret;
+  List<String>? lastCertPins;
 
   @override
   Future<AiChatResult> ask(
@@ -254,12 +255,14 @@ class FakeAiChatService extends AiChatService {
     double sarcasm = 0.3,
     String persona = 'standard',
     String? hmacSecret,
+    List<String> certPins = const [],
   }) async {
     lastMessage = message;
     lastHistory = history;
     lastPersona = persona;
     lastSarcasm = sarcasm;
     lastHmacSecret = hmacSecret;
+    lastCertPins = certPins;
     return AiChatResult(reply: 'FAKE_AI:$message', action: nextAction);
   }
 
@@ -270,11 +273,13 @@ class FakeAiChatService extends AiChatService {
     required String genre,
     List<AiTurn> history = const [],
     String? hmacSecret,
+    List<String> certPins = const [],
   }) async {
     lastStoryMessage = message;
     lastStoryHistory = history;
     lastStoryGenre = genre;
     lastHmacSecret = hmacSecret;
+    lastCertPins = certPins;
     return AiChatResult(reply: 'FAKE_STORY[$genre]:$message');
   }
 
@@ -285,20 +290,28 @@ class FakeAiChatService extends AiChatService {
     required String statsSummary,
     List<AiTurn> history = const [],
     String? hmacSecret,
+    List<String> certPins = const [],
   }) async {
     askRpgCallCount++;
     lastRpgMessage = message;
     lastRpgHistory = history;
     lastRpgStatsSummary = statsSummary;
     lastHmacSecret = hmacSecret;
+    lastCertPins = certPins;
     return AiChatResult(reply: 'FAKE_RPG:$message');
   }
 
   @override
-  Future<AiChatResult> askJournal(String backendUrl, String dayText, {String? hmacSecret}) async {
+  Future<AiChatResult> askJournal(
+    String backendUrl,
+    String dayText, {
+    String? hmacSecret,
+    List<String> certPins = const [],
+  }) async {
     askJournalCallCount++;
     lastJournalDayText = dayText;
     lastHmacSecret = hmacSecret;
+    lastCertPins = certPins;
     return AiChatResult(reply: 'FAKE_JOURNAL:$dayText');
   }
 }
@@ -1565,6 +1578,37 @@ void main() {
       await settings.setAiHmacSecret('test-secret');
       await router.handle('mein tag war ziemlich gut');
       expect(aiChat.lastHmacSecret, 'test-secret');
+    });
+  });
+
+  group('TLS-Zertifikat-Pinning', () {
+    test('configured pins are passed through to ask()', () async {
+      await settings.setCertPins(['pin-a', 'pin-b']);
+      await router.handle('wie geht es dir heute');
+      expect(aiChat.lastCertPins, ['pin-a', 'pin-b']);
+    });
+
+    test('no configured pins passes an empty list through to ask()', () async {
+      await router.handle('wie geht es dir heute');
+      expect(aiChat.lastCertPins, isEmpty);
+    });
+
+    test('configured pins are passed through to askStory()', () async {
+      await settings.setCertPins(['pin-a']);
+      await router.handle('starte ein sci-fi abenteuer');
+      expect(aiChat.lastCertPins, ['pin-a']);
+    });
+
+    test('configured pins are passed through to askRpg()', () async {
+      await settings.setCertPins(['pin-a']);
+      await router.handle('starte das überlebens-rpg');
+      expect(aiChat.lastCertPins, ['pin-a']);
+    });
+
+    test('configured pins are passed through to askJournal()', () async {
+      await settings.setCertPins(['pin-a']);
+      await router.handle('mein tag war ziemlich gut');
+      expect(aiChat.lastCertPins, ['pin-a']);
     });
   });
 }

@@ -7,6 +7,7 @@ import '../services/proactive_briefing_service.dart';
 import '../services/settings_service.dart';
 import '../services/spotify_service.dart';
 import '../services/tiktok_upload_service.dart';
+import '../services/tls_pinning_service.dart';
 import '../services/tts_service.dart';
 import 'changelog_screen.dart';
 import 'dashboard_screen.dart';
@@ -41,6 +42,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _nameCtrl = TextEditingController();
   final _aiBackendCtrl = TextEditingController();
   final _aiHmacSecretCtrl = TextEditingController();
+  final _certPinsCtrl = TextEditingController();
+  final _tlsPinning = TlsPinningService();
   final _youtubeClientIdCtrl = TextEditingController();
   final _spotifyClientIdCtrl = TextEditingController();
   final _tiktokClientKeyCtrl = TextEditingController();
@@ -68,6 +71,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _hudEffectsEnabled = true;
   bool _moodAutoAdjustEnabled = true;
   bool _testingHomeAssistant = false;
+  bool _checkingCertPin = false;
 
   static const _aiModels = {
     'openai': 'ChatGPT (Standard)',
@@ -108,6 +112,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _nameCtrl.text = await widget.settings.getUserName();
     _aiBackendCtrl.text = await widget.settings.getAiBackendUrl() ?? '';
     _aiHmacSecretCtrl.text = await widget.settings.getAiHmacSecret() ?? '';
+    _certPinsCtrl.text = (await widget.settings.getCertPins()).join('\n');
     _youtubeClientIdCtrl.text = await widget.settings.getYoutubeClientId() ?? '';
     _spotifyClientIdCtrl.text = await widget.settings.getSpotifyClientId() ?? '';
     _tiktokClientKeyCtrl.text = await widget.settings.getTiktokClientKey() ?? '';
@@ -170,6 +175,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } else {
       await widget.settings.setAiHmacSecret(_aiHmacSecretCtrl.text.trim());
     }
+    final certPins = _certPinsCtrl.text
+        .split(RegExp(r'[\n,]'))
+        .map((p) => p.trim())
+        .where((p) => p.isNotEmpty)
+        .toList();
+    await widget.settings.setCertPins(certPins);
     await widget.settings.setYoutubeClientId(_youtubeClientIdCtrl.text.trim());
     await widget.settings.setSpotifyClientId(_spotifyClientIdCtrl.text.trim());
     await widget.settings.setTiktokClientKey(_tiktokClientKeyCtrl.text.trim());
@@ -243,6 +254,69 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() => _testingHomeAssistant = false);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(ok ? 'Verbindung zu Home Assistant erfolgreich.' : 'Verbindung fehlgeschlagen.')),
+    );
+  }
+
+  /// Trust-on-first-use helper: connects once to the configured AI-backend
+  /// host to read its currently-presented certificate's SPKI pin, then lets
+  /// the user review and explicitly add it to the pin list — pinning only
+  /// activates once at least one pin is saved (see TlsPinningService).
+  Future<void> _fetchCurrentPin() async {
+    final host = Uri.tryParse(_aiBackendCtrl.text.trim())?.host;
+    if (host == null || host.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Bitte zuerst eine gültige KI-Server-Adresse eintragen.')));
+      return;
+    }
+    setState(() => _checkingCertPin = true);
+    final pin = await _tlsPinning.currentPin(host);
+    if (!mounted) return;
+    setState(() => _checkingCertPin = false);
+    if (pin == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Fingerabdruck konnte nicht ermittelt werden (Server nicht erreichbar, oder im Web-Build, wo das '
+            'aus dem Browser heraus technisch nicht möglich ist).',
+          ),
+        ),
+      );
+      return;
+    }
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Aktueller Zertifikats-Fingerabdruck'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Für $host:'),
+            const SizedBox(height: 8),
+            SelectableText(pin, style: const TextStyle(fontFamily: 'monospace')),
+            const SizedBox(height: 12),
+            const Text(
+              'Nur übernehmen, wenn du dieser Verbindung gerade vertraust (z. B. direkt nach dem Deploy). '
+              'Rotiert Cloudflare später das Zertifikat, muss hier ein neuer Fingerabdruck ergänzt werden, '
+              'sonst verweigert die App die Verbindung.',
+              style: TextStyle(fontSize: 12),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Schließen')),
+          TextButton(
+            onPressed: () {
+              final existing = _certPinsCtrl.text.trim();
+              _certPinsCtrl.text = existing.isEmpty ? pin : '$existing\n$pin';
+              Navigator.pop(dialogContext);
+            },
+            child: const Text('Als Pin übernehmen'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -544,6 +618,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   'sobald dort gesetzt, lehnt der Worker unsignierte/gefälschte Anfragen ab.',
               border: OutlineInputBorder(),
             ),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _certPinsCtrl,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: 'TLS-Zertifikat-Pins (Certificate Pinning)',
+              helperText:
+                  'Optional, ein Fingerabdruck pro Zeile. Leer = normale TLS-Prüfung (aus). Nur auf Handy/Desktop '
+                  'wirksam, nicht im Web-Build. Rotiert das Zertifikat, verweigert die App die Verbindung, bis '
+                  'hier ein neuer Fingerabdruck ergänzt wird — deshalb am besten zwei Pins gleichzeitig pflegen.',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _checkingCertPin ? null : _fetchCurrentPin,
+            icon: _checkingCertPin
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.fingerprint),
+            label: const Text('Aktuellen Fingerabdruck anzeigen'),
           ),
           const SizedBox(height: 16),
           DropdownButtonFormField<String>(
