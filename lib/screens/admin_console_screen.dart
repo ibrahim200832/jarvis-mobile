@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/api_health_service.dart';
+import '../services/backup_export_service.dart';
 import '../services/log_service.dart';
 import '../services/settings_service.dart';
 import '../services/system_diagnostic_service.dart';
@@ -21,9 +22,14 @@ import 'log_viewer_screen.dart';
 /// screen is reached far less often, and a single shared save button would
 /// mean re-navigating through the PIN gate just to tweak one field.
 class AdminConsoleScreen extends StatefulWidget {
-  const AdminConsoleScreen({super.key, required this.settings});
+  const AdminConsoleScreen({super.key, required this.settings, required this.onClearAiMemory});
 
   final SettingsService settings;
+
+  /// Empties CommandRouter's rolling AI conversation history — routed in
+  /// from home_screen.dart via SettingsScreen, since the router (not this
+  /// screen) is what actually holds it.
+  final Future<void> Function() onClearAiMemory;
 
   @override
   State<AdminConsoleScreen> createState() => _AdminConsoleScreenState();
@@ -36,6 +42,7 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
   final _systemPromptOverrideCtrl = TextEditingController();
   final _tlsPinning = TlsPinningService();
   final _apiHealth = ApiHealthService();
+  final _backup = BackupExportService();
   String _aiModel = 'openai';
   double _aiTemperature = 0.3;
   int _maxHistoryTurns = 8;
@@ -48,6 +55,8 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
   bool _checkingCertPin = false;
   bool _savingServerSection = false;
   bool _savingBehaviorSection = false;
+  bool _clearingAiMemory = false;
+  bool _runningBackup = false;
 
   static const _aiModels = {
     'openai': 'ChatGPT (Standard)',
@@ -102,6 +111,47 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
       _diagnosticResults = results;
       _runningDiagnostic = false;
     });
+  }
+
+  /// Irreversible (the router simply forgets what was said so far), so a
+  /// confirmation dialog goes first — unlike the section "Speichern"
+  /// buttons above, which only ever overwrite settings the user just typed.
+  Future<void> _clearAiMemory() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('KI-Gedächtnis löschen?'),
+        content: const Text(
+          'JARVIS vergisst den bisherigen Gesprächsverlauf. Das kann nicht rückgängig gemacht werden.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Abbrechen')),
+          TextButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Löschen')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    setState(() => _clearingAiMemory = true);
+    await widget.onClearAiMemory();
+    if (!mounted) return;
+    setState(() => _clearingAiMemory = false);
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('KI-Gedächtnis gelöscht.')));
+  }
+
+  /// Mirrors the existing chat command "erstelle jetzt ein backup" —
+  /// same BackupExportService, just reachable without going through the AI.
+  Future<void> _runBackupNow() async {
+    setState(() => _runningBackup = true);
+    try {
+      await _backup.exportNow();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Backup erstellt.')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Backup fehlgeschlagen: $e')));
+    } finally {
+      if (mounted) setState(() => _runningBackup = false);
+    }
   }
 
   Future<void> _saveBehaviorSection() async {
@@ -385,6 +435,24 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
               style: const TextStyle(fontSize: 12),
             ),
           ],
+          const SizedBox(height: 24),
+          Text('System-Befehle', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: _clearingAiMemory ? null : _clearAiMemory,
+            icon: _clearingAiMemory
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.psychology_alt_outlined),
+            label: const Text('KI-Gedächtnis löschen'),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _runningBackup ? null : _runBackupNow,
+            icon: _runningBackup
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.backup_outlined),
+            label: const Text('Backup jetzt ausführen'),
+          ),
           const SizedBox(height: 24),
           Text('Entwickler-Tools', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 12),

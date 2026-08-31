@@ -26,11 +26,19 @@ class _FakeSecureStorageService extends SecureStorageService {
 /// the element tree at all, so `find` can't see them) without needing
 /// per-field dragUntilVisible calls that would need updating each time a
 /// new section is added above an existing one.
-Future<void> _pumpConsole(WidgetTester tester, SettingsService settings) async {
+Future<void> _pumpConsole(
+  WidgetTester tester,
+  SettingsService settings, {
+  Future<void> Function()? onClearAiMemory,
+}) async {
   tester.view.physicalSize = const Size(800, 8000);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
-  await tester.pumpWidget(MaterialApp(home: AdminConsoleScreen(settings: settings)));
+  await tester.pumpWidget(
+    MaterialApp(
+      home: AdminConsoleScreen(settings: settings, onClearAiMemory: onClearAiMemory ?? () async {}),
+    ),
+  );
   await tester.pumpAndSettle();
 }
 
@@ -219,6 +227,40 @@ void main() {
     expect(find.textContaining('Sicherer Speicher'), findsOneWidget);
     expect(find.textContaining('KI-Server erreichbar'), findsOneWidget);
     expect(find.textContaining('Offline-KI-Modell'), findsOneWidget);
+  });
+
+  testWidgets('clearing AI memory asks for confirmation, then invokes the callback', (tester) async {
+    var cleared = 0;
+    await _pumpConsole(tester, settings, onClearAiMemory: () async => cleared++);
+
+    await tester.tap(find.text('KI-Gedächtnis löschen'));
+    await tester.pumpAndSettle();
+    expect(find.text('KI-Gedächtnis löschen?'), findsOneWidget);
+    expect(cleared, 0);
+
+    await tester.tap(find.text('Löschen'));
+    await tester.pumpAndSettle();
+
+    expect(cleared, 1);
+    expect(find.text('KI-Gedächtnis gelöscht.'), findsOneWidget);
+  });
+
+  testWidgets('cancelling the AI-memory confirmation does not invoke the callback', (tester) async {
+    var cleared = 0;
+    await _pumpConsole(tester, settings, onClearAiMemory: () async => cleared++);
+
+    await tester.tap(find.text('KI-Gedächtnis löschen'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Abbrechen'));
+    await tester.pumpAndSettle();
+
+    expect(cleared, 0);
+  });
+
+  testWidgets('offers a button to run a backup now', (tester) async {
+    await _pumpConsole(tester, settings);
+
+    expect(find.text('Backup jetzt ausführen'), findsOneWidget);
   });
 
   testWidgets('offers a button to open the live log viewer', (tester) async {

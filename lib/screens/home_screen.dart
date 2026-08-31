@@ -1072,6 +1072,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           offlineLlm: _offlineLlm,
                           notificationHub: NotificationHubService(),
                           homeWidget: _homeWidget,
+                          onClearAiMemory: () async => _router.clearAiHistory(),
                         ),
                       ),
                     )

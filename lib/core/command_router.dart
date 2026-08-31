@@ -189,6 +189,11 @@ class CommandRouter {
   /// aren't relevant conversational context for it.
   final _aiHistory = <AiTurn>[];
 
+  /// Admin-Konsole "KI-Gedächtnis löschen" — drops the rolling AI
+  /// conversation context so the next exchange starts fresh, without a full
+  /// app restart.
+  void clearAiHistory() => _aiHistory.clear();
+
   /// Interaktives Storytelling: while active, every input (except the exit
   /// phrase) is treated as the player's story action instead of going
   /// through the normal command ladder below.

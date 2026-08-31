@@ -1856,6 +1856,17 @@ void main() {
     expect(aiChat.lastHistory![1].content, 'FAKE_AI:wer war albert einstein');
   });
 
+  test('clearAiHistory empties the remembered conversation (Admin-Konsole "KI-Gedächtnis löschen")', () async {
+    await router.handle('wer war albert einstein');
+    await router.handle('und wann ist er gestorben');
+    expect(aiChat.lastHistory, isNotEmpty);
+
+    router.clearAiHistory();
+
+    await router.handle('und wo wurde er geboren');
+    expect(aiChat.lastHistory, isEmpty);
+  });
+
   test('AI set_timer action starts a real timer', () async {
     aiChat.nextAction = AiAction(type: 'set_timer', params: {'minutes': 5, 'label': 'Kaffee'});
     final result = await router.handle('kannst du mich in 5 minuten an den kaffee erinnern');

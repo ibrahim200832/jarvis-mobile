@@ -39,6 +39,7 @@ class SettingsScreen extends StatefulWidget {
     required this.offlineLlm,
     required this.notificationHub,
     required this.homeWidget,
+    required this.onClearAiMemory,
   });
 
   final SettingsService settings;
@@ -53,6 +54,11 @@ class SettingsScreen extends StatefulWidget {
   final OfflineLlmService offlineLlm;
   final NotificationHubService notificationHub;
   final HomeWidgetService homeWidget;
+
+  /// Admin-Konsole "KI-Gedächtnis löschen" — routed all the way from
+  /// home_screen.dart, since CommandRouter (the only thing that actually
+  /// holds the conversation history) lives there, not in this screen.
+  final Future<void> Function() onClearAiMemory;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -471,9 +477,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _openAdminConsole() async {
     if (_adminAuth.isUnlockedThisSession) {
       if (!mounted) return;
-      Navigator.of(
-        context,
-      ).push(MaterialPageRoute(builder: (_) => AdminConsoleScreen(settings: widget.settings)));
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) =>
+              AdminConsoleScreen(settings: widget.settings, onClearAiMemory: widget.onClearAiMemory),
+        ),
+      );
       return;
     }
     if (!_hasAdminPin) {
@@ -492,9 +501,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
     if (unlocked == true && mounted) {
-      Navigator.of(
-        context,
-      ).push(MaterialPageRoute(builder: (_) => AdminConsoleScreen(settings: widget.settings)));
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) =>
+              AdminConsoleScreen(settings: widget.settings, onClearAiMemory: widget.onClearAiMemory),
+        ),
+      );
     }
   }
 
