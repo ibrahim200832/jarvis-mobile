@@ -67,6 +67,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _webDavUsernameCtrl = TextEditingController();
   final _webDavPasswordCtrl = TextEditingController();
   final _offlineModelUrlCtrl = TextEditingController();
+  final _appLockPinCtrl = TextEditingController();
+  final _appLockPinConfirmCtrl = TextEditingController();
   List<Contact> _contacts = [];
   String _appVersion = '';
   String _aiModel = 'openai';
@@ -90,6 +92,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _reactiveOrbEnabled = true;
   bool _faceDownFocusEnabled = false;
   bool _shakeStartsVoiceEnabled = false;
+  bool _shakeLocksAppEnabled = false;
+  bool _hasAppLockPin = false;
+  bool _appLockPinBusy = false;
   bool _moodAutoAdjustEnabled = true;
   bool _testingHomeAssistant = false;
   bool _testingWebDav = false;
@@ -171,6 +176,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _reactiveOrbEnabled = await widget.settings.getReactiveOrbEnabled();
     _faceDownFocusEnabled = await widget.settings.getFaceDownFocusEnabled();
     _shakeStartsVoiceEnabled = await widget.settings.getShakeStartsVoiceEnabled();
+    _shakeLocksAppEnabled = await widget.settings.getShakeLocksAppEnabled();
+    _hasAppLockPin = await widget.settings.hasAppLockPin();
     _moodAutoAdjustEnabled = await widget.settings.getMoodAutoAdjustEnabled();
     _rssFeedCheckEnabled = await widget.settings.getRssFeedCheckEnabled();
     _weeklyBackupExportEnabled = await widget.settings.getWeeklyBackupExportEnabled();
@@ -256,6 +263,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await widget.settings.setReactiveOrbEnabled(_reactiveOrbEnabled);
     await widget.settings.setFaceDownFocusEnabled(_faceDownFocusEnabled);
     await widget.settings.setShakeStartsVoiceEnabled(_shakeStartsVoiceEnabled);
+    await widget.settings.setShakeLocksAppEnabled(_shakeLocksAppEnabled);
     await widget.settings.setMoodAutoAdjustEnabled(_moodAutoAdjustEnabled);
     await widget.settings.setRssFeedCheckEnabled(_rssFeedCheckEnabled);
     await widget.settings.setWeeklyBackupExportEnabled(_weeklyBackupExportEnabled);
@@ -371,6 +379,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _offlineModelBusy = false;
     });
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Offline-Modell gelöscht.')));
+  }
+
+  Future<void> _saveAppLockPin() async {
+    final pin = _appLockPinCtrl.text.trim();
+    final confirm = _appLockPinConfirmCtrl.text.trim();
+    if (pin.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Bitte eine PIN eingeben.')));
+      return;
+    }
+    if (pin != confirm) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Die beiden PINs stimmen nicht überein.')));
+      return;
+    }
+    setState(() => _appLockPinBusy = true);
+    await widget.settings.setAppLockPin(pin);
+    if (!mounted) return;
+    _appLockPinCtrl.clear();
+    _appLockPinConfirmCtrl.clear();
+    setState(() {
+      _hasAppLockPin = true;
+      _appLockPinBusy = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PIN gespeichert.')));
+  }
+
+  Future<void> _removeAppLockPin() async {
+    setState(() => _appLockPinBusy = true);
+    await widget.settings.clearAppLockPin();
+    if (!mounted) return;
+    setState(() {
+      _hasAppLockPin = false;
+      _appLockPinBusy = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PIN entfernt.')));
   }
 
   /// Trust-on-first-use helper: connects once to the configured AI-backend
@@ -703,10 +749,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onChanged: (value) => setState(() => _reactiveOrbEnabled = value),
           ),
           const SizedBox(height: 24),
-          Text('Bewegungssteuerung', style: Theme.of(context).textTheme.titleMedium),
+          Text('Bewegungssteuerung & Notfall-Sperre', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 4),
           const Text(
-            'Nutzt den Bewegungssensor des Geräts — beides standardmäßig aus.',
+            'Nutzt den Bewegungssensor des Geräts — alles standardmäßig aus.',
             style: TextStyle(fontSize: 12),
           ),
           SwitchListTile(
@@ -725,6 +771,60 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: const Text('Schütteln → Spracheingabe starten'),
             value: _shakeStartsVoiceEnabled,
             onChanged: (value) => setState(() => _shakeStartsVoiceEnabled = value),
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Schütteln → Notfall-Sperre auslösen'),
+            subtitle: const Text(
+              'Braucht eine gesetzte PIN (siehe unten) — ohne PIN passiert beim Schütteln nichts.',
+              style: TextStyle(fontSize: 12),
+            ),
+            value: _shakeLocksAppEnabled,
+            onChanged: (value) => setState(() => _shakeLocksAppEnabled = value),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            _hasAppLockPin ? 'PIN ist gesetzt.' : 'Noch keine PIN gesetzt.',
+            style: const TextStyle(fontSize: 12),
+          ),
+          const Text(
+            'Achtung: Es gibt keinen "PIN vergessen"-Weg — merk sie dir gut. Zum Entfernen musst du die App '
+            'noch entsperrt haben.',
+            style: TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _appLockPinCtrl,
+            obscureText: true,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: 'Neue PIN'),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _appLockPinConfirmCtrl,
+            obscureText: true,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: 'PIN bestätigen'),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _appLockPinBusy ? null : _saveAppLockPin,
+                  icon: const Icon(Icons.lock_outline),
+                  label: const Text('PIN speichern'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: (_appLockPinBusy || !_hasAppLockPin) ? null : _removeAppLockPin,
+                  icon: const Icon(Icons.lock_open_outlined),
+                  label: const Text('PIN entfernen'),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 24),
           Text('App-Integrität (Play Integrity)', style: Theme.of(context).textTheme.titleMedium),

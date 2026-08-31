@@ -15,6 +15,7 @@ import '../services/ambient_sound_service.dart';
 import '../services/anime_service.dart';
 import '../services/app_integrity_service.dart';
 import '../services/app_launcher_service.dart';
+import '../services/app_lock_service.dart';
 import '../services/background_task_service.dart';
 import '../services/backup_export_service.dart';
 import '../services/call_service.dart';
@@ -63,6 +64,7 @@ import '../theme/jarvis_theme.dart';
 import '../widgets/access_denied_flash.dart';
 import '../widgets/blinking_dot.dart';
 import '../widgets/chat_bubble.dart';
+import '../widgets/emergency_lock_screen.dart';
 import '../widgets/glass_container.dart';
 import '../widgets/integrity_lockdown_screen.dart';
 import '../widgets/scanline_overlay.dart';
@@ -130,6 +132,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _hudEffectsEnabled = true;
   bool _reactiveOrbEnabled = true;
   bool _integrityLocked = false;
+  bool _appLocked = false;
+  late final _appLock = AppLockService(settings: _settings);
   String _partialText = '';
   final _appIntegrity = AppIntegrityService();
 
@@ -193,6 +197,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       webdav: _webdav,
       offlineLlm: _offlineLlm,
       todos: TodoService(),
+      appLock: _appLock,
     );
     _timer.onFire = _onTimerFired;
     _speech.init();
@@ -212,6 +217,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     unawaited(_checkAppIntegrity());
     unawaited(_syncBackgroundTasks());
     unawaited(_syncMotionActions());
+    unawaited(_checkAppLockState());
+  }
+
+  /// The emergency lock (unlike everything else in this screen's state)
+  /// persists across an app restart — a forgotten PIN has no
+  /// recovery/bypass, by design, matching IntegrityLockdownScreen's
+  /// "kein Bypass" precedent — so this must be checked fresh on every cold
+  /// start, not just set once in response to a trigger.
+  Future<void> _checkAppLockState() async {
+    final locked = await _appLock.isLocked();
+    if (mounted) setState(() => _appLocked = locked);
   }
 
   @override
@@ -232,9 +248,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _syncMotionActions() async {
     final faceDownEnabled = await _settings.getFaceDownFocusEnabled();
     final shakeVoiceEnabled = await _settings.getShakeStartsVoiceEnabled();
+    final shakeLockEnabled = await _settings.getShakeLocksAppEnabled();
     if (!mounted) return;
 
-    if (!faceDownEnabled && !shakeVoiceEnabled) {
+    if (!faceDownEnabled && !shakeVoiceEnabled && !shakeLockEnabled) {
       _motionActions.stop();
       return;
     }
@@ -247,9 +264,30 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         if (faceDownEnabled) _exitFocusMode();
       },
       onShake: () {
+        // Both may be enabled at once (user's explicit choice) — voice
+        // input first, then the lock, so at least the current utterance
+        // isn't lost if both fire off the same shake.
         if (shakeVoiceEnabled) unawaited(_handleShakeStartsVoice());
+        if (shakeLockEnabled) unawaited(_handleShakeLocksApp());
       },
     );
+  }
+
+  /// Shake-to-lock: silently does nothing if no PIN is configured yet,
+  /// since locking without a PIN would make the app permanently
+  /// inaccessible (EmergencyLockScreen has no bypass, by design).
+  Future<void> _handleShakeLocksApp() async {
+    if (!await _appLock.hasPinConfigured()) return;
+    await _appLock.lock();
+    if (mounted) setState(() => _appLocked = true);
+  }
+
+  /// Verifies [pin] against the stored PIN and clears the locked state on
+  /// success — passed straight into EmergencyLockScreen's onUnlock.
+  Future<bool> _tryUnlockApp(String pin) async {
+    final correct = await _appLock.unlock(pin);
+    if (correct && mounted) setState(() => _appLocked = false);
+    return correct;
   }
 
   /// "Stummer Fokus-Modus" (Handy umdrehen): mutes any active TTS/STT and
@@ -672,6 +710,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         MaterialPageRoute(builder: (_) => DashboardScreen(gamification: _router.gamification)),
       );
     }
+
+    if (result.triggerAppLock && mounted) {
+      await _appLock.lock();
+      if (mounted) setState(() => _appLocked = true);
+    }
+
+    if (result.triggerFocusModeOn && mounted) {
+      await _enterFocusMode();
+    }
+
+    if (result.triggerFocusModeOff && mounted) {
+      _exitFocusMode();
+    }
   }
 
   /// Shows [reply] as a new chat bubble and speaks it, call-mode aware —
@@ -753,6 +804,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    if (_appLocked) {
+      return EmergencyLockScreen(onUnlock: _tryUnlockApp);
+    }
     if (_integrityLocked) {
       return const IntegrityLockdownScreen();
     }

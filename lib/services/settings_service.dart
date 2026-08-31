@@ -1,3 +1,7 @@
+import 'dart:convert';
+import 'dart:math';
+
+import 'package:crypto/crypto.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'secure_storage_service.dart';
@@ -51,6 +55,9 @@ class SettingsService {
   static const _keyWebDavUsername = 'webdav_username';
   static const _keyWebDavPassword = 'webdav_password';
   static const _keyOfflineLlmModelUrl = 'offline_llm_model_url';
+  static const _keyAppLockPinSalt = 'app_lock_pin_salt';
+  static const _keyAppLockPinHash = 'app_lock_pin_hash';
+  static const _keyShakeLocksAppEnabled = 'shake_locks_app_enabled';
 
   /// Reads a secret from secure (AES-256) storage. If it hasn't been
   /// migrated yet, transparently pulls a legacy plaintext SharedPreferences
@@ -489,5 +496,50 @@ class SettingsService {
   Future<void> setEveningJournalEnabled(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyEveningJournalEnabled, value);
+  }
+
+  /// Whether shaking the phone triggers the emergency PIN lock (see
+  /// AppLockService) — independent of [getShakeStartsVoiceEnabled], both
+  /// may be on at once.
+  Future<bool> getShakeLocksAppEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyShakeLocksAppEnabled) ?? false;
+  }
+
+  Future<void> setShakeLocksAppEnabled(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyShakeLocksAppEnabled, value);
+  }
+
+  /// Sets/replaces the emergency-lock PIN. Never stores the PIN itself —
+  /// only a salted SHA-256 hash (both halves in AES-256/Keystore-backed
+  /// secure storage, same as every other secret in this class), so even a
+  /// full on-device data extraction can't recover the PIN, only verify a
+  /// guess against it.
+  Future<void> setAppLockPin(String pin) async {
+    final saltBytes = List<int>.generate(16, (_) => Random.secure().nextInt(256));
+    final salt = base64Url.encode(saltBytes);
+    final hash = sha256.convert(utf8.encode('$salt:$pin')).toString();
+    await _secureSet(_keyAppLockPinSalt, salt);
+    await _secureSet(_keyAppLockPinHash, hash);
+  }
+
+  Future<bool> hasAppLockPin() async {
+    return (await _secureGet(_keyAppLockPinHash)) != null;
+  }
+
+  /// Recomputes the salted hash for [pin] and compares it against the
+  /// stored one. Returns false (never throws) if no PIN is set.
+  Future<bool> verifyAppLockPin(String pin) async {
+    final salt = await _secureGet(_keyAppLockPinSalt);
+    final storedHash = await _secureGet(_keyAppLockPinHash);
+    if (salt == null || storedHash == null) return false;
+    final hash = sha256.convert(utf8.encode('$salt:$pin')).toString();
+    return hash == storedHash;
+  }
+
+  Future<void> clearAppLockPin() async {
+    await _secure.delete(_keyAppLockPinSalt);
+    await _secure.delete(_keyAppLockPinHash);
   }
 }

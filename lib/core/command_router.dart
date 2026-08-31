@@ -4,6 +4,7 @@ import '../services/ai_chat_service.dart';
 import '../services/ambient_sound_service.dart';
 import '../services/anime_service.dart';
 import '../services/app_launcher_service.dart';
+import '../services/app_lock_service.dart';
 import '../services/backup_export_service.dart';
 import '../services/calculator_service.dart';
 import '../services/call_service.dart';
@@ -57,6 +58,9 @@ class CommandResult {
   final bool openTiktokUpload;
   final bool requestMoodCheck;
   final bool openDashboard;
+  final bool triggerAppLock;
+  final bool triggerFocusModeOn;
+  final bool triggerFocusModeOff;
 
   CommandResult(
     this.reply, {
@@ -68,6 +72,9 @@ class CommandResult {
     this.openTiktokUpload = false,
     this.requestMoodCheck = false,
     this.openDashboard = false,
+    this.triggerAppLock = false,
+    this.triggerFocusModeOn = false,
+    this.triggerFocusModeOff = false,
   });
 }
 
@@ -120,6 +127,7 @@ class CommandRouter {
     required this.webdav,
     required this.offlineLlm,
     required this.todos,
+    required this.appLock,
   });
 
   final WikipediaService wikipedia;
@@ -163,6 +171,7 @@ class CommandRouter {
   final WebDavSyncService webdav;
   final OfflineLlmService offlineLlm;
   final TodoService todos;
+  final AppLockService appLock;
 
   /// Session-scoped, in-memory only (reset on cold start, like _storyMode/
   /// _aiHistory — CommandRouter itself is rebuilt fresh on every app
@@ -272,6 +281,7 @@ Das kann ich für dich tun:
 • "aktiviere den drill-trainer" / "aktiviere den gaming-kumpel" / "aktiviere die butler-persona" / "aktiviere jarvis standard" (Persona wechseln) / "welche persona"
 • "mein level" / "meine xp" / "meine erfolge" (Notizen, Timer und Commits geben XP) / "commit gemacht" (loggt einen Code-Commit)
 • "ich habe X stunden geschlafen" (setzt deine Energie) / "öffne mein dashboard" (visuelles Real-Life-RPG-Dashboard mit XP-/Energie-Leiste und taktischen Tipps)
+• "sperre die app"/"notfall-sperre" (PIN-Sperrbildschirm, PIN vorher in den Einstellungen festlegen; auch per Schütteln auslösbar) / "aktiviere fokus-modus"/"deaktiviere fokus-modus" (mutet TTS/Mikrofon; auch automatisch durchs Umdrehen des Handys)
 • "tägliche challenge" (heutige Mini-Herausforderung, erscheint auch im Morgen-Briefing) / "challenge erledigt"
 • "musik zum <Stimmung>" (z.B. fokus, entspannen, workout, party) / "passende musik" (nach Tageszeit) (Spotify-Verbindung nötig)
 • "morgen-briefing" / "abend-zusammenfassung" (Vorschau jetzt; automatischer täglicher Versand als Benachrichtigung ist in Einstellungen aktivierbar)
@@ -320,6 +330,9 @@ Das kann ich für dich tun:
       openTiktokUpload: result.openTiktokUpload,
       requestMoodCheck: result.requestMoodCheck,
       openDashboard: result.openDashboard,
+      triggerAppLock: result.triggerAppLock,
+      triggerFocusModeOn: result.triggerFocusModeOn,
+      triggerFocusModeOff: result.triggerFocusModeOff,
     );
   }
 
@@ -529,6 +542,27 @@ Das kann ich für dich tun:
 
       if (_matchesAny(lower, ['öffne mein dashboard', 'zeige mein lebens-dashboard', 'zeige mein dashboard', 'life dashboard'])) {
         return CommandResult('Dashboard wird geöffnet.', openDashboard: true);
+      }
+
+      if (_matchesAny(lower, ['sperre die app', 'notfall-sperre', 'aktiviere die notfall-sperre'])) {
+        if (!await appLock.hasPinConfigured()) {
+          return CommandResult(
+            'Dafür brauchst du erst eine PIN — leg sie in den Einstellungen unter "Bewegungssteuerung & '
+            'Notfall-Sperre" fest.',
+          );
+        }
+        return CommandResult('App wird gesperrt.', triggerAppLock: true);
+      }
+
+      // Checked before the "activate" phrase below: "aktiviere fokus-modus"
+      // is itself a substring of "deaktiviere fokus-modus" ("de" + "aktiviere
+      // ..."), so the narrower deactivate-phrase must win the race.
+      if (_matchesAny(lower, ['deaktiviere fokus-modus', 'fokus-modus aus', 'beende den fokus-modus'])) {
+        return CommandResult('Fokus-Modus beendet.', triggerFocusModeOff: true);
+      }
+
+      if (_matchesAny(lower, ['aktiviere fokus-modus', 'fokus-modus an', 'aktiviere den fokus-modus'])) {
+        return CommandResult('Fokus-Modus aktiviert.', triggerFocusModeOn: true);
       }
 
       final appName = _extractAfter(lower, text, ['öffne', 'open']);

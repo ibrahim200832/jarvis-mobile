@@ -8,6 +8,7 @@ import 'package:jarvis_mobile/services/ai_chat_service.dart';
 import 'package:jarvis_mobile/services/ambient_sound_service.dart';
 import 'package:jarvis_mobile/services/anime_service.dart';
 import 'package:jarvis_mobile/services/app_launcher_service.dart';
+import 'package:jarvis_mobile/services/app_lock_service.dart';
 import 'package:jarvis_mobile/services/backup_export_service.dart';
 import 'package:jarvis_mobile/services/call_service.dart';
 import 'package:jarvis_mobile/services/challenge_service.dart';
@@ -563,6 +564,7 @@ void main() {
   late FakeWebDavSyncService webdav;
   late FakeOfflineLlmService offlineLlm;
   late TodoService todos;
+  late AppLockService appLock;
   late CommandRouter router;
 
   // Builds a CommandRouter from the shared setUp() fakes, with optional
@@ -615,6 +617,7 @@ void main() {
     webdav: webdav,
     offlineLlm: offlineLlm,
     todos: todos,
+    appLock: appLock,
   );
 
   setUp(() async {
@@ -633,6 +636,7 @@ void main() {
     spotify = FakeSpotifyService();
     webSearch = FakeWebSearchService();
     settings = FakeSettingsService();
+    appLock = AppLockService(settings: settings);
     snippets = FakeCodeSnippetService();
     soundboard = FakeSoundboardService();
     gamification = GamificationService();
@@ -1102,6 +1106,39 @@ void main() {
 
       final second = await freshRouter.handle('hilfe');
       expect(second.reply, isNot(contains('Tages-Bonus')));
+    });
+  });
+
+  group('Notfall-Sperre & Fokus-Modus', () {
+    test('sperre die app without a configured PIN asks to set one first', () async {
+      final result = await router.handle('sperre die app');
+      expect(result.triggerAppLock, isFalse);
+      expect(result.reply, contains('PIN'));
+    });
+
+    test('sperre die app with a configured PIN sets the triggerAppLock flag', () async {
+      await settings.setAppLockPin('1234');
+      final result = await router.handle('notfall-sperre');
+      expect(result.triggerAppLock, isTrue);
+    });
+
+    test('aktiviere fokus-modus sets the triggerFocusModeOn flag', () async {
+      final result = await router.handle('aktiviere fokus-modus');
+      expect(result.triggerFocusModeOn, isTrue);
+      expect(result.triggerFocusModeOff, isFalse);
+    });
+
+    test('deaktiviere fokus-modus sets the triggerFocusModeOff flag', () async {
+      final result = await router.handle('deaktiviere fokus-modus');
+      expect(result.triggerFocusModeOff, isTrue);
+      expect(result.triggerFocusModeOn, isFalse);
+    });
+
+    test('other commands do not set any of the lock/focus-mode flags', () async {
+      final result = await router.handle('hilfe');
+      expect(result.triggerAppLock, isFalse);
+      expect(result.triggerFocusModeOn, isFalse);
+      expect(result.triggerFocusModeOff, isFalse);
     });
   });
 
