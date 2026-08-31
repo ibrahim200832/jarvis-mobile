@@ -272,6 +272,7 @@ class AiChatService {
     List<String> certPins = const [],
     String? systemPromptOverride,
     double? temperature,
+    String modelTier = 'smart',
   }) async {
     // Skip straight to the on-device model if the cloud was unreachable
     // moments ago and stayed that way — avoids re-paying the full request
@@ -302,6 +303,7 @@ class AiChatService {
         if (systemPromptOverride != null && systemPromptOverride.isNotEmpty)
           'systemPromptOverride': systemPromptOverride,
         if (temperature != null) 'temperature': temperature,
+        'modelTier': modelTier,
       });
       final res = await _post(
         Uri.parse(backendUrl.trim()),

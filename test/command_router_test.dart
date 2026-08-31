@@ -347,6 +347,7 @@ class FakeAiChatService extends AiChatService {
   String? lastNotificationDigestSummary;
   String? lastSystemPromptOverride;
   double? lastTemperature;
+  String? lastModelTier;
 
   @override
   Future<AiChatResult> ask(
@@ -360,6 +361,7 @@ class FakeAiChatService extends AiChatService {
     List<String> certPins = const [],
     String? systemPromptOverride,
     double? temperature,
+    String modelTier = 'smart',
   }) async {
     lastMessage = message;
     lastHistory = history;
@@ -368,6 +370,7 @@ class FakeAiChatService extends AiChatService {
     lastHmacSecret = hmacSecret;
     lastCertPins = certPins;
     lastSystemPromptOverride = systemPromptOverride;
+    lastModelTier = modelTier;
     lastTemperature = temperature;
     return AiChatResult(reply: 'FAKE_AI:$message', action: nextAction);
   }
@@ -1710,6 +1713,17 @@ void main() {
       await router.handle('freie frage drei');
       // 1 turn kept = at most 1 user + 1 assistant entry.
       expect(aiChat.lastHistory!.length, lessThanOrEqualTo(2));
+    });
+
+    test('an unset model tier defaults to smart', () async {
+      await router.handle('freie frage an die ki');
+      expect(aiChat.lastModelTier, 'smart');
+    });
+
+    test('a saved model tier reaches ask()', () async {
+      await settings.setAiModelTier('fast');
+      await router.handle('freie frage an die ki');
+      expect(aiChat.lastModelTier, 'fast');
     });
   });
 

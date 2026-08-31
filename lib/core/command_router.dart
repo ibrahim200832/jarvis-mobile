@@ -1050,6 +1050,7 @@ Das kann ich für dich tun:
       final certPins = await settings.getCertPins();
       final systemPromptOverride = await settings.getSystemPromptOverride();
       final temperature = await settings.getAiTemperature();
+      final modelTier = await settings.getAiModelTier();
       final aiResult = await aiChat.ask(
         backendUrl ?? '',
         text,
@@ -1061,6 +1062,7 @@ Das kann ich für dich tun:
         certPins: certPins,
         systemPromptOverride: systemPromptOverride,
         temperature: temperature,
+        modelTier: modelTier,
       );
       _aiHistory.add(AiTurn(role: 'user', content: text));
       _aiHistory.add(AiTurn(role: 'assistant', content: aiResult.reply));

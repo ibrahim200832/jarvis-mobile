@@ -206,6 +206,12 @@ void main() {
       await settings.setMaxHistoryTurns(4);
       expect(await settings.getMaxHistoryTurns(), 4);
     });
+
+    test('AI model tier defaults to smart and round-trips', () async {
+      expect(await settings.getAiModelTier(), 'smart');
+      await settings.setAiModelTier('fast');
+      expect(await settings.getAiModelTier(), 'fast');
+    });
   });
 
   group('legacy plaintext migration', () {

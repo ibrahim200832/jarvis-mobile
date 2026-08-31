@@ -67,6 +67,7 @@ class SettingsService {
   static const _keySystemPromptOverride = 'admin_system_prompt_override';
   static const _keyAiTemperature = 'ai_temperature';
   static const _keyMaxHistoryTurns = 'ai_max_history_turns';
+  static const _keyAiModelTier = 'ai_model_tier';
 
   /// Reads a secret from secure (AES-256) storage. If it hasn't been
   /// migrated yet, transparently pulls a legacy plaintext SharedPreferences
@@ -693,5 +694,20 @@ class SettingsService {
   Future<void> setMaxHistoryTurns(int value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_keyMaxHistoryTurns, value);
+  }
+
+  /// Which Cloudflare Workers AI model the own KI-Server should use —
+  /// 'smart' (default, the existing larger model) or 'fast' (a smaller,
+  /// quicker one). Only meaningful with an own KI-Server-Adresse
+  /// configured; validated server-side against a fixed allowlist (see
+  /// worker/ai-proxy.js ALLOWED_MODELS), never trusted raw.
+  Future<String> getAiModelTier() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyAiModelTier) ?? 'smart';
+  }
+
+  Future<void> setAiModelTier(String value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyAiModelTier, value);
   }
 }

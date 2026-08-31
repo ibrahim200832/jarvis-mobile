@@ -424,6 +424,19 @@ function buildNotificationDigestSystemPrompt() {
 // understood.
 const AI_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 
+// Echter Modell-Wechsel (Admin-Konsole, Runde 15, Einheit 6): the client
+// sends a `modelTier` string, looked up here against a fixed allowlist —
+// never passed through to env.AI.run() raw, so an arbitrary/malformed
+// client value can't make the Worker attempt an unintended model.
+// "fast" is Meta's smaller 8B-parameter Llama 3.1, explicitly branded
+// "Fast" in Cloudflare's own model catalog — verified against Cloudflare's
+// Workers AI model docs (developers.cloudflare.com/workers-ai/models/
+// llama-3.1-8b-instruct-fast/), not guessed.
+const ALLOWED_MODELS = {
+  smart: AI_MODEL,
+  fast: '@cf/meta/llama-3.1-8b-instruct-fast',
+};
+
 // How many prior turns (user+assistant pairs) the client may send as
 // context. Bounded server-side too, independent of what the client sends,
 // so a misbehaving client can't blow up the prompt size/cost.
@@ -487,6 +500,7 @@ export default {
     let statsSummary;
     let systemPromptOverride;
     let temperature;
+    let modelTier;
     try {
       const body = JSON.parse(rawBody);
       message = body.message;
@@ -498,6 +512,7 @@ export default {
       statsSummary = body.statsSummary;
       systemPromptOverride = body.systemPromptOverride;
       temperature = body.temperature;
+      modelTier = body.modelTier;
     } catch (_) {
       return json({ error: 'invalid json body' }, 400, origin);
     }
@@ -549,12 +564,16 @@ export default {
               : `${buildSystemPrompt(sarcasm, persona)} Aktuelles Datum/Uhrzeit (UTC): ${new Date().toISOString()}.`;
     const messages = [{ role: 'system', content: systemPrompt }, ...cleanHistory, { role: 'user', content: message }];
 
+    // Never trust a raw client-supplied model string — only ever the
+    // resolved allowlist value (see ALLOWED_MODELS above).
+    const resolvedModel = ALLOWED_MODELS[modelTier] ?? ALLOWED_MODELS.smart;
+
     const includeTools = !isStory && !isRpg && !isJournal && !isNotificationDigest;
     let data;
     let toolCall;
     let replyText;
     try {
-      data = await runModel(env, messages, includeTools, temperature);
+      data = await runModel(env, resolvedModel, messages, includeTools, temperature);
       toolCall = includeTools ? data.tool_calls?.[0] : undefined;
       replyText = (data.response ?? data.result?.response ?? '').toString().trim();
 
@@ -564,7 +583,7 @@ export default {
       // — cheap insurance against any model occasionally returning empty,
       // and strictly better than surfacing silence to the user.
       if (!replyText && !toolCall) {
-        data = await runModel(env, messages, false, temperature);
+        data = await runModel(env, resolvedModel, messages, false, temperature);
         toolCall = undefined;
         replyText = (data.response ?? data.result?.response ?? '').toString().trim();
       }
@@ -584,7 +603,7 @@ export default {
   },
 };
 
-function runModel(env, messages, includeTools, temperature) {
+function runModel(env, model, messages, includeTools, temperature) {
   // Moderate default: keeps replies grounded and tool-triggering conservative
   // (helps with both off-topic answers and false-positive actions) without
   // flattening the character's intended warm, cheerful tone entirely
@@ -599,7 +618,7 @@ function runModel(env, messages, includeTools, temperature) {
     temperature: clampedTemperature,
   };
   if (includeTools) payload.tools = TOOLS;
-  return env.AI.run(AI_MODEL, payload);
+  return env.AI.run(model, payload);
 }
 
 // Proxies web-search requests through Brave Search, keeping BRAVE_API_KEY a

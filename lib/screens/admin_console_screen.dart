@@ -33,6 +33,7 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
   String _aiModel = 'openai';
   double _aiTemperature = 0.3;
   int _maxHistoryTurns = 8;
+  String _aiModelTier = 'smart';
   bool _checkingCertPin = false;
   bool _savingServerSection = false;
   bool _savingBehaviorSection = false;
@@ -41,6 +42,11 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
     'openai': 'ChatGPT (Standard)',
     'mistral': 'Mistral',
     'llama': 'Llama',
+  };
+
+  static const _aiModelTiers = {
+    'smart': 'Intelligent',
+    'fast': 'Schnell',
   };
 
   @override
@@ -57,6 +63,7 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
     _systemPromptOverrideCtrl.text = await widget.settings.getSystemPromptOverride() ?? '';
     _aiTemperature = await widget.settings.getAiTemperature();
     _maxHistoryTurns = await widget.settings.getMaxHistoryTurns();
+    _aiModelTier = await widget.settings.getAiModelTier();
     if (mounted) setState(() {});
   }
 
@@ -90,6 +97,7 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
         .toList();
     await widget.settings.setCertPins(certPins);
     await widget.settings.setAiModel(_aiModel);
+    await widget.settings.setAiModelTier(_aiModelTier);
     if (!mounted) return;
     setState(() => _savingServerSection = false);
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gespeichert.')));
@@ -289,6 +297,22 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
                 .toList(),
             onChanged: (value) {
               if (value != null) setState(() => _aiModel = value);
+            },
+          ),
+          const SizedBox(height: 16),
+          DropdownButtonFormField<String>(
+            initialValue: _aiModelTier,
+            decoration: const InputDecoration(
+              labelText: 'Modell-Geschwindigkeit (eigener KI-Server)',
+              helperText: 'Nur wirksam mit eigener KI-Server-Adresse oben — "Schnell" nutzt ein kleineres, '
+                  'schnelleres Modell auf Kosten der Antwortqualität',
+              border: OutlineInputBorder(),
+            ),
+            items: _aiModelTiers.entries
+                .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
+                .toList(),
+            onChanged: (value) {
+              if (value != null) setState(() => _aiModelTier = value);
             },
           ),
           const SizedBox(height: 12),

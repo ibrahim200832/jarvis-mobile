@@ -159,4 +159,21 @@ void main() {
 
     expect(find.text('Kontext-Länge: 3 Gesprächsrunden'), findsOneWidget);
   });
+
+  testWidgets('loads a previously saved model tier and lets it be changed', (tester) async {
+    await settings.setAiModelTier('fast');
+
+    await _pumpConsole(tester, settings);
+
+    expect(find.text('Schnell'), findsOneWidget);
+
+    await tester.tap(find.text('Schnell'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Intelligent').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('save-server-section')));
+    await tester.pumpAndSettle();
+
+    expect(await settings.getAiModelTier(), 'smart');
+  });
 }
