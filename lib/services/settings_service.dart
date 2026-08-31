@@ -35,6 +35,8 @@ class SettingsService {
   static const _keyPersona = 'jarvis_persona';
   static const _keyHudEffectsEnabled = 'hud_effects_enabled';
   static const _keyReactiveOrbEnabled = 'reactive_orb_enabled';
+  static const _keyFaceDownFocusEnabled = 'face_down_focus_enabled';
+  static const _keyShakeStartsVoiceEnabled = 'shake_starts_voice_enabled';
   static const _keyMoodAutoAdjustEnabled = 'mood_auto_adjust_enabled';
   static const _keyEveningJournalEnabled = 'evening_journal_enabled';
   static const _keyNightAlertEnabled = 'night_alert_enabled';
@@ -416,6 +418,30 @@ class SettingsService {
   Future<void> setReactiveOrbEnabled(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyReactiveOrbEnabled, value);
+  }
+
+  /// Whether flipping the phone face-down triggers the silent focus mode
+  /// (mutes TTS/STT). Default off — a background-behavior-changing motion
+  /// gesture, same opt-in convention as RSS checks/weekly backups/etc.
+  Future<bool> getFaceDownFocusEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyFaceDownFocusEnabled) ?? false;
+  }
+
+  Future<void> setFaceDownFocusEnabled(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyFaceDownFocusEnabled, value);
+  }
+
+  /// Whether shaking the phone starts voice input (see MotionActionsService).
+  Future<bool> getShakeStartsVoiceEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyShakeStartsVoiceEnabled) ?? false;
+  }
+
+  Future<void> setShakeStartsVoiceEnabled(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyShakeStartsVoiceEnabled, value);
   }
 
   /// Whether a "stimmungscheck" voice-tone reading is allowed to nudge the

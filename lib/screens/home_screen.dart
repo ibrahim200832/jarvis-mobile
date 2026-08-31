@@ -31,6 +31,7 @@ import '../services/journal_service.dart';
 import '../services/late_night_tease_service.dart';
 import '../services/location_service.dart';
 import '../services/mood_capture_service.dart';
+import '../services/motion_actions_service.dart';
 import '../services/music_dj_service.dart';
 import '../services/news_service.dart';
 import '../services/notes_service.dart';
@@ -82,7 +83,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final _speech = SpeechService();
   final _tts = TtsService();
   final _settings = SettingsService();
@@ -138,9 +139,18 @@ class _HomeScreenState extends State<HomeScreen> {
   final _orbAmplitude = ValueNotifier<double>(0.0);
   Timer? _amplitudeDecayTimer;
 
+  /// Accelerometer-based face-down/shake detection (see
+  /// MotionActionsService) — only actually listening while at least one of
+  /// the three motion toggles below is enabled, and only while the app is
+  /// in the foreground (see didChangeAppLifecycleState), to avoid spending
+  /// battery on a sensor stream nobody asked for.
+  final _motionActions = MotionActionsService();
+  bool _focusMode = false;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _router = CommandRouter(
       wikipedia: WikipediaService(),
       jokes: JokeService(),
@@ -201,6 +211,72 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_maybeTriggerSecurityBreach());
     unawaited(_checkAppIntegrity());
     unawaited(_syncBackgroundTasks());
+    unawaited(_syncMotionActions());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_syncMotionActions());
+    } else {
+      _motionActions.stop();
+    }
+  }
+
+  /// (Re-)starts or stops the accelerometer listener to match the current
+  /// Einstellungen — called on app start, whenever the app returns to the
+  /// foreground, and after leaving Einstellungen (in case a toggle
+  /// changed). Skips starting the sensor stream entirely if every motion
+  /// toggle is off, so nobody pays a battery cost for a feature they
+  /// haven't enabled.
+  Future<void> _syncMotionActions() async {
+    final faceDownEnabled = await _settings.getFaceDownFocusEnabled();
+    final shakeVoiceEnabled = await _settings.getShakeStartsVoiceEnabled();
+    if (!mounted) return;
+
+    if (!faceDownEnabled && !shakeVoiceEnabled) {
+      _motionActions.stop();
+      return;
+    }
+
+    _motionActions.start(
+      onFaceDown: () {
+        if (faceDownEnabled) unawaited(_enterFocusMode());
+      },
+      onFaceUp: () {
+        if (faceDownEnabled) _exitFocusMode();
+      },
+      onShake: () {
+        if (shakeVoiceEnabled) unawaited(_handleShakeStartsVoice());
+      },
+    );
+  }
+
+  /// "Stummer Fokus-Modus" (Handy umdrehen): mutes any active TTS/STT and
+  /// shows a HUD banner, until the phone is flipped back up. Deliberately
+  /// narrow in scope — no other settings/behavior are touched.
+  Future<void> _enterFocusMode() async {
+    if (_focusMode) return;
+    await _tts.stop();
+    await _speech.stop();
+    if (!mounted) return;
+    setState(() {
+      _focusMode = true;
+      _listening = false;
+    });
+  }
+
+  void _exitFocusMode() {
+    if (!_focusMode || !mounted) return;
+    setState(() => _focusMode = false);
+  }
+
+  /// Shake-to-listen: starts the same one-shot voice input as the mic
+  /// button, unless a call is already active or it's already listening
+  /// (nothing to do then).
+  Future<void> _handleShakeStartsVoice() async {
+    if (_callActive || _listening || _focusMode) return;
+    await _toggleListening();
   }
 
   /// Initializes workmanager and (re-)registers/cancels the periodic RSS
@@ -370,6 +446,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _motionActions.stop();
     _timer.cancelAll();
     _textCtrl.dispose();
     _scrollCtrl.dispose();
@@ -750,6 +828,14 @@ class _HomeScreenState extends State<HomeScreen> {
                         'JARVIS denkt nach…',
                         style: TextStyle(color: colorScheme.primary),
                       ),
+                    )
+                  else if (_focusMode)
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(16, 10, 16, 0),
+                      child: Text(
+                        'Fokus-Modus — Handy umdrehen, um zurückzukehren.',
+                        style: TextStyle(color: JarvisColors.accent),
+                      ),
                     ),
                   Expanded(
                     child: ListView.builder(
@@ -853,6 +939,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     .then((_) {
                       unawaited(_loadHudEffectsEnabled());
                       unawaited(_loadReactiveOrbEnabled());
+                      unawaited(_syncMotionActions());
                     }),
               ),
             ],

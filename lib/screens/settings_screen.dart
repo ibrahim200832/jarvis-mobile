@@ -88,6 +88,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _securityBreachEnabled = true;
   bool _hudEffectsEnabled = true;
   bool _reactiveOrbEnabled = true;
+  bool _faceDownFocusEnabled = false;
+  bool _shakeStartsVoiceEnabled = false;
   bool _moodAutoAdjustEnabled = true;
   bool _testingHomeAssistant = false;
   bool _testingWebDav = false;
@@ -167,6 +169,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _securityBreachEnabled = await widget.settings.getSecurityBreachEnabled();
     _hudEffectsEnabled = await widget.settings.getHudEffectsEnabled();
     _reactiveOrbEnabled = await widget.settings.getReactiveOrbEnabled();
+    _faceDownFocusEnabled = await widget.settings.getFaceDownFocusEnabled();
+    _shakeStartsVoiceEnabled = await widget.settings.getShakeStartsVoiceEnabled();
     _moodAutoAdjustEnabled = await widget.settings.getMoodAutoAdjustEnabled();
     _rssFeedCheckEnabled = await widget.settings.getRssFeedCheckEnabled();
     _weeklyBackupExportEnabled = await widget.settings.getWeeklyBackupExportEnabled();
@@ -250,6 +254,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await widget.settings.setSecurityBreachEnabled(_securityBreachEnabled);
     await widget.settings.setHudEffectsEnabled(_hudEffectsEnabled);
     await widget.settings.setReactiveOrbEnabled(_reactiveOrbEnabled);
+    await widget.settings.setFaceDownFocusEnabled(_faceDownFocusEnabled);
+    await widget.settings.setShakeStartsVoiceEnabled(_shakeStartsVoiceEnabled);
     await widget.settings.setMoodAutoAdjustEnabled(_moodAutoAdjustEnabled);
     await widget.settings.setRssFeedCheckEnabled(_rssFeedCheckEnabled);
     await widget.settings.setWeeklyBackupExportEnabled(_weeklyBackupExportEnabled);
@@ -695,6 +701,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             value: _reactiveOrbEnabled,
             onChanged: (value) => setState(() => _reactiveOrbEnabled = value),
+          ),
+          const SizedBox(height: 24),
+          Text('Bewegungssteuerung', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 4),
+          const Text(
+            'Nutzt den Bewegungssensor des Geräts — beides standardmäßig aus.',
+            style: TextStyle(fontSize: 12),
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Handy umdrehen → Fokus-Modus'),
+            subtitle: const Text(
+              'Legst du das Handy mit dem Display nach unten, mutet JARVIS sich (TTS/Mikrofon), bis du es '
+              'wieder umdrehst.',
+              style: TextStyle(fontSize: 12),
+            ),
+            value: _faceDownFocusEnabled,
+            onChanged: (value) => setState(() => _faceDownFocusEnabled = value),
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Schütteln → Spracheingabe starten'),
+            value: _shakeStartsVoiceEnabled,
+            onChanged: (value) => setState(() => _shakeStartsVoiceEnabled = value),
           ),
           const SizedBox(height: 24),
           Text('App-Integrität (Play Integrity)', style: Theme.of(context).textTheme.titleMedium),

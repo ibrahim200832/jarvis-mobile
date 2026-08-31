@@ -45,6 +45,7 @@ dependencies:
   encrypt: ^5.0.3
   flutter_gemma: ^1.7.0
   flutter_gemma_litertlm: ^1.6.0
+  sensors_plus: ^7.1.0
 
 dev_dependencies:
   flutter_test:
