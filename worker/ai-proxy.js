@@ -418,8 +418,15 @@ const MAX_HISTORY_MESSAGES = 16;
 
 export default {
   async fetch(request, env) {
+    // Resolved once per request, then threaded explicitly through every
+    // handler/json() call below — deliberately NOT a module-level variable,
+    // since a Worker isolate can interleave multiple in-flight requests and
+    // a shared mutable "current origin" would let one request's CORS header
+    // leak onto another's response.
+    const origin = resolveAllowedOrigin(request, env);
+
     if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: corsHeaders() });
+      return new Response(null, { headers: corsHeaders(origin) });
     }
 
     // Read the raw body once up front (GET requests have none) — every
@@ -431,25 +438,25 @@ export default {
 
     const verification = await verifySignedRequest(request, rawBody, env);
     if (!verification.ok) {
-      return json({ error: verification.error }, 401);
+      return json({ error: verification.error }, 401, origin);
     }
 
     const url = new URL(request.url);
     if (url.pathname === '/search') {
       if (request.method !== 'GET') {
-        return json({ error: 'method not allowed' }, 405);
+        return json({ error: 'method not allowed' }, 405, origin);
       }
-      return handleSearch(url, env);
+      return handleSearch(url, env, origin);
     }
     if (url.pathname === '/tiktok/token' || url.pathname === '/tiktok/refresh') {
       if (request.method !== 'POST') {
-        return json({ error: 'method not allowed' }, 405);
+        return json({ error: 'method not allowed' }, 405, origin);
       }
-      return handleTiktokToken(url.pathname, rawBody, env);
+      return handleTiktokToken(url.pathname, rawBody, env, origin);
     }
 
     if (request.method !== 'POST') {
-      return json({ error: 'method not allowed' }, 405);
+      return json({ error: 'method not allowed' }, 405, origin);
     }
 
     let message;
@@ -469,10 +476,10 @@ export default {
       genre = body.genre;
       statsSummary = body.statsSummary;
     } catch (_) {
-      return json({ error: 'invalid json body' }, 400);
+      return json({ error: 'invalid json body' }, 400, origin);
     }
     if (typeof message !== 'string' || message.trim().length === 0) {
-      return json({ error: 'message fehlt' }, 400);
+      return json({ error: 'message fehlt' }, 400, origin);
     }
 
     const cleanHistory = history
@@ -525,7 +532,7 @@ export default {
         replyText = (data.response ?? data.result?.response ?? '').toString().trim();
       }
     } catch (err) {
-      return json({ error: 'AI-Anfrage fehlgeschlagen', detail: String(err) }, 502);
+      return json({ error: 'AI-Anfrage fehlgeschlagen', detail: String(err) }, 502, origin);
     }
 
     const reply = replyText || (toolCall ? 'Mach ich.' : 'Ich habe keine Antwort erhalten.');
@@ -536,7 +543,7 @@ export default {
         }
       : undefined;
 
-    return json({ reply, action });
+    return json({ reply, action }, 200, origin);
   },
 };
 
@@ -557,13 +564,13 @@ function runModel(env, messages, includeTools) {
 // server-side secret (set via `wrangler secret put BRAVE_API_KEY` or the
 // Cloudflare dashboard) instead of shipping it inside the app, where anyone
 // could extract it from the APK/web bundle and drain the quota.
-async function handleSearch(url, env) {
+async function handleSearch(url, env, origin) {
   const query = (url.searchParams.get('q') || '').trim();
   if (!query) {
-    return json({ error: 'q fehlt' }, 400);
+    return json({ error: 'q fehlt' }, 400, origin);
   }
   if (!env.BRAVE_API_KEY) {
-    return json({ error: 'Kein Brave-Schlüssel auf dem Server hinterlegt.' }, 500);
+    return json({ error: 'Kein Brave-Schlüssel auf dem Server hinterlegt.' }, 500, origin);
   }
 
   const braveUrl = new URL('https://api.search.brave.com/res/v1/web/search');
@@ -576,10 +583,10 @@ async function handleSearch(url, env) {
       headers: { Accept: 'application/json', 'X-Subscription-Token': env.BRAVE_API_KEY },
     });
   } catch (err) {
-    return json({ error: 'Websuche fehlgeschlagen', detail: String(err) }, 502);
+    return json({ error: 'Websuche fehlgeschlagen', detail: String(err) }, 502, origin);
   }
   if (!res.ok) {
-    return json({ error: `Websuche fehlgeschlagen (${res.status})` }, 502);
+    return json({ error: `Websuche fehlgeschlagen (${res.status})` }, 502, origin);
   }
 
   const data = await res.json();
@@ -587,7 +594,7 @@ async function handleSearch(url, env) {
     title: r.title ?? '',
     description: (r.description ?? '').replace(/<[^>]*>/g, ''), // Brave highlights matches with <strong> tags
   }));
-  return json({ results });
+  return json({ results }, 200, origin);
 }
 
 // Proxies TikTok's OAuth token exchange/refresh, keeping TIKTOK_CLIENT_KEY
@@ -595,21 +602,21 @@ async function handleSearch(url, env) {
 // `wrangler secret put` or the Cloudflare dashboard) — unlike Spotify's
 // PKCE-only public-client flow, TikTok's token endpoint requires a client
 // secret, which must never ship inside the app.
-async function handleTiktokToken(pathname, rawBody, env) {
+async function handleTiktokToken(pathname, rawBody, env, origin) {
   if (!env.TIKTOK_CLIENT_KEY || !env.TIKTOK_CLIENT_SECRET) {
-    return json({ error: 'Kein TikTok-Schlüssel auf dem Server hinterlegt.' }, 500);
+    return json({ error: 'Kein TikTok-Schlüssel auf dem Server hinterlegt.' }, 500, origin);
   }
   let body;
   try {
     body = JSON.parse(rawBody);
   } catch (_) {
-    return json({ error: 'invalid json body' }, 400);
+    return json({ error: 'invalid json body' }, 400, origin);
   }
 
   const form = { client_key: env.TIKTOK_CLIENT_KEY, client_secret: env.TIKTOK_CLIENT_SECRET };
   if (pathname === '/tiktok/token') {
     if (!body.code || !body.redirect_uri) {
-      return json({ error: 'code/redirect_uri fehlt' }, 400);
+      return json({ error: 'code/redirect_uri fehlt' }, 400, origin);
     }
     Object.assign(form, {
       grant_type: 'authorization_code',
@@ -619,7 +626,7 @@ async function handleTiktokToken(pathname, rawBody, env) {
     });
   } else {
     if (!body.refresh_token) {
-      return json({ error: 'refresh_token fehlt' }, 400);
+      return json({ error: 'refresh_token fehlt' }, 400, origin);
     }
     Object.assign(form, { grant_type: 'refresh_token', refresh_token: body.refresh_token });
   }
@@ -632,13 +639,13 @@ async function handleTiktokToken(pathname, rawBody, env) {
       body: new URLSearchParams(form),
     });
   } catch (err) {
-    return json({ error: 'TikTok-Anmeldung fehlgeschlagen', detail: String(err) }, 502);
+    return json({ error: 'TikTok-Anmeldung fehlgeschlagen', detail: String(err) }, 502, origin);
   }
   const data = await res.json();
   if (!res.ok || data.error) {
-    return json({ error: data.error_description || 'TikTok-Anmeldung fehlgeschlagen' }, 502);
+    return json({ error: data.error_description || 'TikTok-Anmeldung fehlgeschlagen' }, 502, origin);
   }
-  return json(data);
+  return json(data, 200, origin);
 }
 
 // How long a signature stays valid, and how long a nonce is remembered as
@@ -734,17 +741,38 @@ async function nonceAlreadyUsed(nonce) {
   return false;
 }
 
-function corsHeaders() {
-  return {
-    'Access-Control-Allow-Origin': '*',
+// CORS only restricts which *browser pages* may read a cross-origin
+// response — it does nothing against a non-browser caller (curl, a script,
+// another app), which simply isn't subject to it. The actual defense
+// against forged/foreign callers is the HMAC signature above; this only
+// closes the browser-specific angle (a malicious web page trying to use a
+// visitor's browser to call this Worker and read the reply). Optional:
+// without ALLOWED_ORIGIN configured, every origin is allowed (today's
+// behavior, unrestricted) — set it once the operator's own web build's
+// origin is known (see README) to restrict it to just that.
+function resolveAllowedOrigin(request, env) {
+  const allowed = env.ALLOWED_ORIGIN;
+  if (!allowed) return '*';
+  const requestOrigin = request.headers.get('Origin');
+  // Reflect the configured origin only if it matches the caller's; a
+  // mismatched or absent Origin (mobile app requests never send one) gets
+  // no Access-Control-Allow-Origin at all, which browsers treat as "no
+  // cross-origin page may read this" — exactly the intended restriction.
+  return requestOrigin === allowed ? allowed : null;
+}
+
+function corsHeaders(origin) {
+  const headers = {
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, X-Jarvis-Timestamp, X-Jarvis-Nonce, X-Jarvis-Signature',
   };
+  if (origin) headers['Access-Control-Allow-Origin'] = origin;
+  return headers;
 }
 
-function json(obj, status = 200) {
+function json(obj, status = 200, origin = '*') {
   return new Response(JSON.stringify(obj), {
     status,
-    headers: { 'content-type': 'application/json', ...corsHeaders() },
+    headers: { 'content-type': 'application/json', ...corsHeaders(origin) },
   });
 }

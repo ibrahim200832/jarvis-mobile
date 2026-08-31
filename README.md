@@ -148,6 +148,57 @@ Wird `worker/ai-proxy.js` später im Repo geändert (z. B. um neue Tools), muss 
 
 **Auch als Discord-Bot verfügbar:** JARVIS kann auch einem Discord-Sprachkanal beitreten und Antworten vorlesen, wenn man ihn per Slash-Befehl fragt — nutzt denselben Worker als Backend, läuft aber als eigener Node.js-Dienst auf einem eigenen Server. Einrichtung siehe [`discord-bot/README.md`](discord-bot/README.md).
 
+## Sicherheit (eigener KI-Server, optional)
+
+Diese Maßnahmen betreffen ausschließlich die optionale Verbindung zum **eigenen** `worker/ai-proxy.js`
+(siehe oben) — der kostenlose Standard-Dienst ohne eigenen Server ist davon nicht betroffen, da er auf
+keinem selbst kontrollierten Backend läuft, das sich zusätzlich absichern ließe.
+
+### Request-Signierung (HMAC) & Replay-Schutz
+
+Jede Anfrage an den eigenen Worker kann mit einer HMAC-SHA256-Signatur (plus Zeitstempel und
+Einmal-Nonce) versehen werden, damit der Worker Fälschungen und wiederholt gesendete (abgefangene)
+Anfragen ablehnt. Einrichtung:
+
+1. Ein zufälliges Geheimnis erzeugen, z. B. `openssl rand -hex 32`.
+2. Im [Cloudflare-Dashboard](https://dash.cloudflare.com) → Worker öffnen → **Settings → Variables and
+   Secrets → Add**: Name `HMAC_SECRET`, Typ **Secret**, Wert = das erzeugte Geheimnis → **Deploy**.
+3. Denselben Wert in der JARVIS-App unter **Einstellungen → „KI-Server-Schlüssel"** eintragen.
+
+Solange `HMAC_SECRET` im Worker **nicht** gesetzt ist, bleibt alles wie bisher (unsignierte Anfragen
+werden akzeptiert) — erst mit gesetztem Schlüssel lehnt der Worker unsignierte oder gefälschte Anfragen
+mit Fehler 401 ab. Beide Seiten (App-Einstellung und Worker-Secret) müssen exakt übereinstimmen.
+
+### TLS-Zertifikat-Pinning (optional, Handy/Desktop)
+
+Unter **Einstellungen → „TLS-Zertifikat-Pins"** lässt sich per Knopfdruck der aktuelle
+Zertifikats-Fingerabdruck des eigenen Worker-Servers anzeigen und übernehmen. Ist mindestens ein Pin
+gespeichert, verweigert die App die Verbindung, sobald ein Server ein anderes Zertifikat präsentiert —
+Schutz vor Man-in-the-Middle-Angriffen im selben WLAN. **Wichtiger Kompromiss:** Cloudflare rotiert das
+TLS-Zertifikat für `*.workers.dev`-Adressen automatisch von Zeit zu Zeit; danach muss hier manuell ein
+neuer Fingerabdruck ergänzt werden, sonst funktioniert die Verbindung zum eigenen Server nicht mehr, bis
+das passiert. Deshalb am besten zwei Pins gleichzeitig pflegen (aktueller + einer für die nächste
+geplante Rotation). Nur auf Handy/Desktop wirksam — im Web-Build hat eine Seite technisch keinen Zugriff
+auf das TLS-Zertifikat, das ist eine Browser-Plattformgrenze.
+
+### Herkunfts-Einschränkung (CORS)
+
+Standardmäßig akzeptiert der Worker Anfragen von jeder Web-Seite (`Access-Control-Allow-Origin: *`).
+Optional lässt sich das auf die eigene Web-Version einschränken: Cloudflare-Secret `ALLOWED_ORIGIN`
+(Typ **Text**, kein Secret nötig) auf die eigene Domain setzen, z. B.
+`https://<dein-name>.github.io`. **Wichtig zu wissen:** CORS schützt ausschließlich davor, dass eine
+fremde Webseite im Browser eines Besuchers die Antwort lesen kann — es blockiert keinen direkten Aufruf
+von außerhalb eines Browsers (z. B. per Skript oder curl). Der eigentliche Schutz gegen gefälschte
+Anfragen ist die Request-Signierung oben.
+
+### Lokale Verschlüsselung & keine hartcodierten Geheimnisse
+
+API-Schlüssel, OAuth-Tokens (Spotify/TikTok) und der Request-Signierungs-Schlüssel liegen auf dem Gerät
+AES-256-verschlüsselt im Android Keystore / iOS Keychain statt im Klartext — automatisch, ohne
+Einrichtung. Im Quellcode dieses Projekts ist bewusst kein einziger echter Schlüssel/Token hinterlegt:
+jeder Nutzer trägt seine eigenen in Einstellungen bzw. als Cloudflare-Secret ein, nichts landet dadurch
+versehentlich im (öffentlichen) Repository.
+
 ## YouTube-Video-Upload einrichten (optional)
 
 Der Befehl „video hochladen" lässt dich ein Video von deinem Handy/Computer auswählen und direkt auf dein eigenes YouTube-Konto hochladen — jeder Upload ist ein bewusster Tastendruck (Anmelden → Video wählen → Sichtbarkeit wählen → Titel eintippen → Hochladen), nichts passiert automatisch im Hintergrund. Beim Hochladen wählst du die Sichtbarkeit — **privat**, **nicht gelistet** oder **öffentlich** — und kannst optional eine spätere Veröffentlichungszeit festlegen; YouTube macht das Video dann automatisch zur gewählten Zeit öffentlich (bis dahin bleibt es privat, das schreibt die YouTube-API so vor). Standard bleibt „privat", damit nichts versehentlich sofort öffentlich landet. Auch JARVIS selbst kann beim Öffnen des Upload-Bildschirms schon eine Sichtbarkeit vorauswählen (z. B. „lade das video öffentlich hoch") — die eigentliche Datei wählst du danach weiterhin immer manuell aus.
