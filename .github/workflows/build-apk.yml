@@ -68,16 +68,22 @@ jobs:
           name: jarvis-mobile-apk
           path: build/app/outputs/flutter-apk/app-release.apk
 
-      # Temporary: Actions artifact downloads (Azure Blob Storage) are
-      # blocked from the dev sandbox's proxy, so commit the APK straight
-      # into the repo for retrieval via `git pull` — reverted right after
-      # delivery, never meant to stay on the branch long-term.
-      - name: Publish built APK to repo
+      # Publish the APK as a GitHub Release asset rather than an Actions
+      # artifact or a repo commit: Actions-artifact downloads (Azure Blob
+      # Storage, productionresultssa*.blob.core.windows.net) are blocked
+      # from the dev sandbox's proxy, and the APK (180MB+, driven up by the
+      # bundled offline-AI native libraries — see Runde 13) now exceeds
+      # GitHub's 100MB per-file commit limit. Release assets are served
+      # from a different host (release-assets.githubusercontent.com, up to
+      # 2GB per asset) that IS reachable from the sandbox, and don't bloat
+      # the git history the way committing a large binary would.
+      - name: Publish built APK as a GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          mkdir -p dist
-          cp build/app/outputs/flutter-apk/app-release.apk dist/jarvis-mobile-release.apk
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add dist/jarvis-mobile-release.apk
-          git commit -m "Temporary: publish built APK for sandbox retrieval"
-          git push
+          gh release create "apk-build-${{ env.BUILD_NUMBER }}" \
+            build/app/outputs/flutter-apk/app-release.apk \
+            --repo "${{ github.repository }}" \
+            --title "JARVIS APK Build ${{ env.BUILD_NUMBER }}" \
+            --notes "Automated build from commit ${{ github.sha }}." \
+            --target "${{ github.sha }}"
