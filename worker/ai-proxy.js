@@ -485,6 +485,8 @@ export default {
     let mode;
     let genre;
     let statsSummary;
+    let systemPromptOverride;
+    let temperature;
     try {
       const body = JSON.parse(rawBody);
       message = body.message;
@@ -494,6 +496,8 @@ export default {
       mode = body.mode;
       genre = body.genre;
       statsSummary = body.statsSummary;
+      systemPromptOverride = body.systemPromptOverride;
+      temperature = body.temperature;
     } catch (_) {
       return json({ error: 'invalid json body' }, 400, origin);
     }
@@ -524,6 +528,14 @@ export default {
     // The model has no built-in notion of "now", so tools that need to
     // resolve relative times (e.g. open_youtube_upload's publish_at from
     // "morgen um 18 Uhr") need the current time handed to it explicitly.
+    //
+    // A non-empty systemPromptOverride (Admin-Konsole, Runde 15) takes
+    // priority over the default sarcasm/persona-built prompt, verbatim, no
+    // date/time appended — an admin editing the raw prompt directly gets
+    // exactly what they typed, not an auto-appended footer. Deliberately
+    // NOT applied to story/rpg/journal/notification_digest, which keep
+    // their own fixed, mechanically-important narrator personas.
+    const hasOverride = typeof systemPromptOverride === 'string' && systemPromptOverride.trim().length > 0;
     const systemPrompt = isStory
       ? buildStorySystemPrompt(genre)
       : isRpg
@@ -532,7 +544,9 @@ export default {
           ? buildJournalSystemPrompt()
           : isNotificationDigest
             ? buildNotificationDigestSystemPrompt()
-            : `${buildSystemPrompt(sarcasm, persona)} Aktuelles Datum/Uhrzeit (UTC): ${new Date().toISOString()}.`;
+            : hasOverride
+              ? systemPromptOverride
+              : `${buildSystemPrompt(sarcasm, persona)} Aktuelles Datum/Uhrzeit (UTC): ${new Date().toISOString()}.`;
     const messages = [{ role: 'system', content: systemPrompt }, ...cleanHistory, { role: 'user', content: message }];
 
     const includeTools = !isStory && !isRpg && !isJournal && !isNotificationDigest;
@@ -540,7 +554,7 @@ export default {
     let toolCall;
     let replyText;
     try {
-      data = await runModel(env, messages, includeTools);
+      data = await runModel(env, messages, includeTools, temperature);
       toolCall = includeTools ? data.tool_calls?.[0] : undefined;
       replyText = (data.response ?? data.result?.response ?? '').toString().trim();
 
@@ -550,7 +564,7 @@ export default {
       // — cheap insurance against any model occasionally returning empty,
       // and strictly better than surfacing silence to the user.
       if (!replyText && !toolCall) {
-        data = await runModel(env, messages, false);
+        data = await runModel(env, messages, false, temperature);
         toolCall = undefined;
         replyText = (data.response ?? data.result?.response ?? '').toString().trim();
       }
@@ -570,14 +584,19 @@ export default {
   },
 };
 
-function runModel(env, messages, includeTools) {
+function runModel(env, messages, includeTools, temperature) {
+  // Moderate default: keeps replies grounded and tool-triggering conservative
+  // (helps with both off-topic answers and false-positive actions) without
+  // flattening the character's intended warm, cheerful tone entirely
+  // (temperature 0). Client-supplied values (Admin-Konsole, Runde 15) are
+  // clamped the same way personalityClause clamps sarcasm — Workers AI
+  // rejects/misbehaves on out-of-range values.
+  const clampedTemperature =
+    typeof temperature === 'number' && Number.isFinite(temperature) ? Math.min(1, Math.max(0, temperature)) : 0.3;
   const payload = {
     messages,
     max_tokens: 2048,
-    // Moderate value: keeps replies grounded and tool-triggering conservative
-    // (helps with both off-topic answers and false-positive actions) without
-    // flattening the character's intended warm, cheerful tone entirely (temperature 0).
-    temperature: 0.3,
+    temperature: clampedTemperature,
   };
   if (includeTools) payload.tools = TOOLS;
   return env.AI.run(AI_MODEL, payload);

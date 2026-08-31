@@ -28,10 +28,13 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
   final _aiBackendCtrl = TextEditingController();
   final _aiHmacSecretCtrl = TextEditingController();
   final _certPinsCtrl = TextEditingController();
+  final _systemPromptOverrideCtrl = TextEditingController();
   final _tlsPinning = TlsPinningService();
   String _aiModel = 'openai';
+  double _aiTemperature = 0.3;
   bool _checkingCertPin = false;
   bool _savingServerSection = false;
+  bool _savingBehaviorSection = false;
 
   static const _aiModels = {
     'openai': 'ChatGPT (Standard)',
@@ -50,7 +53,23 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
     _aiHmacSecretCtrl.text = await widget.settings.getAiHmacSecret() ?? '';
     _certPinsCtrl.text = (await widget.settings.getCertPins()).join('\n');
     _aiModel = await widget.settings.getAiModel();
+    _systemPromptOverrideCtrl.text = await widget.settings.getSystemPromptOverride() ?? '';
+    _aiTemperature = await widget.settings.getAiTemperature();
     if (mounted) setState(() {});
+  }
+
+  Future<void> _saveBehaviorSection() async {
+    setState(() => _savingBehaviorSection = true);
+    final override = _systemPromptOverrideCtrl.text.trim();
+    if (override.isEmpty) {
+      await widget.settings.clearSystemPromptOverride();
+    } else {
+      await widget.settings.setSystemPromptOverride(override);
+    }
+    await widget.settings.setAiTemperature(_aiTemperature);
+    if (!mounted) return;
+    setState(() => _savingBehaviorSection = false);
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gespeichert.')));
   }
 
   Future<void> _saveServerSection() async {
@@ -143,6 +162,54 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          Text('KI-Verhalten', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 4),
+          const Text(
+            'Nur wenn eine eigene KI-Server-Adresse eingetragen ist (siehe unten) — der kostenlose Gratis-'
+            'Fallback übernimmt nur den Prompt, keine Temperatur.',
+            style: TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _systemPromptOverrideCtrl,
+            maxLines: 5,
+            decoration: const InputDecoration(
+              labelText: 'System-Prompt (überschreibt JARVIS\' Standard-Persönlichkeit komplett)',
+              helperText:
+                  'Leer lassen, um JARVIS\' normale Persönlichkeit/Persona/Sarkasmus-Einstellung zu behalten. '
+                  'Gilt nur für normale Gespräche, nicht für Textadventure/RPG/Tagebuch/Benachrichtigungs-Digest.',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: () => setState(() => _systemPromptOverrideCtrl.clear()),
+              child: const Text('Zurücksetzen'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text('Temperatur: ${_aiTemperature.toStringAsFixed(2)}', style: const TextStyle(fontSize: 12)),
+          Slider(
+            value: _aiTemperature,
+            min: 0.0,
+            max: 1.0,
+            divisions: 20,
+            label: _aiTemperature.toStringAsFixed(2),
+            onChanged: (value) => setState(() => _aiTemperature = value),
+          ),
+          const Text(
+            '0,0 = präzise/vorhersagbar, 1,0 = kreativer/verspielter.',
+            style: TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 12),
+          FilledButton(
+            key: const Key('save-behavior-section'),
+            onPressed: _savingBehaviorSection ? null : _saveBehaviorSection,
+            child: const Text('Speichern'),
+          ),
+          const SizedBox(height: 24),
           Text('KI-Server & Sicherheit', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 4),
           const Text(
@@ -208,6 +275,7 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
           ),
           const SizedBox(height: 12),
           FilledButton(
+            key: const Key('save-server-section'),
             onPressed: _savingServerSection ? null : _saveServerSection,
             child: const Text('Speichern'),
           ),

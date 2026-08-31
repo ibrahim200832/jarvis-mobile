@@ -182,6 +182,26 @@ void main() {
     });
   });
 
+  group('system prompt override & temperature', () {
+    test('system prompt override defaults to null and round-trips', () async {
+      expect(await settings.getSystemPromptOverride(), isNull);
+      await settings.setSystemPromptOverride('Du bist ein Pirat.');
+      expect(await settings.getSystemPromptOverride(), 'Du bist ein Pirat.');
+    });
+
+    test('clearSystemPromptOverride removes a saved override', () async {
+      await settings.setSystemPromptOverride('Du bist ein Pirat.');
+      await settings.clearSystemPromptOverride();
+      expect(await settings.getSystemPromptOverride(), isNull);
+    });
+
+    test('AI temperature defaults to 0.3 and round-trips', () async {
+      expect(await settings.getAiTemperature(), 0.3);
+      await settings.setAiTemperature(0.9);
+      expect(await settings.getAiTemperature(), 0.9);
+    });
+  });
+
   group('legacy plaintext migration', () {
     test('an existing plaintext weather key is migrated into secure storage on first read', () async {
       SharedPreferences.setMockInitialValues({'weather_api_key': 'legacy-plaintext-key'});

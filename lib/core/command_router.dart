@@ -1049,6 +1049,8 @@ Das kann ich für dich tun:
       final effectiveSarcasm = (sarcasm + moodDelta).clamp(0.0, 1.0);
       final hmacSecret = await settings.getAiHmacSecret();
       final certPins = await settings.getCertPins();
+      final systemPromptOverride = await settings.getSystemPromptOverride();
+      final temperature = await settings.getAiTemperature();
       final aiResult = await aiChat.ask(
         backendUrl ?? '',
         text,
@@ -1058,6 +1060,8 @@ Das kann ich für dich tun:
         persona: persona,
         hmacSecret: hmacSecret,
         certPins: certPins,
+        systemPromptOverride: systemPromptOverride,
+        temperature: temperature,
       );
       _aiHistory.add(AiTurn(role: 'user', content: text));
       _aiHistory.add(AiTurn(role: 'assistant', content: aiResult.reply));

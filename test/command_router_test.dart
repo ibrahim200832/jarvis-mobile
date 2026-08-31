@@ -345,6 +345,8 @@ class FakeAiChatService extends AiChatService {
   List<String>? lastCertPins;
   int askNotificationDigestCallCount = 0;
   String? lastNotificationDigestSummary;
+  String? lastSystemPromptOverride;
+  double? lastTemperature;
 
   @override
   Future<AiChatResult> ask(
@@ -356,6 +358,8 @@ class FakeAiChatService extends AiChatService {
     String persona = 'standard',
     String? hmacSecret,
     List<String> certPins = const [],
+    String? systemPromptOverride,
+    double? temperature,
   }) async {
     lastMessage = message;
     lastHistory = history;
@@ -363,6 +367,8 @@ class FakeAiChatService extends AiChatService {
     lastSarcasm = sarcasm;
     lastHmacSecret = hmacSecret;
     lastCertPins = certPins;
+    lastSystemPromptOverride = systemPromptOverride;
+    lastTemperature = temperature;
     return AiChatResult(reply: 'FAKE_AI:$message', action: nextAction);
   }
 
@@ -1675,6 +1681,26 @@ void main() {
       await router.runMoodCheck();
       await router.handle('freie frage an die ki');
       expect(aiChat.lastSarcasm, closeTo(0.3, 0.001));
+    });
+  });
+
+  group('System-Prompt-Override & Temperatur (Admin-Konsole)', () {
+    test('an unset override/temperature falls through as null/default', () async {
+      await router.handle('freie frage an die ki');
+      expect(aiChat.lastSystemPromptOverride, isNull);
+      expect(aiChat.lastTemperature, closeTo(0.3, 0.001));
+    });
+
+    test('a saved system prompt override reaches ask()', () async {
+      await settings.setSystemPromptOverride('Du bist ein Pirat.');
+      await router.handle('freie frage an die ki');
+      expect(aiChat.lastSystemPromptOverride, 'Du bist ein Pirat.');
+    });
+
+    test('a saved temperature reaches ask()', () async {
+      await settings.setAiTemperature(0.9);
+      await router.handle('freie frage an die ki');
+      expect(aiChat.lastTemperature, closeTo(0.9, 0.001));
     });
   });
 

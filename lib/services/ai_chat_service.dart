@@ -270,6 +270,8 @@ class AiChatService {
     String persona = 'standard',
     String? hmacSecret,
     List<String> certPins = const [],
+    String? systemPromptOverride,
+    double? temperature,
   }) async {
     // Skip straight to the on-device model if the cloud was unreachable
     // moments ago and stayed that way — avoids re-paying the full request
@@ -282,7 +284,14 @@ class AiChatService {
       if (offlineResult != null) return offlineResult;
     }
     if (backendUrl.trim().isEmpty) {
-      return _askFreeFallbackWithOfflineFallback(message, model, history, sarcasm, persona);
+      return _askFreeFallbackWithOfflineFallback(
+        message,
+        model,
+        history,
+        sarcasm,
+        persona,
+        systemPromptOverride,
+      );
     }
     try {
       final bodyJson = jsonEncode({
@@ -290,6 +299,9 @@ class AiChatService {
         'history': history.map((t) => t.toJson()).toList(),
         'sarcasm': sarcasm,
         'persona': persona,
+        if (systemPromptOverride != null && systemPromptOverride.isNotEmpty)
+          'systemPromptOverride': systemPromptOverride,
+        if (temperature != null) 'temperature': temperature,
       });
       final res = await _post(
         Uri.parse(backendUrl.trim()),
@@ -325,9 +337,24 @@ class AiChatService {
     }
   }
 
-  Uri _freeFallbackUri(String message, String model, List<AiTurn> history, double sarcasm, String persona) {
+  /// [systemPromptOverride], when non-empty, fully replaces
+  /// [jarvisSystemPrompt]'s sarcasm/persona-built prompt — same override
+  /// semantics as the own-backend path (see [ask]). Temperature has no
+  /// effect here: pollinations.ai's GET-based free API exposes no such
+  /// parameter, a documented limitation of this fallback.
+  Uri _freeFallbackUri(
+    String message,
+    String model,
+    List<AiTurn> history,
+    double sarcasm,
+    String persona,
+    String? systemPromptOverride,
+  ) {
     final transcript = history.map((t) => '${t.role == 'user' ? 'Master' : 'JARVIS'}: ${t.content}').join('\n');
-    final prompt = '${jarvisSystemPrompt(sarcasm, persona: persona)}'
+    final systemPrompt = (systemPromptOverride != null && systemPromptOverride.isNotEmpty)
+        ? systemPromptOverride
+        : jarvisSystemPrompt(sarcasm, persona: persona);
+    final prompt = '$systemPrompt'
         '${transcript.isEmpty ? '' : '\n\nBisheriges Gespräch:\n$transcript'}'
         '\n\nMaster sagt: $message\n\nJARVIS antwortet:';
     return Uri(
@@ -344,9 +371,10 @@ class AiChatService {
     List<AiTurn> history,
     double sarcasm,
     String persona,
+    String? systemPromptOverride,
   ) {
     return _getWithRetry(
-      _freeFallbackUri(message, model, history, sarcasm, persona),
+      _freeFallbackUri(message, model, history, sarcasm, persona, systemPromptOverride),
       failMsg: 'Ich hab gerade keine Antwort bekommen, Master',
       timeoutMsg: 'Die Antwort hat zu lange gedauert, Master. Versuch es gleich nochmal.',
       offlineMsg: 'Ich konnte die KI gerade nicht erreichen, Master. Prüf deine Internetverbindung.',
@@ -368,11 +396,12 @@ class AiChatService {
     List<AiTurn> history,
     double sarcasm,
     String persona,
+    String? systemPromptOverride,
   ) async {
     const failMsg = 'Ich hab gerade keine Antwort bekommen, Master';
     const timeoutMsg = 'Die Antwort hat zu lange gedauert, Master. Versuch es gleich nochmal.';
     const offlineMsg = 'Ich konnte die KI gerade nicht erreichen, Master. Prüf deine Internetverbindung.';
-    final result = await _askFreeFallback(message, model, history, sarcasm, persona);
+    final result = await _askFreeFallback(message, model, history, sarcasm, persona, systemPromptOverride);
     final failed = result.reply.startsWith(failMsg) || result.reply == timeoutMsg || result.reply == offlineMsg;
     _markCloud(!failed);
     if (!failed) return result;

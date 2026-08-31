@@ -64,6 +64,8 @@ class SettingsService {
   static const _keyAdminPinSalt = 'admin_pin_salt';
   static const _keyAdminPinHash = 'admin_pin_hash';
   static const _keyAdminBiometricEnabled = 'admin_biometric_enabled';
+  static const _keySystemPromptOverride = 'admin_system_prompt_override';
+  static const _keyAiTemperature = 'ai_temperature';
 
   /// Reads a secret from secure (AES-256) storage. If it hasn't been
   /// migrated yet, transparently pulls a legacy plaintext SharedPreferences
@@ -638,5 +640,41 @@ class SettingsService {
   Future<void> setAdminBiometricEnabled(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyAdminBiometricEnabled, value);
+  }
+
+  /// A raw, user-authored system prompt that — when set — fully replaces
+  /// JARVIS's built-in sarcasm/persona-based prompt for the default chat
+  /// path (see AiChatService.ask/jarvisSystemPrompt, CommandRouter). Never
+  /// applied to the story/RPG/journal/notification-digest modes, which
+  /// keep their own fixed narrator personas. No secret, plain
+  /// SharedPreferences like the other free-text settings in this class.
+  Future<String?> getSystemPromptOverride() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keySystemPromptOverride);
+  }
+
+  Future<void> setSystemPromptOverride(String value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keySystemPromptOverride, value);
+  }
+
+  Future<void> clearSystemPromptOverride() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_keySystemPromptOverride);
+  }
+
+  /// Sampling temperature sent to the own KI-Server (see worker/ai-proxy.js
+  /// runModel) — 0.0 is precise/deterministic, 1.0 is more creative/
+  /// varied. Default 0.3 matches the value the worker used to hard-code
+  /// before this became configurable. Has no effect on the free
+  /// pollinations.ai fallback, which exposes no such parameter.
+  Future<double> getAiTemperature() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getDouble(_keyAiTemperature) ?? 0.3;
+  }
+
+  Future<void> setAiTemperature(double value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_keyAiTemperature, value);
   }
 }
