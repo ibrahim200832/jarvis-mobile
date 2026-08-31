@@ -140,7 +140,7 @@ Als KI kommt dabei **Cloudflare Workers AI** zum Einsatz — ein offenes Modell 
 2. Im Cloudflare-Dashboard: **Workers & Pages → Create → Create Worker** → einen Namen vergeben (z. B. `jarvis-ai`) → **Deploy**.
 3. Auf **Edit code** klicken, den kompletten Inhalt der Datei [`worker/ai-proxy.js`](worker/ai-proxy.js) aus diesem Repo hineinkopieren (vorhandenen Beispielcode überschreiben) → **Deploy**.
 4. Im Worker-Dashboard: **Settings → Bindings → Add → AI** → Binding-Name `AI` eintragen → **Deploy** (macht `wrangler.toml` in diesem Repo automatisch, falls per Actions deployt — siehe unten).
-5. Die Worker-URL steht oben auf der Seite (z. B. `https://jarvis-ai.<dein-name>.workers.dev`) — die in der JARVIS-App unter **Einstellungen → „KI-Server-Adresse"** eintragen und speichern. Ist das Feld leer, nutzt JARVIS automatisch den kostenlosen Standard-Dienst ohne Setup.
+5. Die Worker-URL steht oben auf der Seite (z. B. `https://jarvis-ai.<dein-name>.workers.dev`) — die in der JARVIS-App unter **Einstellungen → Admin-Zugang → Admin-Konsole → „KI-Server-Adresse"** eintragen und speichern (siehe Abschnitt „Runde 15: Admin-Konsole" weiter unten für die PIN-Einrichtung). Ist das Feld leer, nutzt JARVIS automatisch den kostenlosen Standard-Dienst ohne Setup.
 
 Wird `worker/ai-proxy.js` später im Repo geändert (z. B. um neue Tools), muss der aktualisierte Code auch im bestehenden Worker per **Edit code** eingefügt und neu deployt werden — das passiert nicht automatisch.
 
@@ -163,7 +163,7 @@ Anfragen ablehnt. Einrichtung:
 1. Ein zufälliges Geheimnis erzeugen, z. B. `openssl rand -hex 32`.
 2. Im [Cloudflare-Dashboard](https://dash.cloudflare.com) → Worker öffnen → **Settings → Variables and
    Secrets → Add**: Name `HMAC_SECRET`, Typ **Secret**, Wert = das erzeugte Geheimnis → **Deploy**.
-3. Denselben Wert in der JARVIS-App unter **Einstellungen → „KI-Server-Schlüssel"** eintragen.
+3. Denselben Wert in der JARVIS-App unter **Admin-Konsole → „KI-Server-Schlüssel"** eintragen.
 
 Solange `HMAC_SECRET` im Worker **nicht** gesetzt ist, bleibt alles wie bisher (unsignierte Anfragen
 werden akzeptiert) — erst mit gesetztem Schlüssel lehnt der Worker unsignierte oder gefälschte Anfragen
@@ -171,7 +171,7 @@ mit Fehler 401 ab. Beide Seiten (App-Einstellung und Worker-Secret) müssen exak
 
 ### TLS-Zertifikat-Pinning (optional, Handy/Desktop)
 
-Unter **Einstellungen → „TLS-Zertifikat-Pins"** lässt sich per Knopfdruck der aktuelle
+Unter **Admin-Konsole → „TLS-Zertifikat-Pins"** lässt sich per Knopfdruck der aktuelle
 Zertifikats-Fingerabdruck des eigenen Worker-Servers anzeigen und übernehmen. Ist mindestens ein Pin
 gespeichert, verweigert die App die Verbindung, sobald ein Server ein anderes Zertifikat präsentiert —
 Schutz vor Man-in-the-Middle-Angriffen im selben WLAN. **Wichtiger Kompromiss:** Cloudflare rotiert das
@@ -349,6 +349,53 @@ verlassen das Gerät). Nur wenn zusätzlich „KI-Zusammenfassung erlauben" akti
 KI-Server eingetragen ist, werden kurze Vorschautexte an diesen eigenen Server geschickt — anders als
 jede andere KI-Funktion dieser App fällt der Benachrichtigungs-Digest dabei **nie** auf den öffentlichen
 Gratis-Fallback zurück. „Erfasste Benachrichtigungen jetzt löschen" entfernt alles sofort wieder.
+
+## Runde 15: Admin-Konsole (PIN-/biometrie-geschützt)
+
+Eine gesonderte, fortgeschrittene Konsole für sensible/technische Regler — getrennt von den normalen
+Einstellungen, damit diese übersichtlich bleiben. Zugang über **Einstellungen → Admin-Zugang**:
+
+1. Admin-PIN einrichten (zwei Felder: PIN + Bestätigung, „PIN speichern"). Wie die Notfall-Sperre wird
+   die PIN **nie im Klartext gespeichert**, nur ein gesalzener SHA-256-Hash — und **es gibt keinen
+   Wiederherstellungsweg** für eine vergessene PIN. „PIN entfernen" bleibt aber jederzeit über die
+   normalen Einstellungen erreichbar (anders als bei der Notfall-Sperre ist hier kein Sperrzustand im
+   Weg), also unkritischer als dort.
+2. Optional zusätzlich „Biometrie-Login" aktivieren (Fingerabdruck/Face Unlock, sofern das Gerät das
+   unterstützt) — die PIN bleibt dabei immer als Rückfallweg nutzbar.
+3. „Admin-Einstellungen" öffnet die Konsole nach erfolgreicher PIN-/Biometrie-Eingabe — das Entsperren
+   gilt **für die laufende Sitzung**: nach einem Neustart der App ist erneut eine Eingabe nötig.
+
+Die Konsole selbst gliedert sich in:
+
+- **KI-Verhalten**: frei editierbarer System-Prompt (überschreibt JARVIS' Standard-Persönlichkeit
+  komplett, nur im normalen Gesprächsmodus — Textadventure/RPG/Tagebuch/Benachrichtigungs-Digest bleiben
+  unberührt), ein Temperatur-Regler (0,0 = präzise, 1,0 = kreativ) und die Kontext-Länge (wie viele
+  vergangene Gesprächsrunden JARVIS sich merkt).
+- **KI-Server & Sicherheit**: die bisher in den normalen Einstellungen gepflegten Felder KI-Server-Adresse,
+  KI-Server-Schlüssel (HMAC) und TLS-Zertifikat-Pins sind **hierher verschoben**, dazu ein
+  Modell-Geschwindigkeit-Umschalter „Schnell" ↔ „Intelligent" (nur mit eigenem KI-Server wirksam, echte
+  serverseitige Modell-Allowlist — kein roher Client-Wert erreicht Cloudflare Workers AI direkt).
+- **System-Status**: Latenz-Check auf Knopfdruck sowie ein lokaler, App-interner Anfragezähler für den
+  aktuellen Tag (**kein** echtes Anbieter-Kontingent — Cloudflare zeigt Workers AI keine Kontingent-Daten
+  gegenüber dem Worker selbst an).
+- **System-Befehle**: „KI-Gedächtnis löschen" (leert den Gesprächsverlauf, mit Bestätigungsdialog, da
+  nicht rückgängig machbar) und „Backup jetzt ausführen" (identisch zum Chat-Befehl „erstelle jetzt ein
+  backup").
+- **Entwickler-Tools**: ein Selbsttest-Button prüft sicheren Speicher, KI-Server-Erreichbarkeit,
+  Offline-Modell, Benachrichtigungszugriff sowie Mikrofon-/Kamera-Berechtigungen (✓/✗ je Punkt), ein
+  Live-Log-Viewer (automatischer Refresh alle 2 Sekunden), sowie zwei Schalter: „Lokale KI erzwingen"
+  (Antworten kommen ausschließlich vom Offline-Modell, mit klarer Fehlermeldung statt stiller
+  Cloud-Anfrage, falls keins installiert ist) und „Discord-Bot-Versand" (**reiner Platzhalter** — tut
+  aktuell nichts, `discord-bot/` ist ein komplett separates Node.js-Projekt ohne Verbindung zu dieser
+  App).
+- **Erscheinungsbild**: Umschalter zwischen der Standard-Goldpalette und einer alternativen „Dark
+  Cyan"-Palette — wirkt sofort, ohne App-Neustart.
+
+**Wichtig:** Der Modell-Geschwindigkeit-Umschalter und der System-Prompt-Override wirken für Nutzer mit
+eigenem KI-Server erst, nachdem `worker/ai-proxy.js` neu deployt wurde (siehe Abschnitt „Sicherheit" oben
+zum allgemeinen Deploy-Vorgehen) — der kostenlose Gratis-Fallback (kein eigener Server eingetragen)
+übernimmt den System-Prompt-Override sofort, Temperatur und Modell-Wechsel wirken dort grundsätzlich
+nicht (diese GET-API kennt beides nicht).
 
 ## YouTube-Video-Upload einrichten (optional)
 
