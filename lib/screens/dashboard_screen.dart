@@ -32,14 +32,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (mounted) setState(() => _data = data);
   }
 
-  Color _energyColor(int energy) {
-    if (energy < 30) return JarvisColors.error;
-    if (energy < 60) return JarvisColors.accent;
+  Color _energyColor(JarvisPaletteExtension palette, int energy) {
+    if (energy < 30) return palette.error;
+    if (energy < 60) return palette.accent;
     return const Color(0xFF6FCF97);
   }
 
   @override
   Widget build(BuildContext context) {
+    final palette = Theme.of(context).extension<JarvisPaletteExtension>()!;
     final data = _data;
     return Scaffold(
       appBar: AppBar(title: const Text('Lebens-Dashboard')),
@@ -59,7 +60,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           'Level ${data.level} · ${data.rank}',
                           style: Theme.of(
                             context,
-                          ).textTheme.titleLarge?.copyWith(color: JarvisColors.accent, fontWeight: FontWeight.bold),
+                          ).textTheme.titleLarge?.copyWith(color: palette.accent, fontWeight: FontWeight.bold),
                         ),
                         const SizedBox(height: 12),
                         Text('XP: ${data.xp} / ${data.xpForNextLevel}'),
@@ -69,8 +70,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           child: LinearProgressIndicator(
                             value: data.xpProgress,
                             minHeight: 10,
-                            backgroundColor: JarvisColors.secondary,
-                            color: JarvisColors.accent,
+                            backgroundColor: palette.secondary,
+                            color: palette.accent,
                           ),
                         ),
                         const SizedBox(height: 20),
@@ -81,8 +82,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           child: LinearProgressIndicator(
                             value: data.energy / 100,
                             minHeight: 10,
-                            backgroundColor: JarvisColors.secondary,
-                            color: _energyColor(data.energy),
+                            backgroundColor: palette.secondary,
+                            color: _energyColor(palette, data.energy),
                           ),
                         ),
                         const SizedBox(height: 4),

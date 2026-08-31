@@ -69,6 +69,7 @@ class _AdminGateScreenState extends State<AdminGateScreen> {
   @override
   Widget build(BuildContext context) {
     final showBiometrics = widget.onBiometricUnlock != null;
+    final palette = Theme.of(context).extension<JarvisPaletteExtension>()!;
     return Scaffold(
       appBar: AppBar(title: const Text('Admin-Zugang')),
       body: SafeArea(
@@ -78,20 +79,20 @@ class _AdminGateScreenState extends State<AdminGateScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.admin_panel_settings_outlined, size: 64, color: JarvisColors.accent),
+                Icon(Icons.admin_panel_settings_outlined, size: 64, color: palette.accent),
                 const SizedBox(height: 24),
                 Text(
                   'Admin-Konsole gesperrt',
                   style: Theme.of(
                     context,
-                  ).textTheme.headlineSmall?.copyWith(color: JarvisColors.accent, fontWeight: FontWeight.bold),
+                  ).textTheme.headlineSmall?.copyWith(color: palette.accent, fontWeight: FontWeight.bold),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 16),
-                const Text(
+                Text(
                   'Gib deine Admin-PIN ein, um fortzufahren.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: JarvisColors.mutedForeground),
+                  style: TextStyle(color: palette.mutedForeground),
                 ),
                 const SizedBox(height: 24),
                 SizedBox(

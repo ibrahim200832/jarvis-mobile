@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:crypto/crypto.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../theme/jarvis_theme.dart';
 import 'secure_storage_service.dart';
 
 /// Persists user configuration (API keys, assistant name) on-device.
@@ -70,6 +71,7 @@ class SettingsService {
   static const _keyAiModelTier = 'ai_model_tier';
   static const _keyAiRequestCountDate = 'ai_request_count_date';
   static const _keyAiRequestCountValue = 'ai_request_count_value';
+  static const _keyThemeVariant = 'theme_variant';
 
   /// Reads a secret from secure (AES-256) storage. If it hasn't been
   /// migrated yet, transparently pulls a legacy plaintext SharedPreferences
@@ -711,6 +713,18 @@ class SettingsService {
   Future<void> setAiModelTier(String value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyAiModelTier, value);
+  }
+
+  /// Admin-Konsole "Erscheinungsbild" (Gold/Dark Cyan) — an unrecognized or
+  /// missing stored value falls back to gold, the app's original look.
+  Future<ThemeVariant> getThemeVariant() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyThemeVariant) == 'cyan' ? ThemeVariant.cyan : ThemeVariant.gold;
+  }
+
+  Future<void> setThemeVariant(ThemeVariant variant) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyThemeVariant, variant == ThemeVariant.cyan ? 'cyan' : 'gold');
   }
 
   /// Local, app-side counter of AI requests made today — NOT a real

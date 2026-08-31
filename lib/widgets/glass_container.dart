@@ -25,6 +25,7 @@ class GlassContainer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = Theme.of(context).extension<JarvisPaletteExtension>()!;
     return Container(
       decoration: BoxDecoration(borderRadius: borderRadius, boxShadow: boxShadow),
       child: ClipRRect(
@@ -34,9 +35,9 @@ class GlassContainer extends StatelessWidget {
           child: Container(
             padding: padding,
             decoration: BoxDecoration(
-              color: strong ? JarvisColors.glassFillStrong : JarvisColors.glassFill,
+              color: strong ? palette.glassFillStrong : palette.glassFill,
               borderRadius: borderRadius,
-              border: Border.all(color: JarvisColors.border),
+              border: Border.all(color: palette.border),
             ),
             child: child,
           ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:jarvis_mobile/theme/jarvis_theme.dart';
 import 'package:jarvis_mobile/widgets/admin_gate_screen.dart';
 
 void main() {
@@ -7,6 +8,7 @@ void main() {
     var unlockCalls = 0;
     await tester.pumpWidget(
       MaterialApp(
+        theme: buildJarvisTheme(),
         home: AdminGateScreen(
           onUnlock: (pin) async {
             unlockCalls++;
@@ -29,6 +31,7 @@ void main() {
     var unlockCalls = 0;
     await tester.pumpWidget(
       MaterialApp(
+        theme: buildJarvisTheme(),
         home: AdminGateScreen(onUnlock: (_) async {
           unlockCalls++;
           return false;
@@ -47,6 +50,7 @@ void main() {
     bool? poppedValue;
     await tester.pumpWidget(
       MaterialApp(
+        theme: buildJarvisTheme(),
         home: Builder(
           builder: (context) => ElevatedButton(
             onPressed: () async {
@@ -79,7 +83,7 @@ void main() {
 
   testWidgets('does not show a biometric button when onBiometricUnlock is null', (tester) async {
     await tester.pumpWidget(
-      MaterialApp(home: AdminGateScreen(onUnlock: (_) async => false)),
+      MaterialApp(theme: buildJarvisTheme(), home: AdminGateScreen(onUnlock: (_) async => false)),
     );
 
     expect(find.text('Mit Biometrie entsperren'), findsNothing);
@@ -90,6 +94,7 @@ void main() {
     bool? poppedValue;
     await tester.pumpWidget(
       MaterialApp(
+        theme: buildJarvisTheme(),
         home: Builder(
           builder: (context) => ElevatedButton(
             onPressed: () async {
@@ -125,6 +130,7 @@ void main() {
   testWidgets('a failed biometric attempt stays on the gate screen', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
+        theme: buildJarvisTheme(),
         home: AdminGateScreen(
           onUnlock: (_) async => false,
           onBiometricUnlock: () async => false,

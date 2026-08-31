@@ -50,8 +50,9 @@ class _EmergencyLockScreenState extends State<EmergencyLockScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = Theme.of(context).extension<JarvisPaletteExtension>()!;
     return Scaffold(
-      backgroundColor: JarvisColors.background,
+      backgroundColor: palette.background,
       body: SafeArea(
         child: Center(
           child: Padding(
@@ -59,20 +60,20 @@ class _EmergencyLockScreenState extends State<EmergencyLockScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.lock_outline, size: 64, color: JarvisColors.accent),
+                Icon(Icons.lock_outline, size: 64, color: palette.accent),
                 const SizedBox(height: 24),
                 Text(
                   'Notfall-Sperre aktiv',
                   style: Theme.of(
                     context,
-                  ).textTheme.headlineSmall?.copyWith(color: JarvisColors.accent, fontWeight: FontWeight.bold),
+                  ).textTheme.headlineSmall?.copyWith(color: palette.accent, fontWeight: FontWeight.bold),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 16),
-                const Text(
+                Text(
                   'Gib deine PIN ein, um JARVIS wieder zu entsperren.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: JarvisColors.mutedForeground),
+                  style: TextStyle(color: palette.mutedForeground),
                 ),
                 const SizedBox(height: 24),
                 SizedBox(

@@ -71,19 +71,20 @@ class _LogViewerScreenState extends State<LogViewerScreen> {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Log in die Zwischenablage kopiert.')));
   }
 
-  Color _colorFor(LogLevel level) {
+  Color _colorFor(JarvisPaletteExtension palette, LogLevel level) {
     switch (level) {
       case LogLevel.error:
-        return JarvisColors.error;
+        return palette.error;
       case LogLevel.warning:
-        return JarvisColors.accent;
+        return palette.accent;
       case LogLevel.info:
-        return JarvisColors.mutedForeground;
+        return palette.mutedForeground;
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final palette = Theme.of(context).extension<JarvisPaletteExtension>()!;
     final dateFormat = DateFormat('dd.MM. HH:mm:ss');
     return Scaffold(
       appBar: AppBar(
@@ -112,12 +113,16 @@ class _LogViewerScreenState extends State<LogViewerScreen> {
                         children: [
                           Text(
                             entry.level.name.toUpperCase(),
-                            style: TextStyle(color: _colorFor(entry.level), fontWeight: FontWeight.bold, fontSize: 11),
+                            style: TextStyle(
+                              color: _colorFor(palette, entry.level),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 11,
+                            ),
                           ),
                           const SizedBox(width: 8),
                           Text(
                             dateFormat.format(entry.timestamp),
-                            style: const TextStyle(color: JarvisColors.mutedForeground, fontSize: 11),
+                            style: TextStyle(color: palette.mutedForeground, fontSize: 11),
                           ),
                           const SizedBox(width: 8),
                           Expanded(

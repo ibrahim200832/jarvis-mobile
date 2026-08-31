@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jarvis_mobile/services/secure_storage_service.dart';
 import 'package:jarvis_mobile/services/settings_service.dart';
+import 'package:jarvis_mobile/theme/jarvis_theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// In-memory stand-in for flutter_secure_storage — same fake as
@@ -211,6 +212,14 @@ void main() {
       expect(await settings.getAiModelTier(), 'smart');
       await settings.setAiModelTier('fast');
       expect(await settings.getAiModelTier(), 'fast');
+    });
+
+    test('theme variant defaults to gold and round-trips', () async {
+      expect(await settings.getThemeVariant(), ThemeVariant.gold);
+      await settings.setThemeVariant(ThemeVariant.cyan);
+      expect(await settings.getThemeVariant(), ThemeVariant.cyan);
+      await settings.setThemeVariant(ThemeVariant.gold);
+      expect(await settings.getThemeVariant(), ThemeVariant.gold);
     });
 
     test('AI request count starts at 0 and increments on each record', () async {

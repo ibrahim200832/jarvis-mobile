@@ -895,6 +895,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
 
     final colorScheme = Theme.of(context).colorScheme;
+    final palette = Theme.of(context).extension<JarvisPaletteExtension>()!;
 
     if (_callActive) {
       return Scaffold(
@@ -939,8 +940,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       shape: BoxShape.circle,
                       gradient: RadialGradient(
                         colors: [
-                          JarvisColors.accentGlow.withValues(alpha: 0.16),
-                          JarvisColors.accentGlow.withValues(alpha: 0),
+                          palette.accentGlow.withValues(alpha: 0.16),
+                          palette.accentGlow.withValues(alpha: 0),
                         ],
                       ),
                     ),
@@ -967,11 +968,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                       ),
                     )
                   else if (_focusMode)
-                    const Padding(
-                      padding: EdgeInsets.fromLTRB(16, 10, 16, 0),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
                       child: Text(
                         'Fokus-Modus — Handy umdrehen, um zurückzukehren.',
-                        style: TextStyle(color: JarvisColors.accent),
+                        style: TextStyle(color: palette.accent),
                       ),
                     ),
                   Expanded(
@@ -993,10 +994,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildHeader(BuildContext context, ColorScheme colorScheme) {
+    final palette = Theme.of(context).extension<JarvisPaletteExtension>()!;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: JarvisColors.glassFillStrong,
-        border: Border(bottom: BorderSide(color: JarvisColors.border)),
+        color: palette.glassFillStrong,
+        border: Border(bottom: BorderSide(color: palette.border)),
       ),
       child: SafeArea(
         bottom: false,

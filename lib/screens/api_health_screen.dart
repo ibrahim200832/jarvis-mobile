@@ -45,7 +45,8 @@ class _ApiHealthScreenState extends State<ApiHealthScreen> {
     });
   }
 
-  Color _statusColor(ApiHealthResult result) => result.reachable ? const Color(0xFF6FCF97) : JarvisColors.error;
+  Color _statusColor(JarvisPaletteExtension palette, ApiHealthResult result) =>
+      result.reachable ? const Color(0xFF6FCF97) : palette.error;
 
   String _statusText(ApiHealthResult result) {
     if (result.error == 'Kein eigener Server konfiguriert.') return 'Kein eigener Server konfiguriert';
@@ -54,6 +55,7 @@ class _ApiHealthScreenState extends State<ApiHealthScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = Theme.of(context).extension<JarvisPaletteExtension>()!;
     final result = _result;
     return Scaffold(
       appBar: AppBar(
@@ -75,14 +77,15 @@ class _ApiHealthScreenState extends State<ApiHealthScreen> {
                           Container(
                             width: 12,
                             height: 12,
-                            decoration: BoxDecoration(color: _statusColor(result), shape: BoxShape.circle),
+                            decoration: BoxDecoration(color: _statusColor(palette, result), shape: BoxShape.circle),
                           ),
                           const SizedBox(width: 8),
                           Text(
                             _checking ? 'Prüfe…' : _statusText(result),
-                            style: Theme.of(
-                              context,
-                            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: _statusColor(result)),
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color: _statusColor(palette, result),
+                                ),
                           ),
                         ],
                       ),
@@ -98,25 +101,25 @@ class _ApiHealthScreenState extends State<ApiHealthScreen> {
                       ],
                       if (!result.reachable && result.error != null && result.error != 'Kein eigener Server konfiguriert.') ...[
                         const SizedBox(height: 8),
-                        Text('Fehler: ${result.error}', style: const TextStyle(color: JarvisColors.error)),
+                        Text('Fehler: ${result.error}', style: TextStyle(color: palette.error)),
                       ],
                       const SizedBox(height: 8),
                       Text(
                         'Zuletzt geprüft: ${DateFormat('dd.MM. HH:mm:ss').format(result.checkedAt)}',
-                        style: const TextStyle(color: JarvisColors.mutedForeground, fontSize: 12),
+                        style: TextStyle(color: palette.mutedForeground, fontSize: 12),
                       ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 16),
-                const GlassContainer(
-                  padding: EdgeInsets.all(16),
+                GlassContainer(
+                  padding: const EdgeInsets.all(16),
                   child: Text(
                     'Hinweis: Diese Ansicht prüft nur, ob dein Worker antwortet, und misst die '
                     'Round-Trip-Latenz. Verbrauchte API-Quotas werden von Cloudflare ausschließlich '
                     'im eigenen Account-Dashboard angezeigt — die App selbst hat darauf keinen '
                     'Zugriff und kann sie deshalb hier nicht ehrlich beziffern.',
-                    style: TextStyle(color: JarvisColors.mutedForeground, fontSize: 13),
+                    style: TextStyle(color: palette.mutedForeground, fontSize: 13),
                   ),
                 ),
               ],

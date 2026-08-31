@@ -57,6 +57,7 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
   bool _savingBehaviorSection = false;
   bool _clearingAiMemory = false;
   bool _runningBackup = false;
+  ThemeVariant _themeVariant = ThemeVariant.gold;
 
   static const _aiModels = {
     'openai': 'ChatGPT (Standard)',
@@ -85,7 +86,16 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
     _maxHistoryTurns = await widget.settings.getMaxHistoryTurns();
     _aiModelTier = await widget.settings.getAiModelTier();
     _todaysRequestCount = await widget.settings.getAiRequestCountToday();
+    _themeVariant = await widget.settings.getThemeVariant();
     if (mounted) setState(() {});
+  }
+
+  /// Persists the choice AND updates the live app immediately via the
+  /// shared notifier — see main.dart's JarvisApp, which listens to it.
+  Future<void> _setThemeVariant(ThemeVariant variant) async {
+    setState(() => _themeVariant = variant);
+    await widget.settings.setThemeVariant(variant);
+    themeVariantNotifier.value = variant;
   }
 
   Future<void> _checkHealth() async {
@@ -255,6 +265,7 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = Theme.of(context).extension<JarvisPaletteExtension>()!;
     return Scaffold(
       appBar: AppBar(title: const Text('Admin-Konsole')),
       body: ListView(
@@ -473,7 +484,7 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
                   children: [
                     Icon(
                       r.ok ? Icons.check_circle_outline : Icons.cancel_outlined,
-                      color: r.ok ? Colors.green : JarvisColors.error,
+                      color: r.ok ? Colors.green : palette.error,
                       size: 18,
                     ),
                     const SizedBox(width: 8),
@@ -485,7 +496,7 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
                           if (r.detail != null)
                             Text(
                               r.detail!,
-                              style: const TextStyle(fontSize: 11, color: JarvisColors.mutedForeground),
+                              style: TextStyle(fontSize: 11, color: palette.mutedForeground),
                             ),
                         ],
                       ),
@@ -504,6 +515,21 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
             ),
             icon: const Icon(Icons.bug_report_outlined),
             label: const Text('Live-Log-Viewer öffnen'),
+          ),
+          const SizedBox(height: 24),
+          Text('Erscheinungsbild', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 12),
+          SegmentedButton<ThemeVariant>(
+            segments: const [
+              ButtonSegment(value: ThemeVariant.gold, label: Text('Gold'), icon: Icon(Icons.circle, color: JarvisColors.accent)),
+              ButtonSegment(
+                value: ThemeVariant.cyan,
+                label: Text('Dark Cyan'),
+                icon: Icon(Icons.circle, color: JarvisCyanColors.accent),
+              ),
+            ],
+            selected: {_themeVariant},
+            onSelectionChanged: (selection) => _setThemeVariant(selection.first),
           ),
         ],
       ),

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jarvis_mobile/screens/log_viewer_screen.dart';
 import 'package:jarvis_mobile/services/log_service.dart';
+import 'package:jarvis_mobile/theme/jarvis_theme.dart';
 
 void main() {
   late Directory tempDir;
@@ -34,7 +35,7 @@ void main() {
   }
 
   testWidgets('shows a placeholder when no log entries exist', (tester) async {
-    await tester.pumpWidget(MaterialApp(home: LogViewerScreen(logService: log)));
+    await tester.pumpWidget(MaterialApp(theme: buildJarvisTheme(), home: LogViewerScreen(logService: log)));
     await settle(tester);
 
     expect(find.text('Keine Log-Einträge vorhanden.'), findsOneWidget);
@@ -46,7 +47,7 @@ void main() {
       await log.info('TestSource', 'eine Info');
     });
 
-    await tester.pumpWidget(MaterialApp(home: LogViewerScreen(logService: log)));
+    await tester.pumpWidget(MaterialApp(theme: buildJarvisTheme(), home: LogViewerScreen(logService: log)));
     await settle(tester);
 
     expect(find.text('ein Testfehler'), findsOneWidget);
@@ -58,7 +59,7 @@ void main() {
   testWidgets('clearing the log removes all entries from view', (tester) async {
     await tester.runAsync(() => log.error('TestSource', 'wird gleich gelöscht'));
 
-    await tester.pumpWidget(MaterialApp(home: LogViewerScreen(logService: log)));
+    await tester.pumpWidget(MaterialApp(theme: buildJarvisTheme(), home: LogViewerScreen(logService: log)));
     await settle(tester);
     expect(find.text('wird gleich gelöscht'), findsOneWidget);
 
@@ -70,7 +71,7 @@ void main() {
   });
 
   testWidgets('liveMode shows "(live)" in the title and cleans up its timer on dispose', (tester) async {
-    await tester.pumpWidget(MaterialApp(home: LogViewerScreen(logService: log, liveMode: true)));
+    await tester.pumpWidget(MaterialApp(theme: buildJarvisTheme(), home: LogViewerScreen(logService: log, liveMode: true)));
     await settle(tester);
 
     expect(find.text('Log-Viewer (live)'), findsOneWidget);
@@ -82,7 +83,7 @@ void main() {
   });
 
   testWidgets('non-live mode keeps the plain title', (tester) async {
-    await tester.pumpWidget(MaterialApp(home: LogViewerScreen(logService: log)));
+    await tester.pumpWidget(MaterialApp(theme: buildJarvisTheme(), home: LogViewerScreen(logService: log)));
     await settle(tester);
 
     expect(find.text('Log-Viewer'), findsOneWidget);

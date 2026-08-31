@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:jarvis_mobile/screens/admin_console_screen.dart';
 import 'package:jarvis_mobile/services/secure_storage_service.dart';
 import 'package:jarvis_mobile/services/settings_service.dart';
+import 'package:jarvis_mobile/theme/jarvis_theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// In-memory stand-in for flutter_secure_storage, same fake as
@@ -36,6 +37,7 @@ Future<void> _pumpConsole(
   addTearDown(tester.view.reset);
   await tester.pumpWidget(
     MaterialApp(
+      theme: buildJarvisTheme(),
       home: AdminConsoleScreen(settings: settings, onClearAiMemory: onClearAiMemory ?? () async {}),
     ),
   );
@@ -49,6 +51,11 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     settings = SettingsService(secureStorage: _FakeSecureStorageService());
   });
+
+  // themeVariantNotifier is a process-wide singleton (see main.dart's
+  // JarvisApp) — reset it after every test so a theme-switch test doesn't
+  // leak state into whichever test runs next in this file.
+  tearDown(() => themeVariantNotifier.value = ThemeVariant.gold);
 
   testWidgets('loads previously saved values into the fields', (tester) async {
     await settings.setAiBackendUrl('https://example.com');
@@ -267,5 +274,31 @@ void main() {
     await _pumpConsole(tester, settings);
 
     expect(find.text('Live-Log-Viewer öffnen'), findsOneWidget);
+  });
+
+  testWidgets('defaults to the gold theme selected', (tester) async {
+    await _pumpConsole(tester, settings);
+
+    final segmented = tester.widget<SegmentedButton<ThemeVariant>>(find.byType(SegmentedButton<ThemeVariant>));
+    expect(segmented.selected, {ThemeVariant.gold});
+  });
+
+  testWidgets('picking Dark Cyan persists it and updates the live app theme', (tester) async {
+    await _pumpConsole(tester, settings);
+
+    await tester.tap(find.text('Dark Cyan'));
+    await tester.pumpAndSettle();
+
+    expect(await settings.getThemeVariant(), ThemeVariant.cyan);
+    expect(themeVariantNotifier.value, ThemeVariant.cyan);
+  });
+
+  testWidgets('loads a previously saved Dark Cyan choice', (tester) async {
+    await settings.setThemeVariant(ThemeVariant.cyan);
+
+    await _pumpConsole(tester, settings);
+
+    final segmented = tester.widget<SegmentedButton<ThemeVariant>>(find.byType(SegmentedButton<ThemeVariant>));
+    expect(segmented.selected, {ThemeVariant.cyan});
   });
 }

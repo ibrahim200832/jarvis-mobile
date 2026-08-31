@@ -14,8 +14,9 @@ class IntegrityLockdownScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = Theme.of(context).extension<JarvisPaletteExtension>()!;
     return Scaffold(
-      backgroundColor: JarvisColors.background,
+      backgroundColor: palette.background,
       body: SafeArea(
         child: Center(
           child: Padding(
@@ -23,22 +24,22 @@ class IntegrityLockdownScreen extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.gpp_bad_outlined, size: 64, color: JarvisColors.error),
+                Icon(Icons.gpp_bad_outlined, size: 64, color: palette.error),
                 const SizedBox(height: 24),
                 Text(
                   'Sicherheitsprüfung fehlgeschlagen',
                   style: Theme.of(
                     context,
-                  ).textTheme.headlineSmall?.copyWith(color: JarvisColors.error, fontWeight: FontWeight.bold),
+                  ).textTheme.headlineSmall?.copyWith(color: palette.error, fontWeight: FontWeight.bold),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 16),
-                const Text(
+                Text(
                   'Die App-Integritätsprüfung meldet, dass dieses Gerät oder diese Installation nicht vertrauenswürdig '
                   'ist (z. B. ein gerootetes Gerät oder eine veränderte/nachgebaute APK). JARVIS startet aus '
                   'Sicherheitsgründen nicht weiter.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: JarvisColors.mutedForeground),
+                  style: TextStyle(color: palette.mutedForeground),
                 ),
               ],
             ),

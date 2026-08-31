@@ -6,6 +6,7 @@ import 'package:jarvis_mobile/screens/api_health_screen.dart';
 import 'package:jarvis_mobile/services/api_health_service.dart';
 import 'package:jarvis_mobile/services/secure_storage_service.dart';
 import 'package:jarvis_mobile/services/settings_service.dart';
+import 'package:jarvis_mobile/theme/jarvis_theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// In-memory stand-in for flutter_secure_storage (no platform channel
@@ -35,7 +36,7 @@ void main() {
     final settings = SettingsService(secureStorage: _FakeSecureStorageService());
     await settings.setAiBackendUrl('https://example.workers.dev');
 
-    await tester.pumpWidget(MaterialApp(home: ApiHealthScreen(apiHealth: apiHealth, settings: settings)));
+    await tester.pumpWidget(MaterialApp(theme: buildJarvisTheme(), home: ApiHealthScreen(apiHealth: apiHealth, settings: settings)));
     await tester.pumpAndSettle();
 
     expect(find.text('Erreichbar'), findsOneWidget);
@@ -48,7 +49,7 @@ void main() {
     final settings = SettingsService(secureStorage: _FakeSecureStorageService());
     await settings.setAiBackendUrl('https://example.workers.dev');
 
-    await tester.pumpWidget(MaterialApp(home: ApiHealthScreen(apiHealth: apiHealth, settings: settings)));
+    await tester.pumpWidget(MaterialApp(theme: buildJarvisTheme(), home: ApiHealthScreen(apiHealth: apiHealth, settings: settings)));
     await tester.pumpAndSettle();
 
     expect(find.text('Nicht erreichbar'), findsOneWidget);
@@ -65,7 +66,7 @@ void main() {
     final settings = SettingsService(secureStorage: _FakeSecureStorageService());
     await settings.setAiBackendUrl('https://example.workers.dev');
 
-    await tester.pumpWidget(MaterialApp(home: ApiHealthScreen(apiHealth: apiHealth, settings: settings)));
+    await tester.pumpWidget(MaterialApp(theme: buildJarvisTheme(), home: ApiHealthScreen(apiHealth: apiHealth, settings: settings)));
     await tester.pumpAndSettle();
     expect(callCount, 1);
 
@@ -80,7 +81,7 @@ void main() {
     final settings = SettingsService(secureStorage: _FakeSecureStorageService());
     await settings.setAiBackendUrl('');
 
-    await tester.pumpWidget(MaterialApp(home: ApiHealthScreen(apiHealth: apiHealth, settings: settings)));
+    await tester.pumpWidget(MaterialApp(theme: buildJarvisTheme(), home: ApiHealthScreen(apiHealth: apiHealth, settings: settings)));
     await tester.pumpAndSettle();
 
     expect(find.text('Kein eigener Server konfiguriert'), findsOneWidget);

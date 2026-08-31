@@ -30,25 +30,28 @@ class _ScanlineOverlayState extends State<ScanlineOverlay> with SingleTickerProv
 
   @override
   Widget build(BuildContext context) {
+    final glowColor = Theme.of(context).extension<JarvisPaletteExtension>()!.accentGlow;
     return IgnorePointer(
       child: AnimatedBuilder(
         animation: _controller,
-        builder: (context, _) => CustomPaint(size: Size.infinite, painter: _ScanlinePainter(t: _controller.value)),
+        builder: (context, _) =>
+            CustomPaint(size: Size.infinite, painter: _ScanlinePainter(t: _controller.value, glowColor: glowColor)),
       ),
     );
   }
 }
 
 class _ScanlinePainter extends CustomPainter {
-  _ScanlinePainter({required this.t});
+  _ScanlinePainter({required this.t, required this.glowColor});
 
   final double t;
+  final Color glowColor;
   static const _spacing = 5.0;
 
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = JarvisColors.accentGlow.withValues(alpha: 0.035)
+      ..color = glowColor.withValues(alpha: 0.035)
       ..strokeWidth = 1;
     final offset = t * _spacing;
     for (double y = (offset % _spacing) - _spacing; y < size.height; y += _spacing) {
@@ -57,5 +60,6 @@ class _ScanlinePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _ScanlinePainter oldDelegate) => oldDelegate.t != t;
+  bool shouldRepaint(covariant _ScanlinePainter oldDelegate) =>
+      oldDelegate.t != t || oldDelegate.glowColor != glowColor;
 }

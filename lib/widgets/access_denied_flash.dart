@@ -14,12 +14,13 @@ class AccessDeniedFlash extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = Theme.of(context).extension<JarvisPaletteExtension>()!;
     return IgnorePointer(
       child: AnimatedOpacity(
         opacity: visible ? 1 : 0,
         duration: const Duration(milliseconds: 200),
         child: Container(
-          color: JarvisColors.error.withValues(alpha: 0.35),
+          color: palette.error.withValues(alpha: 0.35),
           alignment: Alignment.center,
           child: const Text(
             'ZUGRIFF VERWEIGERT',

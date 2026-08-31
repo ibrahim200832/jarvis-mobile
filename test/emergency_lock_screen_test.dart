@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:jarvis_mobile/theme/jarvis_theme.dart';
 import 'package:jarvis_mobile/widgets/emergency_lock_screen.dart';
 
 void main() {
@@ -7,6 +8,7 @@ void main() {
     var unlockCalls = 0;
     await tester.pumpWidget(
       MaterialApp(
+        theme: buildJarvisTheme(),
         home: EmergencyLockScreen(
           onUnlock: (pin) async {
             unlockCalls++;
@@ -29,6 +31,7 @@ void main() {
     String? receivedPin;
     await tester.pumpWidget(
       MaterialApp(
+        theme: buildJarvisTheme(),
         home: EmergencyLockScreen(
           onUnlock: (pin) async {
             receivedPin = pin;
@@ -52,6 +55,7 @@ void main() {
     var unlockCalls = 0;
     await tester.pumpWidget(
       MaterialApp(
+        theme: buildJarvisTheme(),
         home: EmergencyLockScreen(
           onUnlock: (pin) async {
             unlockCalls++;
