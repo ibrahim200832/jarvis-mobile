@@ -40,6 +40,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _weatherKeyCtrl = TextEditingController();
   final _nameCtrl = TextEditingController();
   final _aiBackendCtrl = TextEditingController();
+  final _aiHmacSecretCtrl = TextEditingController();
   final _youtubeClientIdCtrl = TextEditingController();
   final _spotifyClientIdCtrl = TextEditingController();
   final _tiktokClientKeyCtrl = TextEditingController();
@@ -106,6 +107,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _weatherKeyCtrl.text = await widget.settings.getWeatherApiKey() ?? '';
     _nameCtrl.text = await widget.settings.getUserName();
     _aiBackendCtrl.text = await widget.settings.getAiBackendUrl() ?? '';
+    _aiHmacSecretCtrl.text = await widget.settings.getAiHmacSecret() ?? '';
     _youtubeClientIdCtrl.text = await widget.settings.getYoutubeClientId() ?? '';
     _spotifyClientIdCtrl.text = await widget.settings.getSpotifyClientId() ?? '';
     _tiktokClientKeyCtrl.text = await widget.settings.getTiktokClientKey() ?? '';
@@ -163,6 +165,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await widget.settings.setWeatherApiKey(_weatherKeyCtrl.text.trim());
     await widget.settings.setUserName(_nameCtrl.text.trim());
     await widget.settings.setAiBackendUrl(_aiBackendCtrl.text.trim());
+    if (_aiHmacSecretCtrl.text.trim().isEmpty) {
+      await widget.settings.clearAiHmacSecret();
+    } else {
+      await widget.settings.setAiHmacSecret(_aiHmacSecretCtrl.text.trim());
+    }
     await widget.settings.setYoutubeClientId(_youtubeClientIdCtrl.text.trim());
     await widget.settings.setSpotifyClientId(_spotifyClientIdCtrl.text.trim());
     await widget.settings.setTiktokClientKey(_tiktokClientKeyCtrl.text.trim());
@@ -523,6 +530,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
             decoration: const InputDecoration(
               labelText: 'KI-Server-Adresse (für freie Gespräche)',
               helperText: 'Die Worker-URL aus der Cloudflare-Bereitstellung, siehe README',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _aiHmacSecretCtrl,
+            obscureText: true,
+            decoration: const InputDecoration(
+              labelText: 'KI-Server-Schlüssel (Request-Signierung)',
+              helperText:
+                  'Optional. Muss exakt mit dem HMAC_SECRET im Worker übereinstimmen (siehe README) — '
+                  'sobald dort gesetzt, lehnt der Worker unsignierte/gefälschte Anfragen ab.',
               border: OutlineInputBorder(),
             ),
           ),

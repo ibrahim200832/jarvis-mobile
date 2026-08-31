@@ -848,6 +848,7 @@ Das kann ich für dich tun:
       final persona = await settings.getPersona();
       final moodDelta = (await settings.getMoodAutoAdjustEnabled()) ? (_sessionMood?.sarcasmDelta ?? 0.0) : 0.0;
       final effectiveSarcasm = (sarcasm + moodDelta).clamp(0.0, 1.0);
+      final hmacSecret = await settings.getAiHmacSecret();
       final aiResult = await aiChat.ask(
         backendUrl ?? '',
         text,
@@ -855,6 +856,7 @@ Das kann ich für dich tun:
         history: List.unmodifiable(_aiHistory),
         sarcasm: effectiveSarcasm,
         persona: persona,
+        hmacSecret: hmacSecret,
       );
       _aiHistory.add(AiTurn(role: 'user', content: text));
       _aiHistory.add(AiTurn(role: 'assistant', content: aiResult.reply));
@@ -895,7 +897,13 @@ Das kann ich für dich tun:
       _storyHistory.clear();
       final backendUrl = await settings.getAiBackendUrl();
       const kickoff = 'Starte die Geschichte mit einer packenden Eröffnungsszene.';
-      final result = await aiChat.askStory(backendUrl ?? '', kickoff, genre: genre, history: const []);
+      final result = await aiChat.askStory(
+        backendUrl ?? '',
+        kickoff,
+        genre: genre,
+        history: const [],
+        hmacSecret: await settings.getAiHmacSecret(),
+      );
       _storyHistory.add(AiTurn(role: 'user', content: kickoff));
       _storyHistory.add(AiTurn(role: 'assistant', content: result.reply));
       _storyMode = true;
@@ -918,6 +926,7 @@ Das kann ich für dich tun:
         text,
         genre: _storyGenre,
         history: List.unmodifiable(_storyHistory),
+        hmacSecret: await settings.getAiHmacSecret(),
       );
       _storyHistory.add(AiTurn(role: 'user', content: text));
       _storyHistory.add(AiTurn(role: 'assistant', content: result.reply));
@@ -1118,7 +1127,7 @@ Das kann ich für dich tun:
 
   Future<String> _submitJournalEntry(String entryText) async {
     final backendUrl = await settings.getAiBackendUrl();
-    final result = await aiChat.askJournal(backendUrl ?? '', entryText);
+    final result = await aiChat.askJournal(backendUrl ?? '', entryText, hmacSecret: await settings.getAiHmacSecret());
     await journal.add(entryText, result.reply);
     return result.reply;
   }
@@ -1269,7 +1278,13 @@ Das kann ich für dich tun:
       _rpgHistory.clear();
       final backendUrl = await settings.getAiBackendUrl();
       const kickoff = 'Starte das Überlebens-RPG mit einer packenden Eröffnungsszene der Apokalypse.';
-      final result = await aiChat.askRpg(backendUrl ?? '', kickoff, statsSummary: stats.summary(), history: const []);
+      final result = await aiChat.askRpg(
+        backendUrl ?? '',
+        kickoff,
+        statsSummary: stats.summary(),
+        history: const [],
+        hmacSecret: await settings.getAiHmacSecret(),
+      );
       _rpgHistory.add(AiTurn(role: 'user', content: kickoff));
       _rpgHistory.add(AiTurn(role: 'assistant', content: result.reply));
       await rpg.saveHistory(_rpgHistory);
@@ -1344,6 +1359,7 @@ Das kann ich für dich tun:
         aiMessage,
         statsSummary: stats.summary(),
         history: List.unmodifiable(_rpgHistory),
+        hmacSecret: await settings.getAiHmacSecret(),
       );
       _rpgHistory.add(AiTurn(role: 'user', content: text));
       _rpgHistory.add(AiTurn(role: 'assistant', content: result.reply));

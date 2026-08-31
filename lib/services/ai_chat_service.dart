@@ -3,6 +3,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'request_signing_service.dart';
+
 /// An action the AI decided to trigger on the phone (call, WhatsApp, open app,
 /// timer, note, weather, camera) instead of just replying with text.
 class AiAction {
@@ -159,6 +161,25 @@ String journalSystemPrompt() =>
 /// service (no account, no key) so JARVIS can always hold a conversation —
 /// just without the ability to trigger phone actions itself.
 class AiChatService {
+  final _signer = RequestSigningService();
+
+  /// Builds the headers for a POST to the user's own backend Worker. Without
+  /// an [hmacSecret] the request goes out unsigned — the Worker itself
+  /// decides whether that's still accepted (see worker/ai-proxy.js: signing
+  /// is enforced only once the operator has configured HMAC_SECRET
+  /// server-side, so this stays backward compatible with a Worker deployed
+  /// before this feature existed).
+  Map<String, String> _headers(String backendUrl, String body, String? hmacSecret) {
+    final headers = {'content-type': 'application/json'};
+    if (hmacSecret == null || hmacSecret.isEmpty) return headers;
+    final uri = Uri.parse(backendUrl.trim());
+    // Matches how the Worker sees it: new URL(request.url).pathname is
+    // never empty, it's "/" for a bare origin.
+    final path = uri.path.isEmpty ? '/' : uri.path;
+    final signed = _signer.sign(secret: hmacSecret, method: 'POST', path: path, body: body);
+    return {...headers, ...signed.toHeaders()};
+  }
+
   Future<AiChatResult> ask(
     String backendUrl,
     String message, {
@@ -166,21 +187,23 @@ class AiChatService {
     List<AiTurn> history = const [],
     double sarcasm = 0.3,
     String persona = 'standard',
+    String? hmacSecret,
   }) async {
     if (backendUrl.trim().isEmpty) {
       return _askFreeFallback(message, model, history, sarcasm, persona);
     }
     try {
+      final bodyJson = jsonEncode({
+        'message': message,
+        'history': history.map((t) => t.toJson()).toList(),
+        'sarcasm': sarcasm,
+        'persona': persona,
+      });
       final res = await http
           .post(
             Uri.parse(backendUrl.trim()),
-            headers: {'content-type': 'application/json'},
-            body: jsonEncode({
-              'message': message,
-              'history': history.map((t) => t.toJson()).toList(),
-              'sarcasm': sarcasm,
-              'persona': persona,
-            }),
+            headers: _headers(backendUrl, bodyJson, hmacSecret),
+            body: bodyJson,
           )
           .timeout(const Duration(seconds: 25));
       if (res.statusCode != 200) {
@@ -243,21 +266,23 @@ class AiChatService {
     String message, {
     required String genre,
     List<AiTurn> history = const [],
+    String? hmacSecret,
   }) async {
     if (backendUrl.trim().isEmpty) {
       return _askStoryFreeFallback(message, genre, history);
     }
     try {
+      final bodyJson = jsonEncode({
+        'message': message,
+        'history': history.map((t) => t.toJson()).toList(),
+        'mode': 'story',
+        'genre': genre,
+      });
       final res = await http
           .post(
             Uri.parse(backendUrl.trim()),
-            headers: {'content-type': 'application/json'},
-            body: jsonEncode({
-              'message': message,
-              'history': history.map((t) => t.toJson()).toList(),
-              'mode': 'story',
-              'genre': genre,
-            }),
+            headers: _headers(backendUrl, bodyJson, hmacSecret),
+            body: bodyJson,
           )
           .timeout(const Duration(seconds: 25));
       if (res.statusCode != 200) {
@@ -301,21 +326,23 @@ class AiChatService {
     String message, {
     required String statsSummary,
     List<AiTurn> history = const [],
+    String? hmacSecret,
   }) async {
     if (backendUrl.trim().isEmpty) {
       return _askRpgFreeFallback(message, statsSummary, history);
     }
     try {
+      final bodyJson = jsonEncode({
+        'message': message,
+        'history': history.map((t) => t.toJson()).toList(),
+        'mode': 'rpg',
+        'statsSummary': statsSummary,
+      });
       final res = await http
           .post(
             Uri.parse(backendUrl.trim()),
-            headers: {'content-type': 'application/json'},
-            body: jsonEncode({
-              'message': message,
-              'history': history.map((t) => t.toJson()).toList(),
-              'mode': 'rpg',
-              'statsSummary': statsSummary,
-            }),
+            headers: _headers(backendUrl, bodyJson, hmacSecret),
+            body: bodyJson,
           )
           .timeout(const Duration(seconds: 25));
       if (res.statusCode != 200) {
@@ -354,16 +381,17 @@ class AiChatService {
   /// journalSystemPrompt). Deliberately stateless — no history parameter,
   /// unlike ask()/askStory()/askRpg() — since this is a one-off exchange,
   /// not an ongoing mode.
-  Future<AiChatResult> askJournal(String backendUrl, String dayText) async {
+  Future<AiChatResult> askJournal(String backendUrl, String dayText, {String? hmacSecret}) async {
     if (backendUrl.trim().isEmpty) {
       return _askJournalFreeFallback(dayText);
     }
     try {
+      final bodyJson = jsonEncode({'message': dayText, 'history': const [], 'mode': 'journal'});
       final res = await http
           .post(
             Uri.parse(backendUrl.trim()),
-            headers: {'content-type': 'application/json'},
-            body: jsonEncode({'message': dayText, 'history': const [], 'mode': 'journal'}),
+            headers: _headers(backendUrl, bodyJson, hmacSecret),
+            body: bodyJson,
           )
           .timeout(const Duration(seconds: 25));
       if (res.statusCode != 200) {

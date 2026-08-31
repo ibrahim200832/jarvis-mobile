@@ -243,6 +243,7 @@ class FakeAiChatService extends AiChatService {
   int askRpgCallCount = 0;
   String? lastJournalDayText;
   int askJournalCallCount = 0;
+  String? lastHmacSecret;
 
   @override
   Future<AiChatResult> ask(
@@ -252,11 +253,13 @@ class FakeAiChatService extends AiChatService {
     List<AiTurn> history = const [],
     double sarcasm = 0.3,
     String persona = 'standard',
+    String? hmacSecret,
   }) async {
     lastMessage = message;
     lastHistory = history;
     lastPersona = persona;
     lastSarcasm = sarcasm;
+    lastHmacSecret = hmacSecret;
     return AiChatResult(reply: 'FAKE_AI:$message', action: nextAction);
   }
 
@@ -266,10 +269,12 @@ class FakeAiChatService extends AiChatService {
     String message, {
     required String genre,
     List<AiTurn> history = const [],
+    String? hmacSecret,
   }) async {
     lastStoryMessage = message;
     lastStoryHistory = history;
     lastStoryGenre = genre;
+    lastHmacSecret = hmacSecret;
     return AiChatResult(reply: 'FAKE_STORY[$genre]:$message');
   }
 
@@ -279,18 +284,21 @@ class FakeAiChatService extends AiChatService {
     String message, {
     required String statsSummary,
     List<AiTurn> history = const [],
+    String? hmacSecret,
   }) async {
     askRpgCallCount++;
     lastRpgMessage = message;
     lastRpgHistory = history;
     lastRpgStatsSummary = statsSummary;
+    lastHmacSecret = hmacSecret;
     return AiChatResult(reply: 'FAKE_RPG:$message');
   }
 
   @override
-  Future<AiChatResult> askJournal(String backendUrl, String dayText) async {
+  Future<AiChatResult> askJournal(String backendUrl, String dayText, {String? hmacSecret}) async {
     askJournalCallCount++;
     lastJournalDayText = dayText;
+    lastHmacSecret = hmacSecret;
     return AiChatResult(reply: 'FAKE_JOURNAL:$dayText');
   }
 }
@@ -1527,5 +1535,36 @@ void main() {
     aiChat.nextAction = AiAction(type: 'open_tiktok_upload', params: {});
     final result = await router.handle('kannst du das auf tiktok posten');
     expect(result.openTiktokUpload, isTrue);
+  });
+
+  group('HMAC-Request-Signierung', () {
+    test('a configured secret is passed through to ask()', () async {
+      await settings.setAiHmacSecret('test-secret');
+      await router.handle('wie geht es dir heute');
+      expect(aiChat.lastHmacSecret, 'test-secret');
+    });
+
+    test('no configured secret passes null through to ask()', () async {
+      await router.handle('wie geht es dir heute');
+      expect(aiChat.lastHmacSecret, isNull);
+    });
+
+    test('a configured secret is passed through to askStory()', () async {
+      await settings.setAiHmacSecret('test-secret');
+      await router.handle('starte ein sci-fi abenteuer');
+      expect(aiChat.lastHmacSecret, 'test-secret');
+    });
+
+    test('a configured secret is passed through to askRpg()', () async {
+      await settings.setAiHmacSecret('test-secret');
+      await router.handle('starte das überlebens-rpg');
+      expect(aiChat.lastHmacSecret, 'test-secret');
+    });
+
+    test('a configured secret is passed through to askJournal()', () async {
+      await settings.setAiHmacSecret('test-secret');
+      await router.handle('mein tag war ziemlich gut');
+      expect(aiChat.lastHmacSecret, 'test-secret');
+    });
   });
 }

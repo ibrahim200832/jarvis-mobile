@@ -422,6 +422,18 @@ export default {
       return new Response(null, { headers: corsHeaders() });
     }
 
+    // Read the raw body once up front (GET requests have none) — every
+    // downstream handler works from this string instead of re-reading
+    // request.json()/request.text(), since a Request body stream can only
+    // be consumed once. This is also what the HMAC signature is computed
+    // over, so client and server must hash the exact same bytes.
+    const rawBody = request.method === 'GET' ? '' : await request.text();
+
+    const verification = await verifySignedRequest(request, rawBody, env);
+    if (!verification.ok) {
+      return json({ error: verification.error }, 401);
+    }
+
     const url = new URL(request.url);
     if (url.pathname === '/search') {
       if (request.method !== 'GET') {
@@ -433,7 +445,7 @@ export default {
       if (request.method !== 'POST') {
         return json({ error: 'method not allowed' }, 405);
       }
-      return handleTiktokToken(url.pathname, request, env);
+      return handleTiktokToken(url.pathname, rawBody, env);
     }
 
     if (request.method !== 'POST') {
@@ -448,7 +460,7 @@ export default {
     let genre;
     let statsSummary;
     try {
-      const body = await request.json();
+      const body = JSON.parse(rawBody);
       message = body.message;
       history = Array.isArray(body.history) ? body.history : [];
       sarcasm = body.sarcasm;
@@ -583,13 +595,13 @@ async function handleSearch(url, env) {
 // `wrangler secret put` or the Cloudflare dashboard) — unlike Spotify's
 // PKCE-only public-client flow, TikTok's token endpoint requires a client
 // secret, which must never ship inside the app.
-async function handleTiktokToken(pathname, request, env) {
+async function handleTiktokToken(pathname, rawBody, env) {
   if (!env.TIKTOK_CLIENT_KEY || !env.TIKTOK_CLIENT_SECRET) {
     return json({ error: 'Kein TikTok-Schlüssel auf dem Server hinterlegt.' }, 500);
   }
   let body;
   try {
-    body = await request.json();
+    body = JSON.parse(rawBody);
   } catch (_) {
     return json({ error: 'invalid json body' }, 400);
   }
@@ -629,11 +641,104 @@ async function handleTiktokToken(pathname, request, env) {
   return json(data);
 }
 
+// How long a signature stays valid, and how long a nonce is remembered as
+// "already used" — a captured request replayed after this window has
+// elapsed is rejected purely on the timestamp check; within the window,
+// nonceAlreadyUsed() below is the (best-effort) second line of defense.
+const SIGNATURE_WINDOW_SECONDS = 300;
+
+// Request-signing: verifies the X-Jarvis-Timestamp/Nonce/Signature headers
+// against HMAC_SECRET (set via `wrangler secret put HMAC_SECRET` or the
+// Cloudflare dashboard — see README). Deliberately graceful if the operator
+// hasn't set HMAC_SECRET yet: signing stays fully optional/unenforced until
+// they opt in, exactly like BRAVE_API_KEY/TIKTOK_CLIENT_KEY above — an
+// already-deployed Worker that gets this new code doesn't suddenly start
+// rejecting every request from an app that predates request signing.
+async function verifySignedRequest(request, rawBody, env) {
+  if (!env.HMAC_SECRET) return { ok: true };
+
+  const timestamp = request.headers.get('X-Jarvis-Timestamp');
+  const nonce = request.headers.get('X-Jarvis-Nonce');
+  const signature = request.headers.get('X-Jarvis-Signature');
+  if (!timestamp || !nonce || !signature) {
+    return { ok: false, error: 'Anfrage fehlt eine gültige Signatur.' };
+  }
+
+  const ts = Number(timestamp);
+  const now = Math.floor(Date.now() / 1000);
+  if (!Number.isFinite(ts) || Math.abs(now - ts) > SIGNATURE_WINDOW_SECONDS) {
+    return { ok: false, error: 'Zeitstempel der Anfrage ist abgelaufen oder ungültig.' };
+  }
+
+  const url = new URL(request.url);
+  const bodyHash = await sha256Hex(rawBody);
+  const canonical = `${request.method}\n${url.pathname}\n${timestamp}\n${nonce}\n${bodyHash}`;
+  const expectedSignature = await hmacSha256Hex(env.HMAC_SECRET, canonical);
+  if (!timingSafeEqual(expectedSignature, signature)) {
+    return { ok: false, error: 'Ungültige Signatur.' };
+  }
+
+  if (await nonceAlreadyUsed(nonce)) {
+    return { ok: false, error: 'Anfrage wurde bereits verarbeitet (möglicher Replay-Angriff erkannt).' };
+  }
+
+  return { ok: true };
+}
+
+async function sha256Hex(text) {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return bufferToHex(digest);
+}
+
+async function hmacSha256Hex(secret, message) {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(message));
+  return bufferToHex(signature);
+}
+
+function bufferToHex(buffer) {
+  return [...new Uint8Array(buffer)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Constant-time string comparison — a naive `===` leaks timing information
+// proportional to how many leading characters match, which a patient
+// attacker could exploit to forge a valid signature byte by byte.
+function timingSafeEqual(a, b) {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+// Best-effort replay dedup via the Workers Cache API — deliberately chosen
+// over a KV namespace or Durable Object so request signing works with a
+// zero-setup copy-paste deploy (see README), not just for operators willing
+// to provision extra Cloudflare bindings. Honest limitation: the Cache API
+// is per-data-center, not globally consistent, so a replay routed through a
+// *different* edge location within the signature window could in theory
+// slip past this specific check — the timestamp window above is still the
+// primary defense. A cryptographically airtight version would need a
+// Durable Object as the nonce store.
+async function nonceAlreadyUsed(nonce) {
+  const cache = caches.default;
+  const cacheKey = new Request(`https://nonce-cache.internal/${encodeURIComponent(nonce)}`);
+  const hit = await cache.match(cacheKey);
+  if (hit) return true;
+  await cache.put(cacheKey, new Response('1', { headers: { 'Cache-Control': `max-age=${SIGNATURE_WINDOW_SECONDS}` } }));
+  return false;
+}
+
 function corsHeaders() {
   return {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Headers': 'Content-Type, X-Jarvis-Timestamp, X-Jarvis-Nonce, X-Jarvis-Signature',
   };
 }
 
