@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:intl/intl.dart';
@@ -9,9 +11,16 @@ import '../theme/jarvis_theme.dart';
 /// error handlers, AiChatService's logged failures) so an issue on a real
 /// device can be diagnosed without a connected debugger.
 class LogViewerScreen extends StatefulWidget {
-  const LogViewerScreen({super.key, required this.logService});
+  const LogViewerScreen({super.key, required this.logService, this.liveMode = false});
 
   final LogService logService;
+
+  /// When true, polls [logService] every couple seconds while this screen
+  /// is open instead of relying only on the manual refresh button — used
+  /// by the Admin-Konsole's "Live-Log-Viewer" entry point. The normal
+  /// entry point from Einstellungen keeps this off (manual refresh only),
+  /// unchanged from before.
+  final bool liveMode;
 
   @override
   State<LogViewerScreen> createState() => _LogViewerScreenState();
@@ -20,15 +29,28 @@ class LogViewerScreen extends StatefulWidget {
 class _LogViewerScreenState extends State<LogViewerScreen> {
   List<LogEntry> _entries = [];
   bool _loading = true;
+  Timer? _liveTimer;
 
   @override
   void initState() {
     super.initState();
     _load();
+    if (widget.liveMode) {
+      // No loading spinner on these periodic refreshes — only the initial
+      // load above should show one, otherwise the list would flicker
+      // every couple seconds instead of just updating in place.
+      _liveTimer = Timer.periodic(const Duration(seconds: 2), (_) => _load(showSpinner: false));
+    }
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
+  @override
+  void dispose() {
+    _liveTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _load({bool showSpinner = true}) async {
+    if (showSpinner) setState(() => _loading = true);
     final entries = await widget.logService.readAll();
     if (!mounted) return;
     setState(() {
@@ -65,7 +87,7 @@ class _LogViewerScreenState extends State<LogViewerScreen> {
     final dateFormat = DateFormat('dd.MM. HH:mm:ss');
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Log-Viewer'),
+        title: Text(widget.liveMode ? 'Log-Viewer (live)' : 'Log-Viewer'),
         actions: [
           IconButton(onPressed: _load, icon: const Icon(Icons.refresh), tooltip: 'Aktualisieren'),
           IconButton(onPressed: _entries.isEmpty ? null : _copyAll, icon: const Icon(Icons.copy), tooltip: 'Kopieren'),

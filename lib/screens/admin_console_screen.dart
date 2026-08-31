@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../services/api_health_service.dart';
+import '../services/log_service.dart';
 import '../services/settings_service.dart';
+import '../services/system_diagnostic_service.dart';
 import '../services/tls_pinning_service.dart';
+import '../theme/jarvis_theme.dart';
+import 'log_viewer_screen.dart';
 
 /// Advanced/sensitive settings gated behind the Admin-PIN (see
 /// AdminAuthService/AdminGateScreen) — reachable only via the
@@ -39,6 +43,8 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
   int _todaysRequestCount = 0;
   ApiHealthResult? _healthResult;
   bool _checkingHealth = false;
+  List<DiagnosticResult>? _diagnosticResults;
+  bool _runningDiagnostic = false;
   bool _checkingCertPin = false;
   bool _savingServerSection = false;
   bool _savingBehaviorSection = false;
@@ -85,6 +91,16 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
     setState(() {
       _healthResult = result;
       _checkingHealth = false;
+    });
+  }
+
+  Future<void> _runDiagnostic() async {
+    setState(() => _runningDiagnostic = true);
+    final results = await SystemDiagnosticService(settings: widget.settings).runSelfCheck();
+    if (!mounted) return;
+    setState(() {
+      _diagnosticResults = results;
+      _runningDiagnostic = false;
     });
   }
 
@@ -369,6 +385,58 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
               style: const TextStyle(fontSize: 12),
             ),
           ],
+          const SizedBox(height: 24),
+          Text('Entwickler-Tools', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: _runningDiagnostic ? null : _runDiagnostic,
+            icon: _runningDiagnostic
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.health_and_safety_outlined),
+            label: const Text('Selbsttest ausführen'),
+          ),
+          if (_diagnosticResults != null) ...[
+            const SizedBox(height: 8),
+            ..._diagnosticResults!.map(
+              (r) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      r.ok ? Icons.check_circle_outline : Icons.cancel_outlined,
+                      color: r.ok ? Colors.green : JarvisColors.error,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(r.label, style: const TextStyle(fontSize: 13)),
+                          if (r.detail != null)
+                            Text(
+                              r.detail!,
+                              style: const TextStyle(fontSize: 11, color: JarvisColors.mutedForeground),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => LogViewerScreen(logService: LogService(), liveMode: true),
+              ),
+            ),
+            icon: const Icon(Icons.bug_report_outlined),
+            label: const Text('Live-Log-Viewer öffnen'),
+          ),
         ],
       ),
     );

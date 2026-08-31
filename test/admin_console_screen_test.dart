@@ -201,4 +201,29 @@ void main() {
     expect(find.textContaining('Nicht erreichbar'), findsOneWidget);
     expect(find.textContaining('Kein eigener Server konfiguriert'), findsOneWidget);
   });
+
+  testWidgets('running the self-check shows a result per check', (tester) async {
+    // Unlike "Latenz jetzt prüfen" (which reads the live TextField),
+    // _runDiagnostic() builds a fresh SystemDiagnosticService that reads
+    // getAiBackendUrl() straight from SettingsService — which defaults to
+    // this app's own default Worker URL, not empty. Clearing the TextField
+    // alone wouldn't affect it, so persist the empty value directly to
+    // avoid a real, sandbox-incompatible network request.
+    await settings.setAiBackendUrl('');
+
+    await _pumpConsole(tester, settings);
+
+    await tester.tap(find.text('Selbsttest ausführen'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Sicherer Speicher'), findsOneWidget);
+    expect(find.textContaining('KI-Server erreichbar'), findsOneWidget);
+    expect(find.textContaining('Offline-KI-Modell'), findsOneWidget);
+  });
+
+  testWidgets('offers a button to open the live log viewer', (tester) async {
+    await _pumpConsole(tester, settings);
+
+    expect(find.text('Live-Log-Viewer öffnen'), findsOneWidget);
+  });
 }

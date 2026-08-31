@@ -68,4 +68,24 @@ void main() {
     expect(find.text('wird gleich gelöscht'), findsNothing);
     expect(find.text('Keine Log-Einträge vorhanden.'), findsOneWidget);
   });
+
+  testWidgets('liveMode shows "(live)" in the title and cleans up its timer on dispose', (tester) async {
+    await tester.pumpWidget(MaterialApp(home: LogViewerScreen(logService: log, liveMode: true)));
+    await settle(tester);
+
+    expect(find.text('Log-Viewer (live)'), findsOneWidget);
+
+    // Unmount to trigger dispose() and cancel the periodic timer before the
+    // test ends — otherwise Flutter's test framework reports "a Timer is
+    // still pending".
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('non-live mode keeps the plain title', (tester) async {
+    await tester.pumpWidget(MaterialApp(home: LogViewerScreen(logService: log)));
+    await settle(tester);
+
+    expect(find.text('Log-Viewer'), findsOneWidget);
+    expect(find.text('Log-Viewer (live)'), findsNothing);
+  });
 }
