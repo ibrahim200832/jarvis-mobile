@@ -7,6 +7,7 @@ import 'package:jarvis_mobile/services/notes_service.dart';
 import 'package:jarvis_mobile/services/notification_service.dart';
 import 'package:jarvis_mobile/services/proactive_briefing_service.dart';
 import 'package:jarvis_mobile/services/settings_service.dart';
+import 'package:jarvis_mobile/services/todo_service.dart';
 import 'package:jarvis_mobile/services/weather_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -79,6 +80,7 @@ void main() {
       gamification: GamificationService(),
       settings: settings,
       challenges: ChallengeService(),
+      todos: TodoService(),
     );
   });
 
@@ -94,6 +96,31 @@ void main() {
       notifications.reminderBodies = [];
       final text = await briefing.buildMorningBriefing();
       expect(text, isNot(contains('Anstehende Termine')));
+    });
+  });
+
+  group('buildMorningBriefing - Aufgaben', () {
+    test('includes an open-todo count when to-dos exist', () async {
+      final todos = TodoService();
+      await todos.add('müll rausbringen');
+      briefing = ProactiveBriefingService(
+        notifications: notifications,
+        weather: _FakeWeatherService(),
+        news: _FakeNewsService(),
+        notes: NotesService(),
+        location: _FakeLocationService(),
+        gamification: GamificationService(),
+        settings: settings,
+        challenges: ChallengeService(),
+        todos: todos,
+      );
+      final text = await briefing.buildMorningBriefing();
+      expect(text, contains('1 offene Aufgabe'));
+    });
+
+    test('omits the to-do line when none are open', () async {
+      final text = await briefing.buildMorningBriefing();
+      expect(text, isNot(contains('offene Aufgabe')));
     });
   });
 

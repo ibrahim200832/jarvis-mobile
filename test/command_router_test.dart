@@ -38,6 +38,7 @@ import 'package:jarvis_mobile/services/settings_service.dart';
 import 'package:jarvis_mobile/services/soundboard_service.dart';
 import 'package:jarvis_mobile/services/spotify_service.dart';
 import 'package:jarvis_mobile/services/timer_service.dart';
+import 'package:jarvis_mobile/services/todo_service.dart';
 import 'package:jarvis_mobile/services/weather_service.dart';
 import 'package:jarvis_mobile/services/web_search_service.dart';
 import 'package:jarvis_mobile/services/offline_llm_service.dart';
@@ -561,6 +562,7 @@ void main() {
   late FakeBackupExportService backup;
   late FakeWebDavSyncService webdav;
   late FakeOfflineLlmService offlineLlm;
+  late TodoService todos;
   late CommandRouter router;
 
   // Builds a CommandRouter from the shared setUp() fakes, with optional
@@ -612,6 +614,7 @@ void main() {
     backup: backup,
     webdav: webdav,
     offlineLlm: offlineLlm,
+    todos: todos,
   );
 
   setUp(() async {
@@ -623,6 +626,7 @@ void main() {
     aiChat = FakeAiChatService();
     timer = TimerService();
     notes = NotesService();
+    todos = TodoService();
     email = FakeEmailService();
     youtube = FakeYoutubeService();
     notifications = FakeNotificationService();
@@ -642,6 +646,7 @@ void main() {
       gamification: gamification,
       settings: settings,
       challenges: challenges,
+      todos: todos,
     );
     anime = FakeAnimeService();
     lateNightTease = LateNightTeaseService();
@@ -867,6 +872,64 @@ void main() {
       await router.handle('lösche alle notizen');
       final result = await router.handle('meine notizen');
       expect(result.reply, 'Du hast noch keine Notizen.');
+    });
+  });
+
+  group('Aufgaben (To-Dos)', () {
+    test('neue aufgabe: <Text> saves a to-do', () async {
+      final result = await router.handle('neue aufgabe: müll rausbringen');
+      expect(result.reply, contains('Aufgabe gespeichert: müll rausbringen'));
+    });
+
+    test('meine aufgaben lists open to-dos', () async {
+      await router.handle('neue aufgabe: müll rausbringen');
+      final result = await router.handle('meine aufgaben');
+      expect(result.reply, contains('1. müll rausbringen'));
+    });
+
+    test('no to-dos yet reports that clearly', () async {
+      final result = await router.handle('offene aufgaben');
+      expect(result.reply, 'Du hast keine offenen Aufgaben.');
+    });
+
+    test('aufgabe <n> erledigt marks it done and removes it from the open list', () async {
+      await router.handle('neue aufgabe: müll rausbringen');
+      final result = await router.handle('aufgabe 1 erledigt');
+      expect(result.reply, contains('Erledigt: müll rausbringen'));
+
+      final remaining = await router.handle('meine aufgaben');
+      expect(remaining.reply, 'Du hast keine offenen Aufgaben.');
+    });
+
+    test('open-task numbering matches the full-list position, not a re-numbered filtered index', () async {
+      await router.handle('neue aufgabe: erste');
+      await router.handle('neue aufgabe: zweite');
+      await router.handle('aufgabe 1 erledigt');
+
+      final result = await router.handle('meine aufgaben');
+      // "erste" (index 1) is done and hidden; "zweite" keeps its real
+      // full-list number (2), so a follow-up "aufgabe 2 erledigt" still
+      // refers to the item the user just saw listed.
+      expect(result.reply, contains('2. zweite'));
+      expect(result.reply, isNot(contains('erste')));
+    });
+
+    test('lösche aufgabe <n> removes the to-do at that position', () async {
+      await router.handle('neue aufgabe: erste');
+      await router.handle('neue aufgabe: zweite');
+      final result = await router.handle('lösche aufgabe 1');
+      expect(result.reply, contains('erste'));
+
+      final remaining = await router.handle('meine aufgaben');
+      expect(remaining.reply, isNot(contains('erste')));
+      expect(remaining.reply, contains('zweite'));
+    });
+
+    test('lösche alle aufgaben clears the list', () async {
+      await router.handle('neue aufgabe: erste');
+      await router.handle('lösche alle aufgaben');
+      final result = await router.handle('offene aufgaben');
+      expect(result.reply, 'Du hast keine offenen Aufgaben.');
     });
   });
 

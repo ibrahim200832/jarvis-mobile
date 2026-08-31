@@ -48,6 +48,7 @@ import '../services/speech_service.dart';
 import '../services/spotify_service.dart';
 import '../services/tiktok_upload_service.dart';
 import '../services/timer_service.dart';
+import '../services/todo_service.dart';
 import '../services/tts_service.dart';
 import '../services/update_service.dart';
 import '../services/weather_service.dart';
@@ -94,6 +95,7 @@ class _HomeScreenState extends State<HomeScreen> {
     gamification: GamificationService(),
     settings: SettingsService(),
     challenges: ChallengeService(),
+    todos: TodoService(),
   );
   final _ambient = AmbientSoundService();
   final _soundboard = SoundboardService();
@@ -173,6 +175,7 @@ class _HomeScreenState extends State<HomeScreen> {
       backup: _backup,
       webdav: _webdav,
       offlineLlm: _offlineLlm,
+      todos: TodoService(),
     );
     _timer.onFire = _onTimerFired;
     _speech.init();

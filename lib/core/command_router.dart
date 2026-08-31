@@ -36,6 +36,7 @@ import '../services/settings_service.dart';
 import '../services/soundboard_service.dart';
 import '../services/spotify_service.dart';
 import '../services/timer_service.dart';
+import '../services/todo_service.dart';
 import '../services/voice_tone_analyzer.dart';
 import '../services/weather_service.dart';
 import '../services/web_search_service.dart';
@@ -118,6 +119,7 @@ class CommandRouter {
     required this.backup,
     required this.webdav,
     required this.offlineLlm,
+    required this.todos,
   });
 
   final WikipediaService wikipedia;
@@ -160,6 +162,7 @@ class CommandRouter {
   final BackupExportService backup;
   final WebDavSyncService webdav;
   final OfflineLlmService offlineLlm;
+  final TodoService todos;
 
   /// Session-scoped, in-memory only (reset on cold start, like _storyMode/
   /// _aiHistory — CommandRouter itself is rebuilt fresh on every app
@@ -258,6 +261,7 @@ Das kann ich für dich tun:
 • "timer für <Zeit>" oder "erinnere mich in 10 minuten an <Sache>"
 • "meine timer" / "timer abbrechen"
 • "notiz <Text>" / "meine notizen" / "lösche notiz <Nummer>"
+• "neue aufgabe: <Text>" / "meine aufgaben" / "aufgabe <Nummer> erledigt" / "lösche aufgabe <Nummer>"
 • "wirf eine münze" / "würfle" / "zufallszahl zwischen 1 und 100"
 • "spiele <Song> auf spotify" / "spiele playlist <Name> auf spotify" (Spotify-Verbindung nötig, siehe Einstellungen)
 • "code snippet für <Flutter-Widget oder Git-Befehl>" (kopiert in die Zwischenablage) / "welche code snippets kennst du"
@@ -770,6 +774,52 @@ Das kann ich für dich tun:
         await notes.add(noteText);
         final xp = await gamification.awardForNote();
         return CommandResult('Notiz gespeichert: $noteText${xp.toSuffix()}');
+      }
+
+      if (_matchesAny(lower, ['lösche alle aufgaben', 'alle aufgaben löschen'])) {
+        await todos.clear();
+        return CommandResult('Alle Aufgaben gelöscht.');
+      }
+
+      final completeTodoMatch = RegExp(r'aufgabe\s+(\d+)\s+erledigt').firstMatch(lower);
+      if (completeTodoMatch != null) {
+        final index = int.parse(completeTodoMatch.group(1)!);
+        final toggled = await todos.toggleAt(index);
+        if (toggled == null) return CommandResult('Aufgabe $index existiert nicht.');
+        return CommandResult(
+          toggled.done ? 'Erledigt: ${toggled.text}' : 'Aufgabe wieder als offen markiert: ${toggled.text}',
+        );
+      }
+
+      final deleteTodoQuery = _extractAfter(lower, text, ['lösche aufgabe']);
+      if (deleteTodoQuery != null) {
+        final index = int.tryParse(deleteTodoQuery.trim());
+        if (index == null) return CommandResult('Sag z. B. "lösche aufgabe 2".');
+        final removed = await todos.deleteAt(index);
+        return CommandResult(removed == null ? 'Aufgabe $index existiert nicht.' : 'Aufgabe gelöscht: $removed');
+      }
+
+      if (_matchesAny(lower, ['meine aufgaben', 'meine to-dos', 'offene aufgaben', 'was steht noch an'])) {
+        final all = await todos.list();
+        // Numbered by position in the full list (not re-numbered among just
+        // the open ones), so "aufgabe <n> erledigt"/"lösche aufgabe <n>"
+        // always refers to the same number the user just saw here.
+        final openLines = [
+          for (var i = 0; i < all.length; i++)
+            if (!all[i].done) '${i + 1}. ${all[i].text}',
+        ];
+        if (openLines.isEmpty) return CommandResult('Du hast keine offenen Aufgaben.');
+        return CommandResult('Deine offenen Aufgaben:\n${openLines.join('\n')}');
+      }
+
+      // Trailing spaces/colon require a right-hand word boundary too, same
+      // reasoning as the "notiz "-prefix guard above: without it "aufgaben"
+      // (plural, listing) would be misread as the "aufgabe " prefix with
+      // "n" left over as bogus to-do text.
+      final todoText = _extractAfter(lower, text, ['neue aufgabe:', 'neue aufgabe ', 'aufgabe:', 'aufgabe ', 'to-do:', 'to-do ']);
+      if (todoText != null) {
+        await todos.add(todoText);
+        return CommandResult('Aufgabe gespeichert: $todoText');
       }
 
       if (_matchesAny(lower, ['mein level', 'meine xp', 'mein rang', 'meine erfolge', 'meine achievements'])) {

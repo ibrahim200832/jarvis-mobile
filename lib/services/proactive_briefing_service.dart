@@ -7,6 +7,7 @@ import 'news_service.dart';
 import 'notes_service.dart';
 import 'notification_service.dart';
 import 'settings_service.dart';
+import 'todo_service.dart';
 import 'weather_service.dart';
 
 /// Builds and (re-)schedules the proactive morning-briefing / evening-
@@ -33,6 +34,7 @@ class ProactiveBriefingService {
   final GamificationService gamification;
   final SettingsService settings;
   final ChallengeService challenges;
+  final TodoService todos;
 
   ProactiveBriefingService({
     required this.notifications,
@@ -43,6 +45,7 @@ class ProactiveBriefingService {
     required this.gamification,
     required this.settings,
     required this.challenges,
+    required this.todos,
   });
 
   Future<String> _weatherLine() async {
@@ -81,6 +84,10 @@ class ProactiveBriefingService {
     final openNotes = await notes.list();
     if (openNotes.isNotEmpty) {
       buffer.write(' Du hast ${openNotes.length} offene Notiz${openNotes.length == 1 ? '' : 'en'}.');
+    }
+    final openTodos = await todos.openItems();
+    if (openTodos.isNotEmpty) {
+      buffer.write(' Du hast ${openTodos.length} offene Aufgabe${openTodos.length == 1 ? '' : 'n'}.');
     }
     buffer.write(await _remindersLine());
     buffer.write(await _newsLine());
