@@ -162,7 +162,6 @@ String journalSystemPrompt() =>
 /// service (no account, no key) so JARVIS can always hold a conversation —
 /// just without the ability to trigger phone actions itself.
 class AiChatService {
-  final _signer = RequestSigningService();
   final _tlsPinning = TlsPinningService();
 
   /// POSTs to the user's own backend Worker, using a certificate-pinned
@@ -180,22 +179,8 @@ class AiChatService {
     }
   }
 
-  /// Builds the headers for a POST to the user's own backend Worker. Without
-  /// an [hmacSecret] the request goes out unsigned — the Worker itself
-  /// decides whether that's still accepted (see worker/ai-proxy.js: signing
-  /// is enforced only once the operator has configured HMAC_SECRET
-  /// server-side, so this stays backward compatible with a Worker deployed
-  /// before this feature existed).
-  Map<String, String> _headers(String backendUrl, String body, String? hmacSecret) {
-    final headers = {'content-type': 'application/json'};
-    if (hmacSecret == null || hmacSecret.isEmpty) return headers;
-    final uri = Uri.parse(backendUrl.trim());
-    // Matches how the Worker sees it: new URL(request.url).pathname is
-    // never empty, it's "/" for a bare origin.
-    final path = uri.path.isEmpty ? '/' : uri.path;
-    final signed = _signer.sign(secret: hmacSecret, method: 'POST', path: path, body: body);
-    return {...headers, ...signed.toHeaders()};
-  }
+  Map<String, String> _headers(String backendUrl, String body, String? hmacSecret) =>
+      buildSignedHeaders(backendUrl: backendUrl, body: body, secret: hmacSecret);
 
   Future<AiChatResult> ask(
     String backendUrl,

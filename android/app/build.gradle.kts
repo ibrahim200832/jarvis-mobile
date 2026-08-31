@@ -62,6 +62,9 @@ kotlin {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    // App-Integritäts-Check (Play Integrity API) — see MainActivity.kt and
+    // lib/services/app_integrity_service.dart.
+    implementation("com.google.android.play:integrity:1.4.0")
 }
 
 flutter {

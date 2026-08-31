@@ -44,6 +44,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _aiHmacSecretCtrl = TextEditingController();
   final _certPinsCtrl = TextEditingController();
   final _tlsPinning = TlsPinningService();
+  final _googleCloudProjectNumberCtrl = TextEditingController();
   final _youtubeClientIdCtrl = TextEditingController();
   final _spotifyClientIdCtrl = TextEditingController();
   final _tiktokClientKeyCtrl = TextEditingController();
@@ -72,6 +73,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _moodAutoAdjustEnabled = true;
   bool _testingHomeAssistant = false;
   bool _checkingCertPin = false;
+  bool _integrityCheckEnabled = false;
 
   static const _aiModels = {
     'openai': 'ChatGPT (Standard)',
@@ -113,6 +115,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _aiBackendCtrl.text = await widget.settings.getAiBackendUrl() ?? '';
     _aiHmacSecretCtrl.text = await widget.settings.getAiHmacSecret() ?? '';
     _certPinsCtrl.text = (await widget.settings.getCertPins()).join('\n');
+    _googleCloudProjectNumberCtrl.text = await widget.settings.getGoogleCloudProjectNumber() ?? '';
+    _integrityCheckEnabled = await widget.settings.getIntegrityCheckEnabled();
     _youtubeClientIdCtrl.text = await widget.settings.getYoutubeClientId() ?? '';
     _spotifyClientIdCtrl.text = await widget.settings.getSpotifyClientId() ?? '';
     _tiktokClientKeyCtrl.text = await widget.settings.getTiktokClientKey() ?? '';
@@ -181,6 +185,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         .where((p) => p.isNotEmpty)
         .toList();
     await widget.settings.setCertPins(certPins);
+    await widget.settings.setGoogleCloudProjectNumber(_googleCloudProjectNumberCtrl.text.trim());
+    await widget.settings.setIntegrityCheckEnabled(_integrityCheckEnabled);
     await widget.settings.setYoutubeClientId(_youtubeClientIdCtrl.text.trim());
     await widget.settings.setSpotifyClientId(_spotifyClientIdCtrl.text.trim());
     await widget.settings.setTiktokClientKey(_tiktokClientKeyCtrl.text.trim());
@@ -551,6 +557,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: const Text('Scanline-Effekt'),
             value: _hudEffectsEnabled,
             onChanged: (value) => setState(() => _hudEffectsEnabled = value),
+          ),
+          const SizedBox(height: 24),
+          Text('App-Integrität (Play Integrity)', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 4),
+          const Text(
+            'Prüft beim Start, ob Gerät und Installation vertrauenswürdig sind (nicht gerootet, unveränderte '
+            'APK) — nur Android, braucht ein eigenes Google-Cloud-Projekt und einen eingerichteten Worker-'
+            'Endpunkt (siehe README). Ohne Einrichtung bleibt das aus, ohne dass etwas fehlschlägt.',
+            style: TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _googleCloudProjectNumberCtrl,
+            decoration: const InputDecoration(
+              labelText: 'Google-Cloud-Projektnummer',
+              helperText: 'Aus der Google Cloud Console, mit Play Console verknüpft (siehe README)',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('App-Integritäts-Check aktivieren'),
+            value: _integrityCheckEnabled,
+            onChanged: (value) => setState(() => _integrityCheckEnabled = value),
           ),
           const SizedBox(height: 24),
           Text('Smart-Home (Home Assistant)', style: Theme.of(context).textTheme.titleMedium),

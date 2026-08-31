@@ -58,3 +58,21 @@ class RequestSigningService {
     return List.generate(32, (_) => rand.nextInt(16).toRadixString(16)).join();
   }
 }
+
+/// Builds the header map for a POST to the user's own backend Worker.
+/// Without a [secret] the request goes out unsigned — the Worker itself
+/// decides whether that's still accepted (see worker/ai-proxy.js: signing
+/// is enforced only once the operator has configured HMAC_SECRET
+/// server-side, so this stays backward compatible with a Worker deployed
+/// before this feature existed). Shared by AiChatService and
+/// AppIntegrityService so both talk to the same Worker consistently.
+Map<String, String> buildSignedHeaders({required String backendUrl, required String body, String? secret}) {
+  final headers = {'content-type': 'application/json'};
+  if (secret == null || secret.isEmpty) return headers;
+  final uri = Uri.parse(backendUrl.trim());
+  // Matches how the Worker sees it: new URL(request.url).pathname is never
+  // empty, it's "/" for a bare origin.
+  final path = uri.path.isEmpty ? '/' : uri.path;
+  final signed = RequestSigningService().sign(secret: secret, method: 'POST', path: path, body: body);
+  return {...headers, ...signed.toHeaders()};
+}

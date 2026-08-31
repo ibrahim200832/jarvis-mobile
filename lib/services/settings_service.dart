@@ -40,6 +40,8 @@ class SettingsService {
   static const _keySecurityBreachEnabled = 'security_breach_enabled';
   static const _keyAiHmacSecret = 'ai_hmac_secret';
   static const _keyCertPins = 'ai_cert_pins';
+  static const _keyGoogleCloudProjectNumber = 'google_cloud_project_number';
+  static const _keyIntegrityCheckEnabled = 'integrity_check_enabled';
 
   /// Reads a secret from secure (AES-256) storage. If it hasn't been
   /// migrated yet, transparently pulls a legacy plaintext SharedPreferences
@@ -272,6 +274,34 @@ class SettingsService {
   Future<void> setCertPins(List<String> pins) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(_keyCertPins, pins);
+  }
+
+  /// The Google Cloud project number linked to this app's Play Console
+  /// listing (see AppIntegrityService/README) — a public identifier, not a
+  /// secret, so plain SharedPreferences is fine.
+  Future<String?> getGoogleCloudProjectNumber() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyGoogleCloudProjectNumber);
+  }
+
+  Future<void> setGoogleCloudProjectNumber(String value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyGoogleCloudProjectNumber, value);
+  }
+
+  /// Opt-in, default off: whether the app should run a Play Integrity
+  /// attestation check on start (see AppIntegrityService). Off by default
+  /// since it needs a Google Cloud project + a Worker endpoint the operator
+  /// must set up themselves (see README) — enabling it before that's done
+  /// would just fail silently on every app start for no benefit.
+  Future<bool> getIntegrityCheckEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyIntegrityCheckEnabled) ?? false;
+  }
+
+  Future<void> setIntegrityCheckEnabled(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyIntegrityCheckEnabled, value);
   }
 
   /// Which fixed JARVIS persona is active: 'standard', 'drill_sergeant',

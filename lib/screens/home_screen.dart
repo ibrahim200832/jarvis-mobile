@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -11,6 +13,7 @@ import '../core/command_router.dart';
 import '../services/ai_chat_service.dart';
 import '../services/ambient_sound_service.dart';
 import '../services/anime_service.dart';
+import '../services/app_integrity_service.dart';
 import '../services/app_launcher_service.dart';
 import '../services/call_service.dart';
 import '../services/challenge_service.dart';
@@ -54,6 +57,7 @@ import '../widgets/access_denied_flash.dart';
 import '../widgets/blinking_dot.dart';
 import '../widgets/chat_bubble.dart';
 import '../widgets/glass_container.dart';
+import '../widgets/integrity_lockdown_screen.dart';
 import '../widgets/scanline_overlay.dart';
 import '../widgets/voice_orb_overlay.dart';
 import 'camera_screen.dart';
@@ -111,7 +115,9 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _speaking = false;
   bool _muted = false;
   bool _hudEffectsEnabled = true;
+  bool _integrityLocked = false;
   String _partialText = '';
+  final _appIntegrity = AppIntegrityService();
 
   @override
   void initState() {
@@ -165,6 +171,40 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_briefing.rescheduleAll());
     unawaited(_maybeDeliverMorningAudioBriefing());
     unawaited(_maybeTriggerSecurityBreach());
+    unawaited(_checkAppIntegrity());
+  }
+
+  /// App-Integritäts-Check (Google Play Integrity API, Android only): if
+  /// enabled and a Google Cloud project is configured, requests an
+  /// attestation token and has the user's own Worker verify it with Google
+  /// (see AppIntegrityService, worker/ai-proxy.js's /integrity/verify).
+  /// Only an explicit negative verdict from a *configured* backend locks
+  /// the app (see IntegrityLockdownScreen) — anything inconclusive (not
+  /// enabled, not configured yet, offline, unsupported platform) leaves the
+  /// app working normally, since most installs won't have this set up.
+  Future<void> _checkAppIntegrity() async {
+    if (!_appIntegrity.isSupported) return;
+    if (!await _settings.getIntegrityCheckEnabled()) return;
+    final projectNumber = await _settings.getGoogleCloudProjectNumber();
+    if (projectNumber == null || projectNumber.trim().isEmpty) return;
+
+    final nonceBytes = List<int>.generate(32, (_) => Random.secure().nextInt(256));
+    final nonce = base64Url.encode(nonceBytes).replaceAll('=', '');
+    final token = await _appIntegrity.requestIntegrityToken(nonce: nonce, cloudProjectNumber: projectNumber);
+    if (token == null) return;
+
+    final backendUrl = await _settings.getAiBackendUrl();
+    if (backendUrl == null || backendUrl.trim().isEmpty) return;
+    final result = await _appIntegrity.verifyWithBackend(
+      backendUrl: backendUrl,
+      token: token,
+      nonce: nonce,
+      hmacSecret: await _settings.getAiHmacSecret(),
+      certPins: await _settings.getCertPins(),
+    );
+    if (result == false && mounted) {
+      setState(() => _integrityLocked = true);
+    }
   }
 
   /// If it's the first app-open at/after 7:00 today (and the morning
@@ -554,6 +594,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_integrityLocked) {
+      return const IntegrityLockdownScreen();
+    }
+
     final colorScheme = Theme.of(context).colorScheme;
 
     if (_callActive) {

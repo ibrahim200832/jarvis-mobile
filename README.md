@@ -199,6 +199,39 @@ Einrichtung. Im Quellcode dieses Projekts ist bewusst kein einziger echter Schl�
 jeder Nutzer trägt seine eigenen in Einstellungen bzw. als Cloudflare-Secret ein, nichts landet dadurch
 versehentlich im (öffentlichen) Repository.
 
+### App-Integritäts-Check (Play Integrity, optional, nur Android)
+
+Prüft beim App-Start, ob Gerät und Installation vertrauenswürdig sind (nicht gerootet, App unverändert
+und über Google Play erkannt) — schlägt der Check erkennbar fehl, startet JARVIS nicht weiter (siehe
+Einstellungen → „App-Integritäts-Check aktivieren"). Braucht deutlich mehr Einrichtung als die übrigen
+Punkte hier, da Google Play Integrity ein echtes, mit Play Console verknüpftes Google-Cloud-Projekt
+voraussetzt:
+
+1. **App bei Google Play registrieren** (mindestens als interner Test-Track): [Play Console](https://play.google.com/console)
+   → App anlegen, Paketname `com.jarvis.mobile.jarvis_mobile`, mindestens einmal ein signiertes Bundle/APK
+   hochladen (siehe „Android-Signierschlüssel einrichten" oben — der Play-Integrity-Check funktioniert nur
+   für über Play verifizierte Installationen).
+2. **Google-Cloud-Projekt mit Play Console verknüpfen**: Play Console → „Setup → API access" → verknüpftes
+   Google-Cloud-Projekt anlegen/verknüpfen lassen. Die dort angezeigte **Projektnummer** in der JARVIS-App
+   unter **Einstellungen → „Google-Cloud-Projektnummer"** eintragen.
+3. **Play Integrity API aktivieren**: Im verknüpften Projekt unter [console.cloud.google.com](https://console.cloud.google.com)
+   → „APIs & Services → Library" → „Play Integrity API" suchen → **Enable**.
+4. **Service-Konto für den Worker anlegen**: „IAM & Admin → Service Accounts → Create Service Account" →
+   Rolle **„Service Account User"** reicht; danach „Keys → Add Key → Create new key" → Typ **JSON** → Datei
+   herunterladen (enthält den privaten Schlüssel, sorgfältig aufbewahren).
+5. **JSON-Key im Worker hinterlegen**: Im [Cloudflare-Dashboard](https://dash.cloudflare.com) → Worker
+   öffnen → **Settings → Variables and Secrets → Add**: Name `GOOGLE_SERVICE_ACCOUNT_JSON`, Typ **Secret**,
+   Wert = kompletter Inhalt der heruntergeladenen JSON-Datei → **Deploy**.
+6. In den JARVIS-Einstellungen den Schalter **„App-Integritäts-Check aktivieren"** umlegen.
+
+Ohne diese Einrichtung bleibt der Check einfach aus (kein Fehler, keine Sperre) — er ist bewusst
+Opt-in, weil er der aufwändigste Punkt in diesem Abschnitt ist. **Aus dieser Entwicklungsumgebung heraus
+nicht end-to-end testbar** (kein echtes Android-Gerät, kein echtes Google-Cloud-/Play-Console-Projekt
+verfügbar) — die Server-seitige Google-Authentifizierung (JWT-Signierung fürs Service-Konto) wurde
+gegen einen unabhängig erzeugten Test-Schlüssel isoliert verifiziert (gültige RS256-Signatur, korrekte
+Verdikt-Auswertung bei verschiedenen Antworten), die native Android-Anbindung nur so weit wie ohne
+echtes Gerät möglich (Kotlin-Code + Gradle-Abhängigkeit, kompiliert über die reguläre APK-Build-Pipeline).
+
 ## YouTube-Video-Upload einrichten (optional)
 
 Der Befehl „video hochladen" lässt dich ein Video von deinem Handy/Computer auswählen und direkt auf dein eigenes YouTube-Konto hochladen — jeder Upload ist ein bewusster Tastendruck (Anmelden → Video wählen → Sichtbarkeit wählen → Titel eintippen → Hochladen), nichts passiert automatisch im Hintergrund. Beim Hochladen wählst du die Sichtbarkeit — **privat**, **nicht gelistet** oder **öffentlich** — und kannst optional eine spätere Veröffentlichungszeit festlegen; YouTube macht das Video dann automatisch zur gewählten Zeit öffentlich (bis dahin bleibt es privat, das schreibt die YouTube-API so vor). Standard bleibt „privat", damit nichts versehentlich sofort öffentlich landet. Auch JARVIS selbst kann beim Öffnen des Upload-Bildschirms schon eine Sichtbarkeit vorauswählen (z. B. „lade das video öffentlich hoch") — die eigentliche Datei wählst du danach weiterhin immer manuell aus.

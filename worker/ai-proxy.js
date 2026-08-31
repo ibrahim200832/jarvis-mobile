@@ -454,6 +454,12 @@ export default {
       }
       return handleTiktokToken(url.pathname, rawBody, env, origin);
     }
+    if (url.pathname === '/integrity/verify') {
+      if (request.method !== 'POST') {
+        return json({ error: 'method not allowed' }, 405, origin);
+      }
+      return handleIntegrityVerify(rawBody, env, origin);
+    }
 
     if (request.method !== 'POST') {
       return json({ error: 'method not allowed' }, 405, origin);
@@ -646,6 +652,132 @@ async function handleTiktokToken(pathname, rawBody, env, origin) {
     return json({ error: data.error_description || 'TikTok-Anmeldung fehlgeschlagen' }, 502, origin);
   }
   return json(data, 200, origin);
+}
+
+// Must match android/app/build.gradle.kts's applicationId exactly — Play
+// Integrity verdicts are scoped to a specific package name.
+const ANDROID_PACKAGE_NAME = 'com.jarvis.mobile.jarvis_mobile';
+
+// Verifies a Play Integrity attestation token (see AppIntegrityService,
+// MainActivity.kt) against Google, keeping the service-account credentials
+// that make that possible entirely server-side (set via
+// `wrangler secret put GOOGLE_SERVICE_ACCOUNT_JSON` or the Cloudflare
+// dashboard — the full JSON key file downloaded from Google Cloud Console,
+// see README) — a private key must never ship inside the app.
+async function handleIntegrityVerify(rawBody, env, origin) {
+  if (!env.GOOGLE_SERVICE_ACCOUNT_JSON) {
+    return json({ error: 'App-Integritäts-Check ist auf diesem Worker nicht eingerichtet.' }, 500, origin);
+  }
+  let body;
+  try {
+    body = JSON.parse(rawBody);
+  } catch (_) {
+    return json({ error: 'invalid json body' }, 400, origin);
+  }
+  const { token, nonce } = body;
+  if (typeof token !== 'string' || !token || typeof nonce !== 'string' || !nonce) {
+    return json({ error: 'token/nonce fehlt' }, 400, origin);
+  }
+
+  let accessToken;
+  try {
+    accessToken = await getGoogleAccessToken(env);
+  } catch (err) {
+    return json({ error: 'Google-Authentifizierung fehlgeschlagen', detail: String(err) }, 502, origin);
+  }
+  if (!accessToken) {
+    return json({ error: 'Google-Authentifizierung fehlgeschlagen' }, 502, origin);
+  }
+
+  let decoded;
+  try {
+    decoded = await decodeIntegrityToken(accessToken, token);
+  } catch (err) {
+    return json({ error: 'Play-Integrity-Anfrage fehlgeschlagen', detail: String(err) }, 502, origin);
+  }
+  if (!decoded) {
+    return json({ ok: false, verdict: { error: 'decode_failed' } }, 200, origin);
+  }
+
+  const payload = decoded.tokenPayloadExternal ?? {};
+  const deviceVerdicts = payload.deviceIntegrity?.deviceRecognitionVerdict ?? [];
+  const appVerdict = payload.appIntegrity?.appRecognitionVerdict ?? 'UNKNOWN';
+  const requestNonce = payload.requestDetails?.nonce;
+  const requestPackage = payload.requestDetails?.requestPackageName;
+
+  const nonceMatches = requestNonce === nonce;
+  const packageMatches = requestPackage === ANDROID_PACKAGE_NAME;
+  const deviceOk = deviceVerdicts.includes('MEETS_DEVICE_INTEGRITY');
+  const appOk = appVerdict === 'PLAY_RECOGNIZED';
+  const ok = nonceMatches && packageMatches && deviceOk && appOk;
+
+  return json({ ok, verdict: { deviceVerdicts, appVerdict, nonceMatches, packageMatches } }, 200, origin);
+}
+
+// Exchanges the service account's private key for a short-lived Google
+// OAuth2 access token via the JWT-bearer grant — standard service-account
+// auth flow, hand-rolled with Web Crypto since there is no Google Cloud
+// SDK available inside a Cloudflare Worker.
+async function getGoogleAccessToken(env) {
+  const serviceAccount = JSON.parse(env.GOOGLE_SERVICE_ACCOUNT_JSON);
+  const now = Math.floor(Date.now() / 1000);
+  const header = { alg: 'RS256', typ: 'JWT' };
+  const claims = {
+    iss: serviceAccount.client_email,
+    scope: 'https://www.googleapis.com/auth/playintegrity',
+    aud: 'https://oauth2.googleapis.com/token',
+    iat: now,
+    exp: now + 3600,
+  };
+  const signingInput = `${base64UrlEncodeString(JSON.stringify(header))}.${base64UrlEncodeString(JSON.stringify(claims))}`;
+
+  const key = await importPkcs8PrivateKey(serviceAccount.private_key);
+  const signature = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, new TextEncoder().encode(signingInput));
+  const jwt = `${signingInput}.${base64UrlEncodeBytes(new Uint8Array(signature))}`;
+
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion: jwt,
+    }),
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data.access_token ?? null;
+}
+
+async function decodeIntegrityToken(accessToken, integrityToken) {
+  const res = await fetch(`https://playintegrity.googleapis.com/v1/${ANDROID_PACKAGE_NAME}:decodeIntegrityToken`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({ integrityToken }),
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+function base64UrlEncodeString(str) {
+  return base64UrlEncodeBytes(new TextEncoder().encode(str));
+}
+
+function base64UrlEncodeBytes(bytes) {
+  let binary = '';
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+// The service account JSON's private_key field is a PEM string (already
+// real newlines, JSON.parse decodes the \n escapes) — strip the header/
+// footer and whitespace to get the base64 body, decode to raw PKCS8 DER
+// bytes Web Crypto can import directly (no ASN.1 parsing needed here,
+// unlike spki_pin.dart's client-side pinning, since importKey('pkcs8', ...)
+// accepts the DER as-is).
+async function importPkcs8PrivateKey(pem) {
+  const base64Body = pem.replace('-----BEGIN PRIVATE KEY-----', '').replace('-----END PRIVATE KEY-----', '').replace(/\s/g, '');
+  const der = Uint8Array.from(atob(base64Body), (c) => c.charCodeAt(0));
+  return crypto.subtle.importKey('pkcs8', der.buffer, { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['sign']);
 }
 
 // How long a signature stays valid, and how long a nonce is remembered as
