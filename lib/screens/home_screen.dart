@@ -15,6 +15,7 @@ import '../services/ambient_sound_service.dart';
 import '../services/anime_service.dart';
 import '../services/app_integrity_service.dart';
 import '../services/app_launcher_service.dart';
+import '../services/background_task_service.dart';
 import '../services/call_service.dart';
 import '../services/challenge_service.dart';
 import '../services/code_snippet_service.dart';
@@ -93,6 +94,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _ambient = AmbientSoundService();
   final _soundboard = SoundboardService();
   final _securityBreach = SecurityBreachService();
+  final _backgroundTasks = BackgroundTaskService();
   final _contacts = ContactsService();
   final _timer = TimerService();
   final _spotify = SpotifyService();
@@ -172,6 +174,7 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_maybeDeliverMorningAudioBriefing());
     unawaited(_maybeTriggerSecurityBreach());
     unawaited(_checkAppIntegrity());
+    unawaited(_backgroundTasks.initialize());
   }
 
   /// App-Integritäts-Check (Google Play Integrity API, Android only): if
