@@ -1,10 +1,13 @@
 import 'package:flutter/foundation.dart';
 import 'package:workmanager/workmanager.dart';
 
+import 'api_health_service.dart';
 import 'backup_export_service.dart';
+import 'dashboard_notification_service.dart';
 import 'notification_service.dart';
 import 'rss_feed_service.dart';
 import 'settings_service.dart';
+import 'todo_service.dart';
 
 /// Task-name constants shared between registration calls and
 /// [callbackDispatcher] below. Each future unit built on top of this
@@ -14,6 +17,7 @@ import 'settings_service.dart';
 class BackgroundTaskNames {
   static const rssFeedCheck = 'rssFeedCheck';
   static const weeklyBackupExport = 'weeklyBackupExport';
+  static const dashboardRefresh = 'dashboardRefresh';
 }
 
 /// Notification id for proactive "new headlines" alerts fired from the
@@ -81,6 +85,26 @@ class BackgroundTaskService {
     }
   }
 
+  /// Registers or cancels the periodic dashboard-notification-refresh task
+  /// to match the current Einstellungen toggle (see
+  /// SettingsService.getDashboardNotificationEnabled) — same
+  /// on-every-app-start + on-toggle-save convention as [syncRssFeedTask].
+  /// 30 minutes is the real freshness mechanism here; the native widget's
+  /// own updatePeriodMillis (Einheit 9) is just a fallback, since Android
+  /// enforces a ~15-30 minute floor on periodic background work anyway.
+  Future<void> syncDashboardTask() async {
+    if (kIsWeb) return;
+    if (await _settings.getDashboardNotificationEnabled()) {
+      await registerPeriodic(
+        BackgroundTaskNames.dashboardRefresh,
+        BackgroundTaskNames.dashboardRefresh,
+        frequency: const Duration(minutes: 30),
+      );
+    } else {
+      await cancelByUniqueName(BackgroundTaskNames.dashboardRefresh);
+    }
+  }
+
   Future<void> registerPeriodic(
     String uniqueName,
     String taskName, {
@@ -137,6 +161,7 @@ Future<bool> dispatchBackgroundTask(
   RssFeedService? rssFeedService,
   NotificationService? notificationService,
   BackupExportService? backupExportService,
+  DashboardNotificationService? dashboardNotificationService,
 }) async {
   switch (task) {
     case BackgroundTaskNames.rssFeedCheck:
@@ -152,6 +177,16 @@ Future<bool> dispatchBackgroundTask(
       return true;
     case BackgroundTaskNames.weeklyBackupExport:
       await (backupExportService ?? BackupExportService()).exportNow();
+      return true;
+    case BackgroundTaskNames.dashboardRefresh:
+      await (dashboardNotificationService ??
+              DashboardNotificationService(
+                notifications: NotificationService(),
+                todos: TodoService(),
+                apiHealth: ApiHealthService(),
+                settings: SettingsService(),
+              ))
+          .refresh();
       return true;
     default:
       return true;

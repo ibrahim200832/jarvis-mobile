@@ -13,6 +13,7 @@ import '../core/command_router.dart';
 import '../services/ai_chat_service.dart';
 import '../services/ambient_sound_service.dart';
 import '../services/anime_service.dart';
+import '../services/api_health_service.dart';
 import '../services/app_integrity_service.dart';
 import '../services/app_launcher_service.dart';
 import '../services/app_lock_service.dart';
@@ -22,6 +23,7 @@ import '../services/call_service.dart';
 import '../services/challenge_service.dart';
 import '../services/code_snippet_service.dart';
 import '../services/contacts_service.dart';
+import '../services/dashboard_notification_service.dart';
 import '../services/device_info_service.dart';
 import '../services/email_service.dart';
 import '../services/gamification_service.dart';
@@ -104,6 +106,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final _soundboard = SoundboardService();
   final _securityBreach = SecurityBreachService();
   final _backgroundTasks = BackgroundTaskService();
+  final _dashboardNotification = DashboardNotificationService(
+    notifications: NotificationService(),
+    todos: TodoService(),
+    apiHealth: ApiHealthService(),
+    settings: SettingsService(),
+  );
   final _feeds = RssFeedService();
   final _backup = BackupExportService();
   final _webdav = WebDavSyncService();
@@ -218,6 +226,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     unawaited(_syncBackgroundTasks());
     unawaited(_syncMotionActions());
     unawaited(_checkAppLockState());
+    unawaited(_dashboardNotification.refresh());
   }
 
   /// The emergency lock (unlike everything else in this screen's state)
@@ -324,6 +333,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await _backgroundTasks.initialize();
     await _backgroundTasks.syncRssFeedTask();
     await _backgroundTasks.syncBackupExportTask();
+    await _backgroundTasks.syncDashboardTask();
   }
 
   /// App-Integritäts-Check (Google Play Integrity API, Android only): if
@@ -734,6 +744,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _messages.add(ChatMessage(reply, fromUser: false));
     });
     _scrollToBottom();
+    // Cheap enough to run after every reply, and the simplest way to keep
+    // the dashboard notification (status/latency/open-to-do-count) fresh
+    // after a chat command mutates to-dos — CommandRouter has no per-
+    // mutation callback to hook into instead.
+    unawaited(_dashboardNotification.refresh());
 
     if (_callActive) {
       setState(() => _speaking = true);

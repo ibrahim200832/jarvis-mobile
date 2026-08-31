@@ -1,10 +1,14 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:jarvis_mobile/services/api_health_service.dart';
 import 'package:jarvis_mobile/services/background_task_service.dart';
 import 'package:jarvis_mobile/services/backup_export_service.dart';
+import 'package:jarvis_mobile/services/dashboard_notification_service.dart';
 import 'package:jarvis_mobile/services/notification_service.dart';
 import 'package:jarvis_mobile/services/rss_feed_service.dart';
+import 'package:jarvis_mobile/services/settings_service.dart';
+import 'package:jarvis_mobile/services/todo_service.dart';
 
 /// In-memory stand-ins so dispatchBackgroundTask's RSS branch can be
 /// exercised without touching real dart:io/platform-channel plugins under
@@ -41,11 +45,31 @@ class _FakeNotificationService extends NotificationService {
   }
 }
 
+class _FakeDashboardNotificationService extends DashboardNotificationService {
+  _FakeDashboardNotificationService()
+    : super(
+        notifications: NotificationService(),
+        todos: TodoService(),
+        apiHealth: ApiHealthService(),
+        settings: SettingsService(),
+      );
+
+  int refreshCount = 0;
+
+  @override
+  Future<void> refresh() async {
+    refreshCount++;
+  }
+}
+
 void main() {
   test('task names are distinct and non-empty', () {
     expect(BackgroundTaskNames.rssFeedCheck, isNotEmpty);
     expect(BackgroundTaskNames.weeklyBackupExport, isNotEmpty);
+    expect(BackgroundTaskNames.dashboardRefresh, isNotEmpty);
     expect(BackgroundTaskNames.rssFeedCheck, isNot(BackgroundTaskNames.weeklyBackupExport));
+    expect(BackgroundTaskNames.dashboardRefresh, isNot(BackgroundTaskNames.rssFeedCheck));
+    expect(BackgroundTaskNames.dashboardRefresh, isNot(BackgroundTaskNames.weeklyBackupExport));
   });
 
   group('dispatchBackgroundTask', () {
@@ -92,6 +116,19 @@ void main() {
 
       expect(result, isTrue);
       expect(backup.exportCount, 1);
+    });
+
+    test('reports success for the dashboard refresh task and refreshes the notification', () async {
+      final dashboard = _FakeDashboardNotificationService();
+
+      final result = await dispatchBackgroundTask(
+        BackgroundTaskNames.dashboardRefresh,
+        null,
+        dashboardNotificationService: dashboard,
+      );
+
+      expect(result, isTrue);
+      expect(dashboard.refreshCount, 1);
     });
 
     test('defaults to success for an unknown task name instead of throwing', () async {

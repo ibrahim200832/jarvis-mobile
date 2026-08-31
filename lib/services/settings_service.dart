@@ -58,6 +58,7 @@ class SettingsService {
   static const _keyAppLockPinSalt = 'app_lock_pin_salt';
   static const _keyAppLockPinHash = 'app_lock_pin_hash';
   static const _keyShakeLocksAppEnabled = 'shake_locks_app_enabled';
+  static const _keyDashboardNotificationEnabled = 'dashboard_notification_enabled';
 
   /// Reads a secret from secure (AES-256) storage. If it hasn't been
   /// migrated yet, transparently pulls a legacy plaintext SharedPreferences
@@ -541,5 +542,19 @@ class SettingsService {
   Future<void> clearAppLockPin() async {
     await _secure.delete(_keyAppLockPinSalt);
     await _secure.delete(_keyAppLockPinHash);
+  }
+
+  /// Whether the persistent "Lockscreen-Dashboard" status notification
+  /// (see DashboardNotificationService) is shown. Default off — a
+  /// permanent, non-dismissible notification is more intrusive than any
+  /// other feature in this app, opt-in like every other background toggle.
+  Future<bool> getDashboardNotificationEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyDashboardNotificationEnabled) ?? false;
+  }
+
+  Future<void> setDashboardNotificationEnabled(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyDashboardNotificationEnabled, value);
   }
 }

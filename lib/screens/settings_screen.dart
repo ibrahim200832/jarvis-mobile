@@ -88,6 +88,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _eveningJournalEnabled = false;
   bool _nightAlertEnabled = false;
   bool _securityBreachEnabled = true;
+  bool _dashboardNotificationEnabled = false;
   bool _hudEffectsEnabled = true;
   bool _reactiveOrbEnabled = true;
   bool _faceDownFocusEnabled = false;
@@ -181,6 +182,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _moodAutoAdjustEnabled = await widget.settings.getMoodAutoAdjustEnabled();
     _rssFeedCheckEnabled = await widget.settings.getRssFeedCheckEnabled();
     _weeklyBackupExportEnabled = await widget.settings.getWeeklyBackupExportEnabled();
+    _dashboardNotificationEnabled = await widget.settings.getDashboardNotificationEnabled();
     final savedVoiceName = await widget.settings.getTtsVoiceName();
     final savedVoiceLocale = await widget.settings.getTtsVoiceLocale();
     if (savedVoiceName != null && savedVoiceLocale != null) {
@@ -267,9 +269,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await widget.settings.setMoodAutoAdjustEnabled(_moodAutoAdjustEnabled);
     await widget.settings.setRssFeedCheckEnabled(_rssFeedCheckEnabled);
     await widget.settings.setWeeklyBackupExportEnabled(_weeklyBackupExportEnabled);
+    await widget.settings.setDashboardNotificationEnabled(_dashboardNotificationEnabled);
     await widget.briefing.rescheduleAll();
     await widget.backgroundTasks.syncRssFeedTask();
     await widget.backgroundTasks.syncBackupExportTask();
+    await widget.backgroundTasks.syncDashboardTask();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gespeichert.')));
   }
@@ -723,6 +727,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             value: _weeklyBackupExportEnabled,
             onChanged: (value) => setState(() => _weeklyBackupExportEnabled = value),
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Lockscreen-Dashboard'),
+            subtitle: const Text(
+              'Dauerhafte, nicht wegwischbare Benachrichtigung mit Status/Latenz deines KI-Servers und '
+              'offenen Aufgaben — auch bei gesperrtem Handy sichtbar. Android hat seit Version 5 keine echten '
+              'Sperrbildschirm-Widgets mehr, das ist die nächstliegende Alternative.',
+              style: TextStyle(fontSize: 12),
+            ),
+            value: _dashboardNotificationEnabled,
+            onChanged: (value) => setState(() => _dashboardNotificationEnabled = value),
           ),
           const SizedBox(height: 24),
           Text('HUD-Optik', style: Theme.of(context).textTheme.titleMedium),

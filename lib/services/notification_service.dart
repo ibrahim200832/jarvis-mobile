@@ -147,4 +147,41 @@ class NotificationService {
       ),
     );
   }
+
+  /// Shows (or updates, if [id] is already showing) a persistent,
+  /// non-dismissible notification — the closest real Android equivalent of
+  /// a "lock-screen dashboard" (Android has had no actual lock-screen
+  /// widgets since v5). Deliberately Importance.low/Priority.low, unlike
+  /// every other channel in this class: a status line that refreshes every
+  /// ~30 minutes (see DashboardNotificationService) shouldn't heads-up-pop
+  /// each time, and onlyAlertOnce avoids re-alerting on every refresh.
+  Future<void> showOngoingNotification({required int id, required String title, required String body}) async {
+    await _ensureInitialized();
+    final status = await Permission.notification.request();
+    if (!status.isGranted) return;
+
+    await _plugin.show(
+      id: id,
+      title: title,
+      body: body,
+      notificationDetails: const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'jarvis_dashboard',
+          'Dashboard-Status',
+          importance: Importance.low,
+          priority: Priority.low,
+          ongoing: true,
+          autoCancel: false,
+          onlyAlertOnce: true,
+          showWhen: false,
+        ),
+        iOS: DarwinNotificationDetails(),
+      ),
+    );
+  }
+
+  Future<void> cancelOngoingNotification(int id) async {
+    await _ensureInitialized();
+    await _plugin.cancel(id: id);
+  }
 }
