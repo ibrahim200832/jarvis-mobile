@@ -42,6 +42,7 @@ class SettingsService {
   static const _keyCertPins = 'ai_cert_pins';
   static const _keyGoogleCloudProjectNumber = 'google_cloud_project_number';
   static const _keyIntegrityCheckEnabled = 'integrity_check_enabled';
+  static const _keyRssFeedCheckEnabled = 'rss_feed_check_enabled';
 
   /// Reads a secret from secure (AES-256) storage. If it hasn't been
   /// migrated yet, transparently pulls a legacy plaintext SharedPreferences
@@ -302,6 +303,21 @@ class SettingsService {
   Future<void> setIntegrityCheckEnabled(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyIntegrityCheckEnabled, value);
+  }
+
+  /// Opt-in, default off: whether BackgroundTaskService should periodically
+  /// check subscribed RSS feeds in the background (see RssFeedService) and
+  /// proactively notify about new headlines. Off by default since periodic
+  /// background network access has a real (if small) battery/data cost that
+  /// shouldn't be paid by users who never subscribed to a feed anyway.
+  Future<bool> getRssFeedCheckEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyRssFeedCheckEnabled) ?? false;
+  }
+
+  Future<void> setRssFeedCheckEnabled(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyRssFeedCheckEnabled, value);
   }
 
   /// Which fixed JARVIS persona is active: 'standard', 'drill_sergeant',

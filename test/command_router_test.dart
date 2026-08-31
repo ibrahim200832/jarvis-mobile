@@ -29,6 +29,7 @@ import 'package:jarvis_mobile/services/notification_service.dart';
 import 'package:jarvis_mobile/services/qr_service.dart';
 import 'package:jarvis_mobile/services/random_fun_service.dart';
 import 'package:jarvis_mobile/services/rpg_service.dart';
+import 'package:jarvis_mobile/services/rss_feed_service.dart';
 import 'package:jarvis_mobile/services/secure_storage_service.dart';
 import 'package:jarvis_mobile/services/security_breach_service.dart';
 import 'package:jarvis_mobile/services/settings_service.dart';
@@ -99,6 +100,36 @@ class FakeAnimeService extends AnimeService {
 
   @override
   Future<AnimeResult?> searchManga(String title) async => nextResult;
+}
+
+/// In-memory stand-in for RssFeedService — real network calls are never
+/// touched by these tests. checkForNewItems() returns whatever the test
+/// pre-seeds via [nextNewItems] instead of actually fetching feeds.
+class FakeRssFeedService extends RssFeedService {
+  final _feeds = <RssFeedSource>[];
+  List<RssItem> nextNewItems = [];
+  String? lastAddedUrl;
+  bool throwOnAdd = false;
+
+  @override
+  Future<List<RssFeedSource>> listFeeds() async => List.unmodifiable(_feeds);
+
+  @override
+  Future<RssFeedSource> addFeed(String url) async {
+    lastAddedUrl = url;
+    if (throwOnAdd) throw StateError('Kein RSS/Atom-Feed unter dieser Adresse gefunden.');
+    final source = RssFeedSource(url: url, title: 'Test-Feed');
+    _feeds.add(source);
+    return source;
+  }
+
+  @override
+  Future<void> removeFeed(String url) async {
+    _feeds.removeWhere((f) => f.url == url);
+  }
+
+  @override
+  Future<List<RssItem>> checkForNewItems() async => nextNewItems;
 }
 
 class FakeWebSearchService extends WebSearchService {
@@ -462,6 +493,7 @@ void main() {
   late FakeAmbientSoundService ambient;
   late FakeMoodCaptureService moodCapture;
   late SecurityBreachService securityBreach;
+  late FakeRssFeedService feeds;
   late CommandRouter router;
 
   // Builds a CommandRouter from the shared setUp() fakes, with optional
@@ -509,6 +541,7 @@ void main() {
     ambient: ambient,
     moodCapture: moodCapture,
     securityBreach: securityBreach,
+    feeds: feeds,
   );
 
   setUp(() async {
@@ -547,6 +580,7 @@ void main() {
     ambient = FakeAmbientSoundService();
     moodCapture = FakeMoodCaptureService()..nextSample = _loudSquareWaveSample();
     securityBreach = SecurityBreachService();
+    feeds = FakeRssFeedService();
 
     router = buildRouter();
     // Pre-claim today's gamification bonus so it doesn't prepend a "🎉
@@ -1009,6 +1043,54 @@ void main() {
       anime.nextResult = null;
       final result = await router.handle('anime dieswirdsnie existieren');
       expect(result.reply, contains('nicht finden'));
+    });
+  });
+
+  group('RSS-Feeds', () {
+    test('abonniere feed <URL> subscribes and confirms', () async {
+      final result = await router.handle('abonniere feed https://example.com/rss.xml');
+      expect(result.reply, contains('Feed abonniert'));
+      expect(feeds.lastAddedUrl, 'https://example.com/rss.xml');
+    });
+
+    test('a trailing "hinzu" is stripped from the URL', () async {
+      await router.handle('füge feed https://example.com/rss.xml hinzu');
+      expect(feeds.lastAddedUrl, 'https://example.com/rss.xml');
+    });
+
+    test('a feed that cannot be added reports the failure', () async {
+      feeds.throwOnAdd = true;
+      final result = await router.handle('abonniere feed https://example.com/nope');
+      expect(result.reply, contains('Konnte den Feed nicht hinzufügen'));
+    });
+
+    test('meine feeds lists subscribed feeds', () async {
+      await router.handle('abonniere feed https://example.com/rss.xml');
+      final result = await router.handle('meine feeds');
+      expect(result.reply, contains('https://example.com/rss.xml'));
+    });
+
+    test('meine feeds reports emptiness when nothing is subscribed', () async {
+      final result = await router.handle('meine feeds');
+      expect(result.reply, contains('noch keine Feeds'));
+    });
+
+    test('entferne feed <URL> removes a subscription', () async {
+      await router.handle('abonniere feed https://example.com/rss.xml');
+      await router.handle('entferne feed https://example.com/rss.xml');
+      final result = await router.handle('meine feeds');
+      expect(result.reply, contains('noch keine Feeds'));
+    });
+
+    test('was gibt\'s neues in meinen feeds reports new headlines on demand', () async {
+      feeds.nextNewItems = [RssItem(id: '1', title: 'Große Neuigkeit', link: 'https://example.com/1', feedTitle: 'Test-Feed')];
+      final result = await router.handle("was gibt's neues in meinen feeds");
+      expect(result.reply, contains('Große Neuigkeit'));
+    });
+
+    test('reports no new headlines when there are none', () async {
+      final result = await router.handle('rss updates');
+      expect(result.reply, contains('Keine neuen Schlagzeilen'));
     });
   });
 

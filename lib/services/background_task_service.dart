@@ -1,6 +1,10 @@
 import 'package:flutter/foundation.dart';
 import 'package:workmanager/workmanager.dart';
 
+import 'notification_service.dart';
+import 'rss_feed_service.dart';
+import 'settings_service.dart';
+
 /// Task-name constants shared between registration calls and
 /// [callbackDispatcher] below. Each future unit built on top of this
 /// scaffold (RSS-Feed-Reader, verschlüsselter Backup-Export) gets one more
@@ -10,6 +14,11 @@ class BackgroundTaskNames {
   static const rssFeedCheck = 'rssFeedCheck';
   static const weeklyBackupExport = 'weeklyBackupExport';
 }
+
+/// Notification id for proactive "new headlines" alerts fired from the
+/// background RSS check — distinct from ProactiveBriefingService's
+/// 9001-9003 and the late-night-tease emergency alert's 9004.
+const rssHeadlinesNotificationId = 9005;
 
 /// Thin wrapper around the `workmanager` plugin for genuine OS-scheduled
 /// background execution that survives a fully closed app — unlike the
@@ -25,12 +34,33 @@ class BackgroundTaskNames {
 /// predictable no-op on web instead of depending on a feature that isn't
 /// wired up for this app's web target.
 class BackgroundTaskService {
+  BackgroundTaskService({SettingsService? settings}) : _settings = settings ?? SettingsService();
+
+  final SettingsService _settings;
   bool _initialized = false;
 
   Future<void> initialize() async {
     if (kIsWeb || _initialized) return;
     await Workmanager().initialize(callbackDispatcher);
     _initialized = true;
+  }
+
+  /// Registers or cancels the periodic RSS-feed-check task to match the
+  /// current Einstellungen toggle (see SettingsService.getRssFeedCheckEnabled)
+  /// — called on every app start (like ProactiveBriefingService.rescheduleAll)
+  /// and right after the toggle is saved, so it takes effect immediately
+  /// either way.
+  Future<void> syncRssFeedTask() async {
+    if (kIsWeb) return;
+    if (await _settings.getRssFeedCheckEnabled()) {
+      await registerPeriodic(
+        BackgroundTaskNames.rssFeedCheck,
+        BackgroundTaskNames.rssFeedCheck,
+        frequency: const Duration(hours: 3),
+      );
+    } else {
+      await cancelByUniqueName(BackgroundTaskNames.rssFeedCheck);
+    }
   }
 
   Future<void> registerPeriodic(
@@ -75,11 +105,31 @@ void callbackDispatcher() {
 /// it's callable (and testable) without touching the real `Workmanager()`
 /// plugin singleton, which has no platform-channel implementation available
 /// under `flutter test`.
+///
+/// [rssFeedService]/[notificationService] are test-only injection points
+/// (real instances are constructed when omitted, exactly what
+/// [callbackDispatcher] does) — this headless isolate has no DI container to
+/// pull real ones from anyway, and `flutter test` has no platform-channel
+/// implementation for either plugin, so a plain call with no overrides would
+/// throw under test.
 @visibleForTesting
-Future<bool> dispatchBackgroundTask(String task, Map<String, dynamic>? inputData) async {
+Future<bool> dispatchBackgroundTask(
+  String task,
+  Map<String, dynamic>? inputData, {
+  RssFeedService? rssFeedService,
+  NotificationService? notificationService,
+}) async {
   switch (task) {
     case BackgroundTaskNames.rssFeedCheck:
-      // Wired up in Runde 13, Einheit 4 (Web-Scraper & RSS-Feed-Reader).
+      final newItems = await (rssFeedService ?? RssFeedService()).checkForNewItems();
+      final notification = buildRssNotification(newItems);
+      if (notification != null) {
+        await (notificationService ?? NotificationService()).showImmediateNotification(
+          id: rssHeadlinesNotificationId,
+          title: notification.title,
+          body: notification.body,
+        );
+      }
       return true;
     case BackgroundTaskNames.weeklyBackupExport:
       // Wired up in Runde 13, Einheit 5 (verschlüsselter Backup-Export).

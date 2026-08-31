@@ -40,6 +40,7 @@ dependencies:
   flutter_secure_storage: ^10.3.1
   path_provider: ^2.1.5
   workmanager: ^0.10.9
+  xml: ^6.6.1
 
 dev_dependencies:
   flutter_test:

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../services/api_health_service.dart';
+import '../services/background_task_service.dart';
 import '../services/contacts_service.dart';
 import '../services/home_assistant_service.dart';
 import '../services/log_service.dart';
@@ -26,6 +27,7 @@ class SettingsScreen extends StatefulWidget {
     required this.tts,
     required this.briefing,
     required this.homeAssistant,
+    required this.backgroundTasks,
   });
 
   final SettingsService settings;
@@ -35,6 +37,7 @@ class SettingsScreen extends StatefulWidget {
   final TtsService tts;
   final ProactiveBriefingService briefing;
   final HomeAssistantService homeAssistant;
+  final BackgroundTaskService backgroundTasks;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -78,6 +81,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _testingHomeAssistant = false;
   bool _checkingCertPin = false;
   bool _integrityCheckEnabled = false;
+  bool _rssFeedCheckEnabled = false;
 
   static const _aiModels = {
     'openai': 'ChatGPT (Standard)',
@@ -142,6 +146,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _securityBreachEnabled = await widget.settings.getSecurityBreachEnabled();
     _hudEffectsEnabled = await widget.settings.getHudEffectsEnabled();
     _moodAutoAdjustEnabled = await widget.settings.getMoodAutoAdjustEnabled();
+    _rssFeedCheckEnabled = await widget.settings.getRssFeedCheckEnabled();
     final savedVoiceName = await widget.settings.getTtsVoiceName();
     final savedVoiceLocale = await widget.settings.getTtsVoiceLocale();
     if (savedVoiceName != null && savedVoiceLocale != null) {
@@ -218,7 +223,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await widget.settings.setSecurityBreachEnabled(_securityBreachEnabled);
     await widget.settings.setHudEffectsEnabled(_hudEffectsEnabled);
     await widget.settings.setMoodAutoAdjustEnabled(_moodAutoAdjustEnabled);
+    await widget.settings.setRssFeedCheckEnabled(_rssFeedCheckEnabled);
     await widget.briefing.rescheduleAll();
+    await widget.backgroundTasks.syncRssFeedTask();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gespeichert.')));
   }
@@ -548,6 +555,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             value: _securityBreachEnabled,
             onChanged: (value) => setState(() => _securityBreachEnabled = value),
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('RSS-Hintergrundprüfung'),
+            subtitle: const Text(
+              'Prüft abonnierte Feeds alle paar Stunden im Hintergrund (auch bei geschlossener App) und '
+              'benachrichtigt bei neuen Schlagzeilen. Feeds verwaltest du im Chat, z.B. "abonniere feed <URL>".',
+              style: TextStyle(fontSize: 12),
+            ),
+            value: _rssFeedCheckEnabled,
+            onChanged: (value) => setState(() => _rssFeedCheckEnabled = value),
           ),
           const SizedBox(height: 24),
           Text('HUD-Optik', style: Theme.of(context).textTheme.titleMedium),

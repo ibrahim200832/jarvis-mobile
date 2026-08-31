@@ -28,6 +28,7 @@ import '../services/proactive_briefing_service.dart';
 import '../services/qr_service.dart';
 import '../services/random_fun_service.dart';
 import '../services/rpg_service.dart';
+import '../services/rss_feed_service.dart';
 import '../services/security_breach_service.dart';
 import '../services/settings_service.dart';
 import '../services/soundboard_service.dart';
@@ -110,6 +111,7 @@ class CommandRouter {
     required this.ambient,
     required this.moodCapture,
     required this.securityBreach,
+    required this.feeds,
   });
 
   final WikipediaService wikipedia;
@@ -148,6 +150,7 @@ class CommandRouter {
   final AmbientSoundService ambient;
   final MoodCaptureService moodCapture;
   final SecurityBreachService securityBreach;
+  final RssFeedService feeds;
 
   /// Session-scoped, in-memory only (reset on cold start, like _storyMode/
   /// _aiHistory — CommandRouter itself is rebuilt fresh on every app
@@ -263,6 +266,7 @@ Das kann ich für dich tun:
 • "wie war mein tag" / "mein tag war ..." (Abend-Tagebuch mit einfühlsamer KI-Reflexion) / "meine tagebucheinträge" / "letzter tagebucheintrag"
 • "stimmungscheck" (hört 4 Sekunden zu und schätzt Tonfall/Stimmung anhand echter Audioanalyse ein, passt bei Bedarf den Sarkasmus-Ton an)
 • "simuliere einen sicherheitsbruch" / "teste die firewall" (Mini-Code-Challenge, verteidige die Firewall für XP; passiert auch gelegentlich zufällig beim App-Start, abschaltbar in Einstellungen)
+• "abonniere feed <URL>" (RSS/Atom-Feed oder normale Website mit Feed-Verweis) / "meine feeds" / "entferne feed <URL>" / "was gibt's neues in meinen feeds" / "rss updates" (regelmäßige Hintergrundprüfung in Einstellungen aktivierbar)
 • alles andere: frag mich einfach frei, ich antworte mit echter KI und kann
   dabei auch direkt anrufen, WhatsApp schreiben oder Apps öffnen
 ''';
@@ -818,6 +822,41 @@ Das kann ich für dich tun:
       if (_matchesAny(lower, ['commit gemacht', 'ich habe committet', 'logge einen commit', 'trage einen commit ein'])) {
         final xp = await gamification.logCommit();
         return CommandResult('Commit geloggt.${xp.toSuffix()}');
+      }
+
+      final addFeedUrl = _extractAfter(lower, text, ['abonniere feed', 'abonniere website', 'füge feed']);
+      if (addFeedUrl != null && addFeedUrl.trim().isNotEmpty) {
+        final cleanedUrl = addFeedUrl.replaceAll(RegExp(r'\s*hinzu\s*$'), '').trim();
+        try {
+          final source = await feeds.addFeed(cleanedUrl);
+          return CommandResult('Feed abonniert: ${source.title}. Ich sag Bescheid, sobald es neue Schlagzeilen gibt.');
+        } catch (e) {
+          return CommandResult('Konnte den Feed nicht hinzufügen: ${e is StateError ? e.message : 'Adresse ungültig oder nicht erreichbar.'}');
+        }
+      }
+
+      final removeFeedUrl = _extractAfter(lower, text, ['entferne feed', 'kündige feed']);
+      if (removeFeedUrl != null && removeFeedUrl.trim().isNotEmpty) {
+        await feeds.removeFeed(removeFeedUrl.trim());
+        return CommandResult('Feed entfernt (falls er abonniert war).');
+      }
+
+      if (_matchesAny(lower, ['meine feeds', 'welche feeds habe ich', 'zeig mir meine feeds'])) {
+        final sources = await feeds.listFeeds();
+        if (sources.isEmpty) return CommandResult('Du hast noch keine Feeds abonniert. Sag z.B. "abonniere feed https://...".');
+        return CommandResult('Deine Feeds:\n${sources.map((f) => '• ${f.title} (${f.url})').join('\n')}');
+      }
+
+      if (_matchesAny(lower, [
+        'was gibt es neues in meinen feeds',
+        "was gibt's neues in meinen feeds",
+        'rss updates',
+        'neuigkeiten aus meinen feeds',
+      ])) {
+        final newItems = await feeds.checkForNewItems();
+        final notification = buildRssNotification(newItems);
+        if (notification == null) return CommandResult('Keine neuen Schlagzeilen in deinen Feeds.');
+        return CommandResult('${notification.title}:\n${notification.body}');
       }
 
       if (_matchesAny(lower, ['wirf eine münze', 'münze werfen', 'kopf oder zahl', 'münze'])) {

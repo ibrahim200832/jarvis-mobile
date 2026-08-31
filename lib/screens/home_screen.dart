@@ -38,6 +38,7 @@ import '../services/proactive_briefing_service.dart';
 import '../services/qr_service.dart';
 import '../services/random_fun_service.dart';
 import '../services/rpg_service.dart';
+import '../services/rss_feed_service.dart';
 import '../services/security_breach_service.dart';
 import '../services/settings_service.dart';
 import '../services/soundboard_service.dart';
@@ -95,6 +96,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _soundboard = SoundboardService();
   final _securityBreach = SecurityBreachService();
   final _backgroundTasks = BackgroundTaskService();
+  final _feeds = RssFeedService();
   final _contacts = ContactsService();
   final _timer = TimerService();
   final _spotify = SpotifyService();
@@ -161,6 +163,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ambient: _ambient,
       moodCapture: MoodCaptureService(),
       securityBreach: _securityBreach,
+      feeds: _feeds,
     );
     _timer.onFire = _onTimerFired;
     _speech.init();
@@ -174,7 +177,15 @@ class _HomeScreenState extends State<HomeScreen> {
     unawaited(_maybeDeliverMorningAudioBriefing());
     unawaited(_maybeTriggerSecurityBreach());
     unawaited(_checkAppIntegrity());
-    unawaited(_backgroundTasks.initialize());
+    unawaited(_syncBackgroundTasks());
+  }
+
+  /// Initializes workmanager and (re-)registers/cancels the periodic RSS
+  /// check to match the current Einstellungen toggle — called on every app
+  /// open, same convention as _briefing.rescheduleAll() above.
+  Future<void> _syncBackgroundTasks() async {
+    await _backgroundTasks.initialize();
+    await _backgroundTasks.syncRssFeedTask();
   }
 
   /// App-Integritäts-Check (Google Play Integrity API, Android only): if
@@ -765,6 +776,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           tts: _tts,
                           briefing: _briefing,
                           homeAssistant: HomeAssistantService(),
+                          backgroundTasks: _backgroundTasks,
                         ),
                       ),
                     )
