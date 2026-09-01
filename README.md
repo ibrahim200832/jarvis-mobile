@@ -325,15 +325,22 @@ Alle drei Gesten sind standardmäßig **aus** und einzeln aktivierbar unter **Ei
 - **Schütteln** kann wahlweise die Spracheingabe starten und/oder die Notfall-Sperre auslösen — beide
   Wirkungen sind unabhängig voneinander zu- und abschaltbar, auch gleichzeitig.
 
-### Notfall-Sperre (PIN)
+### Notfall-Sperre (PIN und/oder Nutzername+Passwort)
 
-Sperrt die App komplett hinter einer PIN-Eingabe (z. B. per Sprachbefehl „sperre die app" oder per
-Schütteln, falls aktiviert). Einrichtung unter **Einstellungen → „Bewegungssteuerung &
-Notfall-Sperre"** (PIN + Bestätigung eingeben, „PIN speichern"). Die PIN wird **nie im Klartext
-gespeichert**, nur ein gesalzener SHA-256-Hash. **Wichtig:** Es gibt bewusst **keinen
-Wiederherstellungsweg** für eine vergessene PIN (wie schon beim App-Integritäts-Lockdown) — „PIN
-entfernen" ist nur erreichbar, solange die App nicht gesperrt ist. Vor dem Einrichten sicherstellen, dass
-die PIN nicht in Vergessenheit gerät.
+Sperrt die App komplett (z. B. per Sprachbefehl „sperre die app" oder per Schütteln, falls aktiviert).
+Zwei gleichwertige, unabhängig voneinander einrichtbare Zugangswege stehen zur Wahl — Einrichtung jeweils
+unter **Einstellungen → „Bewegungssteuerung & Notfall-Sperre"**:
+
+- **PIN** (PIN + Bestätigung eingeben, „PIN speichern").
+- **Nutzername + Passwort** (eigenes, von der Admin-Konsole komplett unabhängiges Konto —
+  „Zugangsdaten speichern").
+
+Beide werden **nie im Klartext gespeichert**, nur als gesalzener SHA-256-Hash. Beide teilen sich eine
+**Fehlversuch-Sperre**: nach 5 falschen Versuchen (PIN oder Passwort, auch gemischt) ist die App für
+5 Minuten komplett gesperrt, auch über einen Neustart hinweg. **Wichtig:** Es gibt bewusst **keinen
+Wiederherstellungsweg** für eine vergessene PIN/ein vergessenes Passwort (wie schon beim
+App-Integritäts-Lockdown) — „PIN entfernen"/„Zugangsdaten entfernen" ist nur erreichbar, solange die App
+nicht gesperrt ist. Vor dem Einrichten sicherstellen, dass beides nicht in Vergessenheit gerät.
 
 ### Benachrichtigungs-Zusammenfasser (Notification Hub)
 
