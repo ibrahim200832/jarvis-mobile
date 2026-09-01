@@ -47,7 +47,6 @@ dependencies:
   flutter_gemma_litertlm: ^1.6.0
   sensors_plus: ^7.1.0
   home_widget: ^0.9.3
-  local_auth: ^3.0.2
 
 dev_dependencies:
   flutter_test:

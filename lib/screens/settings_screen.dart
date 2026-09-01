@@ -4,7 +4,6 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../services/admin_auth_service.dart';
 import '../services/api_health_service.dart';
 import '../services/background_task_service.dart';
-import '../services/biometric_auth_service.dart';
 import '../services/contacts_service.dart';
 import '../services/home_assistant_service.dart';
 import '../services/home_widget_service.dart';
@@ -83,13 +82,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _appLockUsernameCtrl = TextEditingController();
   final _appLockPasswordCtrl = TextEditingController();
   final _appLockPasswordConfirmCtrl = TextEditingController();
-  final _adminPinCtrl = TextEditingController();
-  final _adminPinConfirmCtrl = TextEditingController();
   final _adminUsernameCtrl = TextEditingController();
   final _adminPasswordCtrl = TextEditingController();
   final _adminPasswordConfirmCtrl = TextEditingController();
   late final _adminAuth = AdminAuthService(settings: widget.settings);
-  final _biometricAuth = BiometricAuthService();
   List<Contact> _contacts = [];
   String _appVersion = '';
   String _persona = 'standard';
@@ -123,12 +119,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _appLockPinBusy = false;
   bool _hasAppLockCredentials = false;
   bool _appLockCredentialsBusy = false;
-  bool _hasAdminPin = false;
-  bool _adminPinBusy = false;
-  bool _hasAdminCredentials = false;
-  bool _adminCredentialsBusy = false;
-  bool _adminBiometricEnabled = false;
-  bool _adminBiometricAvailable = false;
+  bool _hasAdminAccounts = false;
+  String? _adminOwnerUsername;
+  bool _adminBootstrapBusy = false;
   bool _moodAutoAdjustEnabled = true;
   bool _testingHomeAssistant = false;
   bool _testingWebDav = false;
@@ -202,10 +195,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _shakeLocksAppEnabled = await widget.settings.getShakeLocksAppEnabled();
     _hasAppLockPin = await widget.settings.hasAppLockPin();
     _hasAppLockCredentials = await widget.settings.hasAppLockCredentials();
-    _hasAdminPin = await widget.settings.hasAdminPin();
-    _hasAdminCredentials = await widget.settings.hasAdminCredentials();
-    _adminBiometricEnabled = await widget.settings.getAdminBiometricEnabled();
-    _adminBiometricAvailable = await _biometricAuth.canCheckBiometrics();
+    final adminAccounts = await widget.settings.getAdminAccounts();
+    _hasAdminAccounts = adminAccounts.isNotEmpty;
+    _adminOwnerUsername = adminAccounts.where((a) => a.isOwner).firstOrNull?.username;
     _moodAutoAdjustEnabled = await widget.settings.getMoodAutoAdjustEnabled();
     _rssFeedCheckEnabled = await widget.settings.getRssFeedCheckEnabled();
     _weeklyBackupExportEnabled = await widget.settings.getWeeklyBackupExportEnabled();
@@ -484,45 +476,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Zugangsdaten entfernt.')));
   }
 
-  Future<void> _saveAdminPin() async {
-    final pin = _adminPinCtrl.text.trim();
-    final confirm = _adminPinConfirmCtrl.text.trim();
-    if (pin.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Bitte eine PIN eingeben.')));
-      return;
-    }
-    if (pin != confirm) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Die beiden PINs stimmen nicht überein.')));
-      return;
-    }
-    setState(() => _adminPinBusy = true);
-    await widget.settings.setAdminPin(pin);
-    if (!mounted) return;
-    _adminPinCtrl.clear();
-    _adminPinConfirmCtrl.clear();
-    setState(() {
-      _hasAdminPin = true;
-      _adminPinBusy = false;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Admin-PIN gespeichert.')));
-  }
-
-  Future<void> _removeAdminPin() async {
-    setState(() => _adminPinBusy = true);
-    await widget.settings.clearAdminPin();
-    if (!mounted) return;
-    setState(() {
-      _hasAdminPin = false;
-      _adminPinBusy = false;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Admin-PIN entfernt.')));
-  }
-
-  Future<void> _saveAdminCredentials() async {
+  /// Sets up the one owner account — only offered while no Admin-Konsole
+  /// account exists yet (see [_hasAdminAccounts]). Every further account
+  /// (helpers) and any password change happens only from inside the
+  /// console once logged in, never from here again.
+  Future<void> _bootstrapOwnerAccount() async {
     final username = _adminUsernameCtrl.text.trim();
     final password = _adminPasswordCtrl.text;
     final confirm = _adminPasswordConfirmCtrl.text;
@@ -538,36 +496,57 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ).showSnackBar(const SnackBar(content: Text('Die beiden Passwörter stimmen nicht überein.')));
       return;
     }
-    setState(() => _adminCredentialsBusy = true);
-    await widget.settings.setAdminCredentials(username, password);
+    setState(() => _adminBootstrapBusy = true);
+    await widget.settings.addAdminAccount(username: username, password: password, isOwner: true);
     if (!mounted) return;
+    _adminUsernameCtrl.clear();
     _adminPasswordCtrl.clear();
     _adminPasswordConfirmCtrl.clear();
     setState(() {
-      _hasAdminCredentials = true;
-      _adminCredentialsBusy = false;
+      _hasAdminAccounts = true;
+      _adminOwnerUsername = username;
+      _adminBootstrapBusy = false;
     });
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Zugangsdaten gespeichert.')));
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Besitzer-Konto eingerichtet.')));
   }
 
-  Future<void> _removeAdminCredentials() async {
-    setState(() => _adminCredentialsBusy = true);
-    await widget.settings.clearAdminCredentials();
+  /// Deliberately destructive safety valve: wipes every Admin-Konsole
+  /// account (owner and all helpers) so the section returns to the
+  /// bootstrap state. Doesn't expose or take over any existing account —
+  /// only reachable escape hatch for a forgotten owner password, since new
+  /// accounts can otherwise only be created by someone already logged in
+  /// as the owner.
+  Future<void> _resetAdminAccounts() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Alle Admin-Konten zurücksetzen?'),
+        content: const Text(
+          'Löscht den Besitzer und alle Helfer-Konten unwiderruflich. Danach muss ein neues '
+          'Besitzer-Konto eingerichtet werden. Das kann nicht rückgängig gemacht werden.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Abbrechen')),
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('Zurücksetzen')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await widget.settings.resetAdminAccounts();
     if (!mounted) return;
-    _adminUsernameCtrl.clear();
     setState(() {
-      _hasAdminCredentials = false;
-      _adminCredentialsBusy = false;
+      _hasAdminAccounts = false;
+      _adminOwnerUsername = null;
     });
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Zugangsdaten entfernt.')));
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Alle Admin-Konten wurden zurückgesetzt.')));
   }
 
-  /// Entry point for the "Admin-Einstellungen" button: already unlocked
-  /// this session → straight to the console; no PIN configured yet →
-  /// point at the fields above instead of showing a gate with nothing to
-  /// unlock; otherwise → AdminGateScreen first.
+  /// Entry point for the "Admin-Einstellungen" button: already logged in
+  /// this session → straight to the console; no accounts set up yet →
+  /// point at the bootstrap form above instead of showing a gate with
+  /// nothing to log into; otherwise → AdminGateScreen first.
   Future<void> _openAdminConsole() async {
-    if (_adminAuth.isUnlockedThisSession) {
+    if (_adminAuth.currentAccount != null) {
       if (!mounted) return;
       Navigator.of(context).push(
         MaterialPageRoute(
@@ -580,25 +559,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
       return;
     }
-    if (!_hasAdminPin && !_hasAdminCredentials) {
+    if (!_hasAdminAccounts) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Bitte zuerst oben eine Admin-PIN oder Zugangsdaten einrichten.'),
-        ),
+        const SnackBar(content: Text('Bitte zuerst oben ein Besitzer-Konto einrichten.')),
       );
       return;
     }
-    final offerBiometrics = _adminBiometricEnabled && _adminBiometricAvailable;
     final unlocked = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => AdminGateScreen(
-          hasPinConfigured: _hasAdminPin,
-          hasPasswordConfigured: _hasAdminCredentials,
-          checkLockout: _adminAuth.remainingLockout,
-          onUnlock: _adminAuth.unlock,
-          onLogin: _adminAuth.login,
-          onBiometricUnlock: offerBiometrics ? _authenticateWithBiometrics : null,
-        ),
+        builder: (_) => AdminGateScreen(checkLockout: _adminAuth.remainingLockout, onLogin: _adminAuth.login),
       ),
     );
     if (unlocked == true && mounted) {
@@ -612,17 +581,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       );
     }
-  }
-
-  /// Passed as AdminGateScreen's onBiometricUnlock — a successful device
-  /// biometric check marks the admin session unlocked exactly like a
-  /// correct PIN would (see AdminAuthService.unlockViaBiometrics).
-  Future<bool> _authenticateWithBiometrics() async {
-    final success = await _biometricAuth.authenticate(
-      reason: 'Admin-Konsole entsperren',
-    );
-    if (success) await _adminAuth.unlockViaBiometrics();
-    return success;
   }
 
   Future<void> _openNotificationListenerSettings() async {
@@ -1047,117 +1005,59 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const SizedBox(height: 4),
           const Text(
             'Schützt fortgeschrittene/sensible Einstellungen (KI-Server, System-Prompt, Diagnose usw.) '
-            'hinter einer eigenen PIN, getrennt von der Notfall-Sperre oben — einmal pro App-Sitzung '
-            'entsperrt.',
+            'hinter individuellen Konten, getrennt von der Notfall-Sperre oben — jede/r Berechtigte meldet '
+            'sich mit dem eigenen Nutzernamen+Passwort an.',
             style: TextStyle(fontSize: 12),
           ),
           const SizedBox(height: 12),
-          Text(
-            _hasAdminPin ? 'Admin-PIN ist gesetzt.' : 'Noch keine Admin-PIN gesetzt.',
-            style: const TextStyle(fontSize: 12),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _adminPinCtrl,
-            obscureText: true,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: 'Neue Admin-PIN'),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _adminPinConfirmCtrl,
-            obscureText: true,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: 'Admin-PIN bestätigen'),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _adminPinBusy ? null : _saveAdminPin,
-                  icon: const Icon(Icons.lock_outline),
-                  label: const Text('PIN speichern'),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: (_adminPinBusy || !_hasAdminPin) ? null : _removeAdminPin,
-                  icon: const Icon(Icons.lock_open_outlined),
-                  label: const Text('PIN entfernen'),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            _hasAdminCredentials ? 'Zugangsdaten sind gesetzt.' : 'Noch keine Zugangsdaten gesetzt.',
-            style: const TextStyle(fontSize: 12),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _adminUsernameCtrl,
-            decoration: const InputDecoration(labelText: 'Admin-Benutzername'),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _adminPasswordCtrl,
-            obscureText: true,
-            decoration: const InputDecoration(labelText: 'Admin-Passwort'),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _adminPasswordConfirmCtrl,
-            obscureText: true,
-            decoration: const InputDecoration(labelText: 'Admin-Passwort bestätigen'),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _adminCredentialsBusy ? null : _saveAdminCredentials,
-                  icon: const Icon(Icons.person_outline),
-                  label: const Text('Zugangsdaten speichern'),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: (_adminCredentialsBusy || !_hasAdminCredentials) ? null : _removeAdminCredentials,
-                  icon: const Icon(Icons.person_off_outlined),
-                  label: const Text('Zugangsdaten entfernen'),
-                ),
-              ),
-            ],
-          ),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Biometrie-Login'),
-            subtitle: Text(
-              (!_hasAdminPin && !_hasAdminCredentials)
-                  ? 'Braucht erst eine gesetzte Admin-PIN oder Zugangsdaten oben.'
-                  : !_adminBiometricAvailable
-                  ? 'Dieses Gerät hat keine eingerichtete Biometrie (Fingerabdruck/Face Unlock).'
-                  : 'Zusätzlicher Weg in die Admin-Konsole per Fingerabdruck/Face Unlock — PIN/Passwort '
-                        'bleiben weiterhin nutzbar.',
+          if (!_hasAdminAccounts) ...[
+            const Text(
+              'Richte einmalig dein eigenes Besitzer-Konto ein — es hat volle Rechte, auch um später '
+              'weitere Helfer-Konten anzulegen. Das geht danach nur noch direkt in der Admin-Konsole, '
+              'nicht mehr hier.',
+              style: TextStyle(fontSize: 12),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _adminUsernameCtrl,
+              decoration: const InputDecoration(labelText: 'Benutzername'),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _adminPasswordCtrl,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: 'Passwort'),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _adminPasswordConfirmCtrl,
+              obscureText: true,
+              decoration: const InputDecoration(labelText: 'Passwort bestätigen'),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: _adminBootstrapBusy ? null : _bootstrapOwnerAccount,
+              icon: const Icon(Icons.person_add_alt_outlined),
+              label: const Text('Besitzer-Konto einrichten'),
+            ),
+          ] else ...[
+            Text(
+              'Admin-Konsole eingerichtet (Besitzer: ${_adminOwnerUsername ?? "?"}).',
               style: const TextStyle(fontSize: 12),
             ),
-            value: _adminBiometricEnabled,
-            onChanged: ((!_hasAdminPin && !_hasAdminCredentials) || !_adminBiometricAvailable)
-                ? null
-                : (value) {
-                    setState(() => _adminBiometricEnabled = value);
-                    widget.settings.setAdminBiometricEnabled(value);
-                  },
-          ),
-          const SizedBox(height: 12),
-          OutlinedButton.icon(
-            onPressed: _openAdminConsole,
-            icon: const Icon(Icons.admin_panel_settings_outlined),
-            label: const Text('Admin-Einstellungen'),
-          ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _openAdminConsole,
+              icon: const Icon(Icons.admin_panel_settings_outlined),
+              label: const Text('Admin-Einstellungen'),
+            ),
+            const SizedBox(height: 8),
+            TextButton.icon(
+              onPressed: _resetAdminAccounts,
+              icon: const Icon(Icons.warning_amber_outlined),
+              label: const Text('Alle Admin-Konten zurücksetzen'),
+            ),
+          ],
           const SizedBox(height: 24),
           Text('Homescreen-Widget', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 4),

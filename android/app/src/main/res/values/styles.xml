@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Parent must be a Theme.AppCompat variant (Runde 15, Einheit 2) —
-         local_auth_android's biometric prompt (androidx.biometric, pulled
-         in transitively) crashes on Android 8 and below otherwise; see
-         local_auth_android's README "Android theme" section. -->
+    <!-- Parent kept as a Theme.AppCompat variant (originally required by
+         local_auth_android's biometric prompt, Runde 15, Einheit 2, since
+         removed in Runde 18) — left as-is, reverting is pure native-code
+         risk for no functional benefit. -->
     <style name="LaunchTheme" parent="@style/Theme.AppCompat.Light.NoActionBar">
         <item name="android:windowBackground">@drawable/launch_background</item>
     </style>

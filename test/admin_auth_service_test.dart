@@ -44,44 +44,9 @@ void main() {
     expect(adminAuth.isUnlockedThisSession, isFalse);
   });
 
-  test('unlock() with the correct PIN sets isUnlockedThisSession and returns true', () async {
-    await settings.setAdminPin('1234');
-
-    final result = await adminAuth.unlock('1234');
-
-    expect(result, isTrue);
-    expect(adminAuth.isUnlockedThisSession, isTrue);
-  });
-
-  test('unlock() with a wrong PIN leaves isUnlockedThisSession false and returns false', () async {
-    await settings.setAdminPin('1234');
-
-    final result = await adminAuth.unlock('0000');
-
-    expect(result, isFalse);
-    expect(adminAuth.isUnlockedThisSession, isFalse);
-  });
-
-  test('unlock() with no PIN configured always returns false', () async {
-    final result = await adminAuth.unlock('anything');
-    expect(result, isFalse);
-    expect(adminAuth.isUnlockedThisSession, isFalse);
-  });
-
-  test('hasPinConfigured reflects SettingsService.hasAdminPin', () async {
-    expect(await adminAuth.hasPinConfigured(), isFalse);
-    await settings.setAdminPin('1234');
-    expect(await adminAuth.hasPinConfigured(), isTrue);
-  });
-
-  test('unlockViaBiometrics() sets isUnlockedThisSession without a PIN check', () async {
-    await adminAuth.unlockViaBiometrics();
-    expect(adminAuth.isUnlockedThisSession, isTrue);
-  });
-
   test('lockSession() clears an unlocked session', () async {
-    await settings.setAdminPin('1234');
-    await adminAuth.unlock('1234');
+    await settings.addAdminAccount(username: 'ibrahim', password: 'hunter2', isOwner: true);
+    await adminAuth.login('ibrahim', 'hunter2');
     expect(adminAuth.isUnlockedThisSession, isTrue);
 
     adminAuth.lockSession();
@@ -90,26 +55,27 @@ void main() {
   });
 
   test('a separate AdminAuthService instance does not inherit an unlocked session', () async {
-    await settings.setAdminPin('1234');
-    await adminAuth.unlock('1234');
+    await settings.addAdminAccount(username: 'ibrahim', password: 'hunter2', isOwner: true);
+    await adminAuth.login('ibrahim', 'hunter2');
 
     final freshInstance = AdminAuthService(settings: settings, log: log);
 
     expect(freshInstance.isUnlockedThisSession, isFalse);
   });
 
-  group('login() (username/password)', () {
-    test('with correct credentials sets isUnlockedThisSession and returns true', () async {
-      await settings.setAdminCredentials('ibrahim', 'hunter2');
+  group('login()', () {
+    test('with correct credentials sets isUnlockedThisSession, currentAccount and returns true', () async {
+      await settings.addAdminAccount(username: 'ibrahim', password: 'hunter2', isOwner: true);
 
       final result = await adminAuth.login('ibrahim', 'hunter2');
 
       expect(result, isTrue);
       expect(adminAuth.isUnlockedThisSession, isTrue);
+      expect(adminAuth.currentAccount?.username, 'ibrahim');
     });
 
     test('with a wrong password leaves isUnlockedThisSession false and returns false', () async {
-      await settings.setAdminCredentials('ibrahim', 'hunter2');
+      await settings.addAdminAccount(username: 'ibrahim', password: 'hunter2', isOwner: true);
 
       final result = await adminAuth.login('ibrahim', 'wrong');
 
@@ -117,15 +83,126 @@ void main() {
       expect(adminAuth.isUnlockedThisSession, isFalse);
     });
 
-    test('with no credentials configured always returns false', () async {
+    test('with no accounts configured always returns false', () async {
       final result = await adminAuth.login('ibrahim', 'anything');
       expect(result, isFalse);
     });
 
-    test('hasPasswordConfigured reflects SettingsService.hasAdminCredentials', () async {
-      expect(await adminAuth.hasPasswordConfigured(), isFalse);
-      await settings.setAdminCredentials('ibrahim', 'hunter2');
-      expect(await adminAuth.hasPasswordConfigured(), isTrue);
+    test('isOwner reflects the logged-in account\'s role', () async {
+      await settings.addAdminAccount(username: 'ibrahim', password: 'owner-pw', isOwner: true);
+      await settings.addAdminAccount(username: 'helper1', password: 'helper-pw', isOwner: false);
+
+      await adminAuth.login('helper1', 'helper-pw');
+      expect(adminAuth.isOwner, isFalse);
+
+      adminAuth.lockSession();
+      await adminAuth.login('ibrahim', 'owner-pw');
+      expect(adminAuth.isOwner, isTrue);
+    });
+
+    test('isOwner is false when nobody is logged in', () {
+      expect(adminAuth.isOwner, isFalse);
+    });
+  });
+
+  group('account management (owner-only)', () {
+    test('addHelperAccount succeeds when the current session is the owner', () async {
+      await settings.addAdminAccount(username: 'ibrahim', password: 'owner-pw', isOwner: true);
+      await adminAuth.login('ibrahim', 'owner-pw');
+
+      final added = await adminAuth.addHelperAccount('helper1', 'helper-pw');
+
+      expect(added, isTrue);
+      final accounts = await settings.getAdminAccounts();
+      expect(accounts.where((a) => a.username == 'helper1').single.isOwner, isFalse);
+    });
+
+    test('addHelperAccount fails when the current session is a helper', () async {
+      await settings.addAdminAccount(username: 'ibrahim', password: 'owner-pw', isOwner: true);
+      await settings.addAdminAccount(username: 'helper1', password: 'helper-pw', isOwner: false);
+      await adminAuth.login('helper1', 'helper-pw');
+
+      final added = await adminAuth.addHelperAccount('helper2', 'pw');
+
+      expect(added, isFalse);
+      expect((await settings.getAdminAccounts()).any((a) => a.username == 'helper2'), isFalse);
+    });
+
+    test('addHelperAccount fails when nobody is logged in', () async {
+      final added = await adminAuth.addHelperAccount('helper1', 'pw');
+      expect(added, isFalse);
+    });
+
+    test('removeAccount succeeds for a helper when the current session is the owner', () async {
+      await settings.addAdminAccount(username: 'ibrahim', password: 'owner-pw', isOwner: true);
+      await settings.addAdminAccount(username: 'helper1', password: 'helper-pw', isOwner: false);
+      await adminAuth.login('ibrahim', 'owner-pw');
+
+      final removed = await adminAuth.removeAccount('helper1');
+
+      expect(removed, isTrue);
+      expect((await settings.getAdminAccounts()).any((a) => a.username == 'helper1'), isFalse);
+    });
+
+    test('removeAccount fails when the current session is a helper', () async {
+      await settings.addAdminAccount(username: 'ibrahim', password: 'owner-pw', isOwner: true);
+      await settings.addAdminAccount(username: 'helper1', password: 'helper-pw', isOwner: false);
+      await adminAuth.login('helper1', 'helper-pw');
+
+      final removed = await adminAuth.removeAccount('ibrahim');
+
+      expect(removed, isFalse);
+      expect((await settings.getAdminAccounts()).any((a) => a.username == 'ibrahim'), isTrue);
+    });
+
+    test('removeAccount refuses to remove the owner account, even when logged in as owner', () async {
+      await settings.addAdminAccount(username: 'ibrahim', password: 'owner-pw', isOwner: true);
+      await adminAuth.login('ibrahim', 'owner-pw');
+
+      final removed = await adminAuth.removeAccount('ibrahim');
+
+      expect(removed, isFalse);
+      expect((await settings.getAdminAccounts()).any((a) => a.username == 'ibrahim'), isTrue);
+    });
+  });
+
+  group('changeOwnPassword', () {
+    test('succeeds with the correct current password and updates currentAccount', () async {
+      await settings.addAdminAccount(username: 'ibrahim', password: 'old-pw', isOwner: true);
+      await adminAuth.login('ibrahim', 'old-pw');
+
+      final result = await adminAuth.changeOwnPassword('old-pw', 'new-pw');
+
+      expect(result, isTrue);
+      expect(await settings.findMatchingAdminAccount('ibrahim', 'old-pw'), isNull);
+      expect(await settings.findMatchingAdminAccount('ibrahim', 'new-pw'), isNotNull);
+      expect(adminAuth.currentAccount?.username, 'ibrahim');
+    });
+
+    test('fails with the wrong current password, leaving the password unchanged', () async {
+      await settings.addAdminAccount(username: 'ibrahim', password: 'old-pw', isOwner: true);
+      await adminAuth.login('ibrahim', 'old-pw');
+
+      final result = await adminAuth.changeOwnPassword('wrong', 'new-pw');
+
+      expect(result, isFalse);
+      expect(await settings.findMatchingAdminAccount('ibrahim', 'old-pw'), isNotNull);
+    });
+
+    test('fails when nobody is logged in', () async {
+      final result = await adminAuth.changeOwnPassword('anything', 'new-pw');
+      expect(result, isFalse);
+    });
+
+    test('a helper can change their own password too, not just the owner', () async {
+      await settings.addAdminAccount(username: 'ibrahim', password: 'owner-pw', isOwner: true);
+      await settings.addAdminAccount(username: 'helper1', password: 'old-pw', isOwner: false);
+      await adminAuth.login('helper1', 'old-pw');
+
+      final result = await adminAuth.changeOwnPassword('old-pw', 'new-pw');
+
+      expect(result, isTrue);
+      expect(await settings.findMatchingAdminAccount('helper1', 'new-pw'), isNotNull);
     });
   });
 
@@ -136,67 +213,55 @@ void main() {
       expect(await adminAuth.remainingLockout(now: now), isNull);
     });
 
-    test('locks out after maxFailedAttempts wrong PIN attempts', () async {
-      await settings.setAdminPin('1234');
+    test('locks out after maxFailedAttempts wrong login attempts', () async {
+      await settings.addAdminAccount(username: 'ibrahim', password: 'hunter2', isOwner: true);
       for (var i = 0; i < AdminAuthService.maxFailedAttempts; i++) {
-        await adminAuth.unlock('wrong', now: now);
+        await adminAuth.login('ibrahim', 'wrong', now: now);
       }
 
       expect(await adminAuth.remainingLockout(now: now), isNotNull);
-      // Even the correct PIN is rejected without even being checked while locked out.
-      expect(await adminAuth.unlock('1234', now: now), isFalse);
-    });
-
-    test('mixing PIN and password wrong attempts shares the same counter', () async {
-      await settings.setAdminPin('1234');
-      await settings.setAdminCredentials('ibrahim', 'hunter2');
-
-      await adminAuth.unlock('wrong', now: now);
-      await adminAuth.login('ibrahim', 'wrong', now: now);
-      await adminAuth.unlock('wrong', now: now);
-      await adminAuth.login('ibrahim', 'wrong', now: now);
-      await adminAuth.unlock('wrong', now: now);
-
-      expect(await adminAuth.remainingLockout(now: now), isNotNull);
-      // Switching credential type doesn't bypass the lockout either.
+      // Even the correct password is rejected without even being checked while locked out.
       expect(await adminAuth.login('ibrahim', 'hunter2', now: now), isFalse);
     });
 
+    test('wrong attempts across different usernames share the same counter', () async {
+      await settings.addAdminAccount(username: 'ibrahim', password: 'hunter2', isOwner: true);
+      await settings.addAdminAccount(username: 'helper1', password: 'helper-pw', isOwner: false);
+
+      await adminAuth.login('ibrahim', 'wrong', now: now);
+      await adminAuth.login('helper1', 'wrong', now: now);
+      await adminAuth.login('ibrahim', 'wrong', now: now);
+      await adminAuth.login('helper1', 'wrong', now: now);
+      await adminAuth.login('ibrahim', 'wrong', now: now);
+
+      expect(await adminAuth.remainingLockout(now: now), isNotNull);
+      // Switching which username is being guessed doesn't bypass the lockout either.
+      expect(await adminAuth.login('helper1', 'helper-pw', now: now), isFalse);
+    });
+
     test('lockout expires after lockoutDuration', () async {
-      await settings.setAdminPin('1234');
+      await settings.addAdminAccount(username: 'ibrahim', password: 'hunter2', isOwner: true);
       for (var i = 0; i < AdminAuthService.maxFailedAttempts; i++) {
-        await adminAuth.unlock('wrong', now: now);
+        await adminAuth.login('ibrahim', 'wrong', now: now);
       }
       expect(await adminAuth.remainingLockout(now: now), isNotNull);
 
       final afterLockout = now.add(AdminAuthService.lockoutDuration).add(const Duration(seconds: 1));
 
       expect(await adminAuth.remainingLockout(now: afterLockout), isNull);
-      expect(await adminAuth.unlock('1234', now: afterLockout), isTrue);
+      expect(await adminAuth.login('ibrahim', 'hunter2', now: afterLockout), isTrue);
     });
 
     test('a successful login resets the failed-attempt counter', () async {
-      await settings.setAdminPin('1234');
-      await adminAuth.unlock('wrong', now: now);
-      await adminAuth.unlock('wrong', now: now);
-      await adminAuth.unlock('1234', now: now);
+      await settings.addAdminAccount(username: 'ibrahim', password: 'hunter2', isOwner: true);
+      await adminAuth.login('ibrahim', 'wrong', now: now);
+      await adminAuth.login('ibrahim', 'wrong', now: now);
+      await adminAuth.login('ibrahim', 'hunter2', now: now);
 
       // Two more wrong attempts after the reset shouldn't be enough to lock out.
-      await adminAuth.unlock('wrong', now: now);
-      await adminAuth.unlock('wrong', now: now);
+      await adminAuth.login('ibrahim', 'wrong', now: now);
+      await adminAuth.login('ibrahim', 'wrong', now: now);
       expect(await adminAuth.remainingLockout(now: now), isNull);
-    });
-
-    test('biometric unlock bypasses the lockout entirely', () async {
-      await settings.setAdminPin('1234');
-      for (var i = 0; i < AdminAuthService.maxFailedAttempts; i++) {
-        await adminAuth.unlock('wrong', now: now);
-      }
-      expect(await adminAuth.remainingLockout(now: now), isNotNull);
-
-      await adminAuth.unlockViaBiometrics();
-
-      expect(adminAuth.isUnlockedThisSession, isTrue);
     });
   });
 
@@ -205,27 +270,27 @@ void main() {
       expect(await adminAuth.recentSuccessfulLogins(), isEmpty);
     });
 
-    test('includes successful PIN/password/biometric logins, newest first, but not failures', () async {
-      await settings.setAdminPin('1234');
-      await settings.setAdminCredentials('ibrahim', 'hunter2');
+    test('includes successful logins with the real username, newest first, but not failures', () async {
+      await settings.addAdminAccount(username: 'ibrahim', password: 'hunter2', isOwner: true);
+      await settings.addAdminAccount(username: 'helper1', password: 'helper-pw', isOwner: false);
 
-      await adminAuth.unlock('wrong'); // failure, must not appear
-      await adminAuth.unlock('1234');
+      await adminAuth.login('ibrahim', 'wrong'); // failure, must not appear
       await adminAuth.login('ibrahim', 'hunter2');
-      await adminAuth.unlockViaBiometrics();
+      adminAuth.lockSession();
+      await adminAuth.login('helper1', 'helper-pw');
 
       final logins = await adminAuth.recentSuccessfulLogins();
 
-      expect(logins.length, 3);
-      expect(logins[0].message, contains('Biometrie'));
-      expect(logins[1].message, contains('Passwort'));
-      expect(logins[2].message, contains('PIN'));
+      expect(logins.length, 2);
+      expect(logins[0].message, contains('helper1'));
+      expect(logins[1].message, contains('ibrahim'));
     });
 
     test('respects the limit parameter', () async {
-      await settings.setAdminPin('1234');
+      await settings.addAdminAccount(username: 'ibrahim', password: 'hunter2', isOwner: true);
       for (var i = 0; i < 5; i++) {
-        await adminAuth.unlock('1234');
+        adminAuth.lockSession();
+        await adminAuth.login('ibrahim', 'hunter2');
       }
 
       expect(await adminAuth.recentSuccessfulLogins(limit: 2), hasLength(2));
@@ -241,8 +306,8 @@ void main() {
       );
       var fired = false;
       shortTimeoutAuth.onIdleTimeout = () => fired = true;
-      await settings.setAdminPin('1234');
-      await shortTimeoutAuth.unlock('1234');
+      await settings.addAdminAccount(username: 'ibrahim', password: 'hunter2', isOwner: true);
+      await shortTimeoutAuth.login('ibrahim', 'hunter2');
       shortTimeoutAuth.recordActivity();
 
       await Future.delayed(const Duration(milliseconds: 60));
@@ -259,8 +324,8 @@ void main() {
       );
       var fired = false;
       shortTimeoutAuth.onIdleTimeout = () => fired = true;
-      await settings.setAdminPin('1234');
-      await shortTimeoutAuth.unlock('1234');
+      await settings.addAdminAccount(username: 'ibrahim', password: 'hunter2', isOwner: true);
+      await shortTimeoutAuth.login('ibrahim', 'hunter2');
       shortTimeoutAuth.recordActivity();
 
       await Future.delayed(const Duration(milliseconds: 20));

@@ -17,11 +17,12 @@ import io.flutter.plugin.common.MethodChannel
  * kept in one class since FlutterActivity's configureFlutterEngine is the
  * one place Flutter plugins/channels get wired up per Activity instance.
  *
- * Extends FlutterFragmentActivity rather than plain FlutterActivity (Runde
- * 15, Einheit 2) — local_auth's Android biometric prompt requires a
- * FragmentActivity, see local_auth_android's own README ("Activity
- * Changes"). Drop-in replacement, no other code here depends on
- * FlutterActivity-specific behavior.
+ * Extends FlutterFragmentActivity rather than plain FlutterActivity — a
+ * drop-in replacement originally required by local_auth's biometric prompt
+ * (Runde 15, Einheit 2, since removed in favor of individual Admin-Konsole
+ * accounts in Runde 18). Left as-is: a strict superset of FlutterActivity,
+ * no code here depends on FlutterActivity-specific behavior, so reverting
+ * it would be pure native-code risk for no functional benefit.
  */
 class MainActivity : FlutterFragmentActivity() {
     private val integrityChannelName = "com.jarvis.mobile.jarvis_mobile/integrity"

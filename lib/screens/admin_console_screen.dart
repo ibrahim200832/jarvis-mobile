@@ -75,8 +75,12 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
   final _currentPasswordCtrl = TextEditingController();
   final _newPasswordCtrl = TextEditingController();
   final _newPasswordConfirmCtrl = TextEditingController();
-  bool _hasAdminCredentials = false;
+  final _newHelperUsernameCtrl = TextEditingController();
+  final _newHelperPasswordCtrl = TextEditingController();
+  final _newHelperPasswordConfirmCtrl = TextEditingController();
   bool _changingPassword = false;
+  bool _addingHelper = false;
+  List<AdminAccount> _adminAccounts = [];
   List<LogEntry> _recentLogins = [];
 
   static const _aiModels = {
@@ -117,7 +121,7 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
     _themeVariant = await widget.settings.getThemeVariant();
     _forceLocalAiEnabled = await widget.settings.getForceLocalAiEnabled();
     _discordWebhookEnabled = await widget.settings.getDiscordWebhookEnabled();
-    _hasAdminCredentials = await widget.settings.hasAdminCredentials();
+    _adminAccounts = await widget.settings.getAdminAccounts();
     _recentLogins = await widget.adminAuth.recentSuccessfulLogins();
     if (mounted) setState(() {});
   }
@@ -237,27 +241,73 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
       return;
     }
     setState(() => _changingPassword = true);
-    final username = await widget.settings.getAdminUsername();
-    final currentCorrect =
-        username != null &&
-        await widget.settings.verifyAdminCredentials(username, current);
-    if (!currentCorrect) {
-      if (!mounted) return;
-      setState(() => _changingPassword = false);
+    final success = await widget.adminAuth.changeOwnPassword(current, newPassword);
+    if (!mounted) return;
+    setState(() => _changingPassword = false);
+    if (!success) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Aktuelles Passwort ist falsch.')),
       );
       return;
     }
-    await widget.settings.setAdminCredentials(username, newPassword);
-    if (!mounted) return;
     _currentPasswordCtrl.clear();
     _newPasswordCtrl.clear();
     _newPasswordConfirmCtrl.clear();
-    setState(() => _changingPassword = false);
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('Passwort geändert.')));
+  }
+
+  /// Owner-only: creates a new helper account (see AdminAuthService's
+  /// addHelperAccount, which enforces the owner-only rule itself — this
+  /// UI is also only rendered `if (widget.adminAuth.isOwner)` as a second,
+  /// defense-in-depth layer).
+  Future<void> _addHelperAccount() async {
+    final username = _newHelperUsernameCtrl.text.trim();
+    final password = _newHelperPasswordCtrl.text;
+    final confirm = _newHelperPasswordConfirmCtrl.text;
+    if (username.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Bitte Benutzername und Passwort eingeben.')));
+      return;
+    }
+    if (password != confirm) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Die beiden Passwörter stimmen nicht überein.')));
+      return;
+    }
+    setState(() => _addingHelper = true);
+    final added = await widget.adminAuth.addHelperAccount(username, password);
+    if (!mounted) return;
+    setState(() => _addingHelper = false);
+    if (!added) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Benutzername bereits vergeben.')));
+      return;
+    }
+    _newHelperUsernameCtrl.clear();
+    _newHelperPasswordCtrl.clear();
+    _newHelperPasswordConfirmCtrl.clear();
+    _adminAccounts = await widget.settings.getAdminAccounts();
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Konto hinzugefügt.')));
+  }
+
+  /// Owner-only: removes a helper account. Silently does nothing on
+  /// failure (not owner, or target is the owner account) — the UI never
+  /// offers a remove button for those cases, so a failure here would only
+  /// mean a race with another session, not worth a snackbar.
+  Future<void> _removeAccount(String username) async {
+    final removed = await widget.adminAuth.removeAccount(username);
+    if (!removed) return;
+    _adminAccounts = await widget.settings.getAdminAccounts();
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Konto entfernt.')));
   }
 
   Future<void> _saveBehaviorSection() async {
@@ -744,14 +794,14 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
               style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: 12),
-            if (!_hasAdminCredentials)
+            if (widget.adminAuth.currentAccount == null)
               const Text(
-                'Noch keine Zugangsdaten eingerichtet — leg sie zuerst unter Einstellungen → Admin-Zugang an.',
+                'Nicht angemeldet.',
                 style: TextStyle(fontSize: 12),
               )
             else ...[
               Text(
-                'Passwort ändern',
+                'Mein Passwort ändern',
                 style: Theme.of(context).textTheme.titleSmall,
               ),
               const SizedBox(height: 8),
@@ -781,6 +831,55 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
                 key: const Key('change-admin-password'),
                 onPressed: _changingPassword ? null : _changePassword,
                 child: const Text('Passwort ändern'),
+              ),
+            ],
+            if (widget.adminAuth.isOwner) ...[
+              const SizedBox(height: 16),
+              Text('Konten verwalten', style: Theme.of(context).textTheme.titleSmall),
+              const SizedBox(height: 4),
+              const Text(
+                'Nur der Besitzer kann Helfer-Konten hinzufügen oder entfernen.',
+                style: TextStyle(fontSize: 12),
+              ),
+              const SizedBox(height: 8),
+              ..._adminAccounts.map(
+                (account) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(account.username),
+                  subtitle: Text(account.isOwner ? 'Besitzer' : 'Helfer'),
+                  trailing: account.isOwner
+                      ? null
+                      : IconButton(
+                          key: Key('remove-account-${account.username}'),
+                          icon: const Icon(Icons.delete_outline),
+                          onPressed: () => _removeAccount(account.username),
+                        ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text('Neues Konto hinzufügen', style: Theme.of(context).textTheme.bodyMedium),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _newHelperUsernameCtrl,
+                decoration: const InputDecoration(labelText: 'Benutzername'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _newHelperPasswordCtrl,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: 'Passwort'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _newHelperPasswordConfirmCtrl,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: 'Passwort bestätigen'),
+              ),
+              const SizedBox(height: 8),
+              FilledButton(
+                key: const Key('add-admin-account'),
+                onPressed: _addingHelper ? null : _addHelperAccount,
+                child: const Text('Konto hinzufügen'),
               ),
             ],
             const SizedBox(height: 16),

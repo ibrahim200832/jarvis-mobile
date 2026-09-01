@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jarvis_mobile/services/secure_storage_service.dart';
 import 'package:jarvis_mobile/services/settings_service.dart';
@@ -187,12 +190,12 @@ void main() {
       expect(await settings.verifyAppLockCredentials('ibrahim', 'hunter2'), isTrue);
     });
 
-    test('app lock credentials are independent of the admin credentials', () async {
-      await settings.setAdminCredentials('ibrahim', 'admin-secret');
+    test('app lock credentials are independent of the admin accounts', () async {
+      await settings.addAdminAccount(username: 'ibrahim', password: 'admin-secret', isOwner: true);
       await settings.setAppLockCredentials('ibrahim', 'applock-secret');
-      expect(await settings.verifyAdminCredentials('ibrahim', 'applock-secret'), isFalse);
+      expect(await settings.findMatchingAdminAccount('ibrahim', 'applock-secret'), isNull);
       expect(await settings.verifyAppLockCredentials('ibrahim', 'admin-secret'), isFalse);
-      expect(await settings.verifyAdminCredentials('ibrahim', 'admin-secret'), isTrue);
+      expect(await settings.findMatchingAdminAccount('ibrahim', 'admin-secret'), isNotNull);
       expect(await settings.verifyAppLockCredentials('ibrahim', 'applock-secret'), isTrue);
     });
   });
@@ -223,124 +226,142 @@ void main() {
     });
   });
 
-  group('admin PIN', () {
-    test('hasAdminPin is false until a PIN is set', () async {
-      expect(await settings.hasAdminPin(), isFalse);
-      await settings.setAdminPin('1234');
-      expect(await settings.hasAdminPin(), isTrue);
+  group('admin accounts', () {
+    test('getAdminAccounts is empty until an account is added', () async {
+      expect(await settings.getAdminAccounts(), isEmpty);
+      await settings.addAdminAccount(username: 'ibrahim', password: 'hunter2', isOwner: true);
+      expect((await settings.getAdminAccounts()).map((a) => a.username), ['ibrahim']);
     });
 
-    test('verifyAdminPin returns true for the correct PIN', () async {
-      await settings.setAdminPin('1234');
-      expect(await settings.verifyAdminPin('1234'), isTrue);
+    test('addAdminAccount rejects a case-insensitive duplicate username', () async {
+      await settings.addAdminAccount(username: 'Ibrahim', password: 'hunter2', isOwner: true);
+      final added = await settings.addAdminAccount(username: 'ibrahim', password: 'other', isOwner: false);
+      expect(added, isFalse);
+      expect((await settings.getAdminAccounts()).length, 1);
     });
 
-    test('verifyAdminPin returns false for a wrong PIN', () async {
-      await settings.setAdminPin('1234');
-      expect(await settings.verifyAdminPin('0000'), isFalse);
+    test('findMatchingAdminAccount is case-sensitive on username, returns the account on a match', () async {
+      await settings.addAdminAccount(username: 'ibrahim', password: 'hunter2', isOwner: true);
+      final match = await settings.findMatchingAdminAccount('ibrahim', 'hunter2');
+      expect(match?.username, 'ibrahim');
+      expect(match?.isOwner, isTrue);
+      expect(await settings.findMatchingAdminAccount('Ibrahim', 'hunter2'), isNull);
     });
 
-    test('verifyAdminPin returns false when no PIN has ever been set', () async {
-      expect(await settings.verifyAdminPin('1234'), isFalse);
+    test('findMatchingAdminAccount returns null for a wrong password', () async {
+      await settings.addAdminAccount(username: 'ibrahim', password: 'hunter2', isOwner: true);
+      expect(await settings.findMatchingAdminAccount('ibrahim', 'wrong'), isNull);
     });
 
-    test('the PIN itself is never stored in plaintext, only a salted hash', () async {
-      await settings.setAdminPin('1234');
-      expect(secure.values.values, isNot(contains('1234')));
-      final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getKeys().map((k) => prefs.get(k)), isNot(contains('1234')));
+    test('findMatchingAdminAccount returns null for an unknown username', () async {
+      expect(await settings.findMatchingAdminAccount('ibrahim', 'hunter2'), isNull);
     });
 
-    test('setAdminPin overwrites a previous PIN', () async {
-      await settings.setAdminPin('1234');
-      await settings.setAdminPin('5678');
-      expect(await settings.verifyAdminPin('1234'), isFalse);
-      expect(await settings.verifyAdminPin('5678'), isTrue);
-    });
-
-    test('clearAdminPin removes the PIN entirely', () async {
-      await settings.setAdminPin('1234');
-      await settings.clearAdminPin();
-      expect(await settings.hasAdminPin(), isFalse);
-      expect(await settings.verifyAdminPin('1234'), isFalse);
-    });
-
-    test('the admin PIN is independent of the emergency-lock PIN', () async {
-      await settings.setAppLockPin('1111');
-      await settings.setAdminPin('2222');
-      expect(await settings.verifyAppLockPin('2222'), isFalse);
-      expect(await settings.verifyAdminPin('1111'), isFalse);
-      expect(await settings.verifyAppLockPin('1111'), isTrue);
-      expect(await settings.verifyAdminPin('2222'), isTrue);
-    });
-
-    test('admin biometric toggle defaults to false and round-trips', () async {
-      expect(await settings.getAdminBiometricEnabled(), isFalse);
-      await settings.setAdminBiometricEnabled(true);
-      expect(await settings.getAdminBiometricEnabled(), isTrue);
-    });
-  });
-
-  group('admin credentials (username/password)', () {
-    test('hasAdminCredentials is false until credentials are set', () async {
-      expect(await settings.hasAdminCredentials(), isFalse);
-      await settings.setAdminCredentials('ibrahim', 'hunter2');
-      expect(await settings.hasAdminCredentials(), isTrue);
-    });
-
-    test('verifyAdminCredentials returns true for the correct username and password', () async {
-      await settings.setAdminCredentials('ibrahim', 'hunter2');
-      expect(await settings.verifyAdminCredentials('ibrahim', 'hunter2'), isTrue);
-    });
-
-    test('verifyAdminCredentials returns false for a wrong password', () async {
-      await settings.setAdminCredentials('ibrahim', 'hunter2');
-      expect(await settings.verifyAdminCredentials('ibrahim', 'wrong'), isFalse);
-    });
-
-    test('verifyAdminCredentials returns false for a wrong username, even with the right password', () async {
-      await settings.setAdminCredentials('ibrahim', 'hunter2');
-      expect(await settings.verifyAdminCredentials('someone-else', 'hunter2'), isFalse);
-    });
-
-    test('verifyAdminCredentials returns false when no credentials have ever been set', () async {
-      expect(await settings.verifyAdminCredentials('ibrahim', 'hunter2'), isFalse);
-    });
-
-    test('the password itself is never stored in plaintext, only a salted hash', () async {
-      await settings.setAdminCredentials('ibrahim', 'hunter2');
+    test('passwords are never stored in plaintext, only a salted hash', () async {
+      await settings.addAdminAccount(username: 'ibrahim', password: 'hunter2', isOwner: true);
       expect(secure.values.values, isNot(contains('hunter2')));
       final prefs = await SharedPreferences.getInstance();
       expect(prefs.getKeys().map((k) => prefs.get(k)), isNot(contains('hunter2')));
     });
 
-    test('the username is stored so it can be shown/prefilled', () async {
-      await settings.setAdminCredentials('ibrahim', 'hunter2');
-      expect(await settings.getAdminUsername(), 'ibrahim');
+    test('multiple accounts (owner + helpers) coexist independently', () async {
+      await settings.addAdminAccount(username: 'ibrahim', password: 'owner-pw', isOwner: true);
+      await settings.addAdminAccount(username: 'helper1', password: 'helper-pw', isOwner: false);
+      expect(await settings.findMatchingAdminAccount('ibrahim', 'owner-pw'), isNotNull);
+      expect(await settings.findMatchingAdminAccount('helper1', 'helper-pw'), isNotNull);
+      expect(await settings.findMatchingAdminAccount('ibrahim', 'helper-pw'), isNull);
+      final accounts = await settings.getAdminAccounts();
+      expect(accounts.where((a) => a.isOwner).single.username, 'ibrahim');
+      expect(accounts.where((a) => !a.isOwner).single.username, 'helper1');
     });
 
-    test('setAdminCredentials overwrites previous credentials', () async {
-      await settings.setAdminCredentials('ibrahim', 'hunter2');
-      await settings.setAdminCredentials('ibrahim', 'newpassword');
-      expect(await settings.verifyAdminCredentials('ibrahim', 'hunter2'), isFalse);
-      expect(await settings.verifyAdminCredentials('ibrahim', 'newpassword'), isTrue);
+    test('removeAdminAccount removes only the targeted account, returns false if not found', () async {
+      await settings.addAdminAccount(username: 'ibrahim', password: 'owner-pw', isOwner: true);
+      await settings.addAdminAccount(username: 'helper1', password: 'helper-pw', isOwner: false);
+      expect(await settings.removeAdminAccount('helper1'), isTrue);
+      expect((await settings.getAdminAccounts()).map((a) => a.username), ['ibrahim']);
+      expect(await settings.removeAdminAccount('nobody'), isFalse);
     });
 
-    test('clearAdminCredentials removes the credentials entirely', () async {
-      await settings.setAdminCredentials('ibrahim', 'hunter2');
-      await settings.clearAdminCredentials();
-      expect(await settings.hasAdminCredentials(), isFalse);
-      expect(await settings.getAdminUsername(), isNull);
-      expect(await settings.verifyAdminCredentials('ibrahim', 'hunter2'), isFalse);
+    test('updateAdminAccountPassword changes only that account, keeping its role', () async {
+      await settings.addAdminAccount(username: 'helper1', password: 'old-pw', isOwner: false);
+      final updated = await settings.updateAdminAccountPassword('helper1', 'new-pw');
+      expect(updated, isTrue);
+      expect(await settings.findMatchingAdminAccount('helper1', 'old-pw'), isNull);
+      final account = await settings.findMatchingAdminAccount('helper1', 'new-pw');
+      expect(account, isNotNull);
+      expect(account!.isOwner, isFalse);
     });
 
-    test('admin credentials are independent of the admin PIN', () async {
-      await settings.setAdminPin('1234');
-      await settings.setAdminCredentials('ibrahim', 'hunter2');
-      expect(await settings.verifyAdminPin('hunter2'), isFalse);
-      expect(await settings.verifyAdminCredentials('ibrahim', '1234'), isFalse);
-      expect(await settings.verifyAdminPin('1234'), isTrue);
-      expect(await settings.verifyAdminCredentials('ibrahim', 'hunter2'), isTrue);
+    test('updateAdminAccountPassword returns false for an unknown username', () async {
+      expect(await settings.updateAdminAccountPassword('nobody', 'new-pw'), isFalse);
+    });
+
+    test('resetAdminAccounts wipes every account, owner and helpers alike', () async {
+      await settings.addAdminAccount(username: 'ibrahim', password: 'owner-pw', isOwner: true);
+      await settings.addAdminAccount(username: 'helper1', password: 'helper-pw', isOwner: false);
+      await settings.resetAdminAccounts();
+      expect(await settings.getAdminAccounts(), isEmpty);
+    });
+
+    // The pre-Runde-18 single-shared-account setters (setAdminCredentials/
+    // setAdminPin/setAdminBiometricEnabled) no longer exist — these tests
+    // simulate data that a real device could still have on disk from
+    // before this migration existed by writing the legacy keys directly,
+    // exactly as those old setters used to.
+    Future<void> seedLegacyCredentials(String username, String password) async {
+      final salt = base64Url.encode(List<int>.filled(16, 7));
+      final hash = sha256.convert(utf8.encode('$salt:$password')).toString();
+      secure.values['admin_password_salt'] = salt;
+      secure.values['admin_password_hash'] = hash;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('admin_username', username);
+    }
+
+    Future<void> seedLegacyPin(String pin) async {
+      final salt = base64Url.encode(List<int>.filled(16, 3));
+      final hash = sha256.convert(utf8.encode('$salt:$pin')).toString();
+      secure.values['admin_pin_salt'] = salt;
+      secure.values['admin_pin_hash'] = hash;
+    }
+
+    test('a legacy single shared admin account is migrated into a new owner account', () async {
+      await seedLegacyCredentials('legacy-user', 'legacy-pw');
+      final accounts = await settings.getAdminAccounts();
+      expect(accounts.length, 1);
+      expect(accounts.single.username, 'legacy-user');
+      expect(accounts.single.isOwner, isTrue);
+      expect(await settings.findMatchingAdminAccount('legacy-user', 'legacy-pw'), isNotNull);
+    });
+
+    test('migration clears the legacy PIN/credentials/biometric keys afterwards', () async {
+      await seedLegacyPin('1234');
+      await seedLegacyCredentials('legacy-user', 'legacy-pw');
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('admin_biometric_enabled', true);
+
+      await settings.getAdminAccounts(); // triggers the one-time migration
+
+      expect(secure.values.containsKey('admin_pin_salt'), isFalse);
+      expect(secure.values.containsKey('admin_pin_hash'), isFalse);
+      expect(secure.values.containsKey('admin_password_salt'), isFalse);
+      expect(secure.values.containsKey('admin_password_hash'), isFalse);
+      expect(prefs.containsKey('admin_username'), isFalse);
+      expect(prefs.containsKey('admin_biometric_enabled'), isFalse);
+    });
+
+    test('a PIN-only legacy setup (no username/password) has no migration path and starts empty', () async {
+      await seedLegacyPin('1234');
+      expect(await settings.getAdminAccounts(), isEmpty);
+    });
+
+    test('admin accounts are independent of the emergency-lock accounts', () async {
+      await settings.setAppLockCredentials('ibrahim', 'app-lock-pw');
+      await settings.addAdminAccount(username: 'ibrahim', password: 'admin-pw', isOwner: true);
+      expect(await settings.verifyAppLockCredentials('ibrahim', 'admin-pw'), isFalse);
+      expect(await settings.findMatchingAdminAccount('ibrahim', 'app-lock-pw'), isNull);
+      expect(await settings.verifyAppLockCredentials('ibrahim', 'app-lock-pw'), isTrue);
+      expect(await settings.findMatchingAdminAccount('ibrahim', 'admin-pw'), isNotNull);
     });
   });
 

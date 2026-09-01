@@ -7,6 +7,33 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/jarvis_theme.dart';
 import 'secure_storage_service.dart';
 
+/// One individual Admin-Konsole account — either the single owner (full
+/// rights, including managing other accounts) or a helper (same console
+/// access, no account management). See SettingsService's
+/// getAdminAccounts/addAdminAccount/etc. and AdminAuthService.
+class AdminAccount {
+  AdminAccount({required this.username, required this.passwordSalt, required this.passwordHash, required this.isOwner});
+
+  final String username;
+  final String passwordSalt;
+  final String passwordHash;
+  final bool isOwner;
+
+  Map<String, dynamic> toJson() => {
+    'username': username,
+    'passwordSalt': passwordSalt,
+    'passwordHash': passwordHash,
+    'isOwner': isOwner,
+  };
+
+  static AdminAccount fromJson(Map<String, dynamic> json) => AdminAccount(
+    username: json['username'] as String,
+    passwordSalt: json['passwordSalt'] as String,
+    passwordHash: json['passwordHash'] as String,
+    isOwner: json['isOwner'] as bool,
+  );
+}
+
 /// Persists user configuration (API keys, assistant name) on-device.
 ///
 /// Genuinely sensitive values (API keys, tokens, the HMAC request-signing
@@ -73,6 +100,7 @@ class SettingsService {
   static const _keyAdminUsername = 'admin_username';
   static const _keyAdminPasswordSalt = 'admin_password_salt';
   static const _keyAdminPasswordHash = 'admin_password_hash';
+  static const _keyAdminAccounts = 'admin_accounts';
   static const _keyAdminFailedAttempts = 'admin_failed_attempts';
   static const _keyAdminLockoutUntil = 'admin_lockout_until';
   static const _keySystemPromptOverride = 'admin_system_prompt_override';
@@ -690,104 +718,126 @@ class SettingsService {
     await prefs.setBool(_keyNotificationDigestAiEnabled, value);
   }
 
-  /// Sets/replaces the Admin-Konsole PIN — a separate credential from the
-  /// emergency-lock PIN (see [setAppLockPin]), since the two protect
-  /// different things (the whole app in an emergency vs. just the admin
-  /// console). Never stores the PIN itself, only a salted SHA-256 hash,
-  /// same pattern as [setAppLockPin].
-  Future<void> setAdminPin(String pin) async {
-    final saltBytes = List<int>.generate(16, (_) => Random.secure().nextInt(256));
-    final salt = base64Url.encode(saltBytes);
-    final hash = sha256.convert(utf8.encode('$salt:$pin')).toString();
-    await _secureSet(_keyAdminPinSalt, salt);
-    await _secureSet(_keyAdminPinHash, hash);
+  /// All Admin-Konsole accounts (the one owner plus any helpers), stored as
+  /// a single JSON-encoded list behind one secure-storage key — same "one
+  /// key, one JSON blob" shape as TodoService's SharedPreferences list, just
+  /// through [_secureGet]/[_secureSet] since it holds password hashes.
+  ///
+  /// One-time migration: if no accounts have ever been saved but an old
+  /// single shared admin username+password (from before this multi-account
+  /// system existed) is still present, it's promoted directly into a new
+  /// owner account — reusing the existing salt+hash pair so the user never
+  /// has to re-enter their password — and every legacy key (PIN, biometric
+  /// toggle, single-credentials) is deleted afterwards so nothing orphaned
+  /// lingers in storage. A PIN-only setup (no username/password ever set)
+  /// has no compatible data to migrate and simply starts with an empty
+  /// account list.
+  Future<List<AdminAccount>> getAdminAccounts() async {
+    final raw = await _secureGet(_keyAdminAccounts);
+    if (raw != null && raw.isNotEmpty) {
+      return (jsonDecode(raw) as List).map((e) => AdminAccount.fromJson(e as Map<String, dynamic>)).toList();
+    }
+
+    final legacySalt = await _secureGet(_keyAdminPasswordSalt);
+    final legacyHash = await _secureGet(_keyAdminPasswordHash);
+    final prefs = await SharedPreferences.getInstance();
+    final legacyUsername = prefs.getString(_keyAdminUsername);
+    if (legacySalt == null || legacyHash == null || legacyUsername == null) {
+      await _clearLegacyAdminAuth();
+      return [];
+    }
+
+    final migrated = [
+      AdminAccount(username: legacyUsername, passwordSalt: legacySalt, passwordHash: legacyHash, isOwner: true),
+    ];
+    await _saveAdminAccounts(migrated);
+    await _clearLegacyAdminAuth();
+    return migrated;
   }
 
-  Future<bool> hasAdminPin() async {
-    return (await _secureGet(_keyAdminPinHash)) != null;
-  }
-
-  /// Recomputes the salted hash for [pin] and compares it against the
-  /// stored one. Returns false (never throws) if no PIN is set.
-  Future<bool> verifyAdminPin(String pin) async {
-    final salt = await _secureGet(_keyAdminPinSalt);
-    final storedHash = await _secureGet(_keyAdminPinHash);
-    if (salt == null || storedHash == null) return false;
-    final hash = sha256.convert(utf8.encode('$salt:$pin')).toString();
-    return hash == storedHash;
-  }
-
-  /// Unlike [clearAppLockPin], removing this PIN carries no lockout risk —
-  /// it's only reachable from the normal (ungated) settings screen, never
-  /// from inside the admin console itself.
-  Future<void> clearAdminPin() async {
+  Future<void> _clearLegacyAdminAuth() async {
     await _secure.delete(_keyAdminPinSalt);
     await _secure.delete(_keyAdminPinHash);
+    await _secure.delete(_keyAdminPasswordSalt);
+    await _secure.delete(_keyAdminPasswordHash);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_keyAdminUsername);
+    await prefs.remove(_keyAdminBiometricEnabled);
   }
 
-  /// Whether biometric unlock (fingerprint/face) is offered as an
-  /// additional way into the admin console, alongside the PIN — the PIN
-  /// always remains the required fallback. Default off.
-  Future<bool> getAdminBiometricEnabled() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_keyAdminBiometricEnabled) ?? false;
+  Future<void> _saveAdminAccounts(List<AdminAccount> accounts) async {
+    await _secureSet(_keyAdminAccounts, jsonEncode(accounts.map((a) => a.toJson()).toList()));
   }
 
-  Future<void> setAdminBiometricEnabled(bool value) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_keyAdminBiometricEnabled, value);
-  }
-
-  /// Sets/replaces the Admin-Konsole's username+password login — a second,
-  /// equally valid way into the same session as the PIN (see setAdminPin),
-  /// not a replacement for it. Same salted-SHA256 pattern as the PIN; the
-  /// username itself is a plain (non-secret) identifier, same split as
-  /// getWebDavUsername()/getWebDavPassword() elsewhere in this file. Never
-  /// stores the password itself, only a salted hash.
-  Future<void> setAdminCredentials(String username, String password) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keyAdminUsername, username);
+  /// Adds a new account. Username uniqueness is checked case-insensitively
+  /// (so "Ibrahim" and "ibrahim" can't coexist), even though matching a
+  /// login attempt (see [findMatchingAdminAccount]) stays case-sensitive,
+  /// like every other username/password pair in this file — returns false
+  /// without adding anything if the username is already taken.
+  Future<bool> addAdminAccount({required String username, required String password, required bool isOwner}) async {
+    final accounts = await getAdminAccounts();
+    if (accounts.any((a) => a.username.toLowerCase() == username.toLowerCase())) return false;
     final saltBytes = List<int>.generate(16, (_) => Random.secure().nextInt(256));
     final salt = base64Url.encode(saltBytes);
     final hash = sha256.convert(utf8.encode('$salt:$password')).toString();
-    await _secureSet(_keyAdminPasswordSalt, salt);
-    await _secureSet(_keyAdminPasswordHash, hash);
+    accounts.add(AdminAccount(username: username, passwordSalt: salt, passwordHash: hash, isOwner: isOwner));
+    await _saveAdminAccounts(accounts);
+    return true;
   }
 
-  Future<bool> hasAdminCredentials() async {
-    return (await _secureGet(_keyAdminPasswordHash)) != null;
+  /// Returns false (does nothing) if no account with that username exists.
+  Future<bool> removeAdminAccount(String username) async {
+    final accounts = await getAdminAccounts();
+    final removed = accounts.length;
+    accounts.removeWhere((a) => a.username == username);
+    if (accounts.length == removed) return false;
+    await _saveAdminAccounts(accounts);
+    return true;
   }
 
-  Future<String?> getAdminUsername() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_keyAdminUsername);
+  /// Case-sensitive exact match on username, hash-verified password.
+  /// Returns null (never throws) if no account matches.
+  Future<AdminAccount?> findMatchingAdminAccount(String username, String password) async {
+    final accounts = await getAdminAccounts();
+    for (final account in accounts) {
+      if (account.username != username) continue;
+      final hash = sha256.convert(utf8.encode('${account.passwordSalt}:$password')).toString();
+      if (hash == account.passwordHash) return account;
+      return null;
+    }
+    return null;
   }
 
-  /// Case-sensitive exact match on both username and password. Returns
-  /// false (never throws) if no credentials are set, or if the username
-  /// doesn't match the stored one.
-  Future<bool> verifyAdminCredentials(String username, String password) async {
-    final storedUsername = await getAdminUsername();
-    final salt = await _secureGet(_keyAdminPasswordSalt);
-    final storedHash = await _secureGet(_keyAdminPasswordHash);
-    if (storedUsername == null || salt == null || storedHash == null) return false;
-    if (username != storedUsername) return false;
-    final hash = sha256.convert(utf8.encode('$salt:$password')).toString();
-    return hash == storedHash;
+  /// Returns false (does nothing) if no account with that username exists.
+  Future<bool> updateAdminAccountPassword(String username, String newPassword) async {
+    final accounts = await getAdminAccounts();
+    final index = accounts.indexWhere((a) => a.username == username);
+    if (index == -1) return false;
+    final saltBytes = List<int>.generate(16, (_) => Random.secure().nextInt(256));
+    final salt = base64Url.encode(saltBytes);
+    final hash = sha256.convert(utf8.encode('$salt:$newPassword')).toString();
+    final existing = accounts[index];
+    accounts[index] = AdminAccount(username: existing.username, passwordSalt: salt, passwordHash: hash, isOwner: existing.isOwner);
+    await _saveAdminAccounts(accounts);
+    return true;
   }
 
-  /// Same "no lockout risk" note as clearAdminPin — only reachable from the
-  /// normal (ungated) settings screen.
-  Future<void> clearAdminCredentials() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_keyAdminUsername);
-    await _secure.delete(_keyAdminPasswordSalt);
-    await _secure.delete(_keyAdminPasswordHash);
+  /// Deletes every Admin-Konsole account (owner and all helpers), reachable
+  /// from the normal (ungated) settings screen as a deliberate, destructive
+  /// safety valve — a forgotten owner password would otherwise permanently
+  /// lock everyone out with no in-app way back in, since new accounts can
+  /// only be created by someone already logged in as the owner. This can't
+  /// read or take over an existing account, only wipe the list back to the
+  /// empty/bootstrap state — strictly weaker than what unlocked physical
+  /// device access already grants (clearing all app data).
+  Future<void> resetAdminAccounts() async {
+    await _secure.delete(_keyAdminAccounts);
   }
 
-  /// Failed-attempt counter shared by both the Admin-PIN and the
-  /// username/password login (see AdminAuthService) — persisted (not just
-  /// in-memory) so a simple app restart can't be used to dodge a lockout.
+  /// Failed-attempt counter shared across every Admin-Konsole login attempt
+  /// (see AdminAuthService), regardless of which account was guessed —
+  /// persisted (not just in-memory) so a simple app restart can't be used
+  /// to dodge a lockout.
   Future<int> getAdminFailedAttempts() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getInt(_keyAdminFailedAttempts) ?? 0;

@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- See values/styles.xml for why this must be a Theme.AppCompat
-         variant (Runde 15, Einheit 2, local_auth biometric prompt). -->
+    <!-- See values/styles.xml for why this stays a Theme.AppCompat variant. -->
     <style name="LaunchTheme" parent="@style/Theme.AppCompat.NoActionBar">
         <item name="android:windowBackground">@drawable/launch_background</item>
     </style>

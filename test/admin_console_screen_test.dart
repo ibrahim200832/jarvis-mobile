@@ -360,20 +360,17 @@ void main() {
   });
 
   group('Zugang & Sicherheit', () {
-    testWidgets('shows a hint instead of the password-change form when no credentials are set up', (
+    testWidgets('shows "Nicht angemeldet." instead of the password-change form when not logged in', (
       tester,
     ) async {
       await _pumpConsole(tester, settings, adminAuth: adminAuth);
 
-      expect(
-        find.textContaining('Noch keine Zugangsdaten eingerichtet'),
-        findsOneWidget,
-      );
+      expect(find.text('Nicht angemeldet.'), findsOneWidget);
       expect(find.text('Passwort ändern'), findsNothing);
     });
 
     testWidgets('shows the Zugriffs-Log empty state when no logins have been recorded', (tester) async {
-      await settings.setAdminCredentials('ibrahim', 'hunter2');
+      await settings.addAdminAccount(username: 'ibrahim', password: 'hunter2', isOwner: true);
 
       await _pumpConsole(tester, settings, adminAuth: adminAuth);
 
@@ -381,16 +378,17 @@ void main() {
     });
 
     testWidgets('shows recorded successful logins in the Zugriffs-Log', (tester) async {
-      await settings.setAdminPin('1234');
-      await tester.runAsync(() => adminAuth.unlock('1234'));
+      await settings.addAdminAccount(username: 'ibrahim', password: 'hunter2', isOwner: true);
+      await tester.runAsync(() => adminAuth.login('ibrahim', 'hunter2'));
 
       await _pumpConsole(tester, settings, adminAuth: adminAuth);
 
-      expect(find.textContaining('Angemeldet per PIN.'), findsOneWidget);
+      expect(find.textContaining('Angemeldet als "ibrahim".'), findsOneWidget);
     });
 
     testWidgets('changing the password with the correct current password succeeds', (tester) async {
-      await settings.setAdminCredentials('ibrahim', 'oldpass');
+      await settings.addAdminAccount(username: 'ibrahim', password: 'oldpass', isOwner: true);
+      await tester.runAsync(() => adminAuth.login('ibrahim', 'oldpass'));
 
       await _pumpConsole(tester, settings, adminAuth: adminAuth);
 
@@ -400,15 +398,16 @@ void main() {
       await tester.tap(find.byKey(const Key('change-admin-password')));
       await tester.pumpAndSettle();
 
-      expect(await settings.verifyAdminCredentials('ibrahim', 'oldpass'), isFalse);
-      expect(await settings.verifyAdminCredentials('ibrahim', 'newpass'), isTrue);
+      expect(await settings.findMatchingAdminAccount('ibrahim', 'oldpass'), isNull);
+      expect(await settings.findMatchingAdminAccount('ibrahim', 'newpass'), isNotNull);
       expect(find.text('Passwort geändert.'), findsOneWidget);
     });
 
     testWidgets('changing the password with the wrong current password fails, leaving it unchanged', (
       tester,
     ) async {
-      await settings.setAdminCredentials('ibrahim', 'oldpass');
+      await settings.addAdminAccount(username: 'ibrahim', password: 'oldpass', isOwner: true);
+      await tester.runAsync(() => adminAuth.login('ibrahim', 'oldpass'));
 
       await _pumpConsole(tester, settings, adminAuth: adminAuth);
 
@@ -419,7 +418,63 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Aktuelles Passwort ist falsch.'), findsOneWidget);
-      expect(await settings.verifyAdminCredentials('ibrahim', 'oldpass'), isTrue);
+      expect(await settings.findMatchingAdminAccount('ibrahim', 'oldpass'), isNotNull);
+    });
+
+    group('Konten verwalten (owner-only)', () {
+      testWidgets('is hidden when logged in as a helper', (tester) async {
+        await settings.addAdminAccount(username: 'ibrahim', password: 'owner-pw', isOwner: true);
+        await settings.addAdminAccount(username: 'helper1', password: 'helper-pw', isOwner: false);
+        await tester.runAsync(() => adminAuth.login('helper1', 'helper-pw'));
+
+        await _pumpConsole(tester, settings, adminAuth: adminAuth);
+
+        expect(find.text('Konten verwalten'), findsNothing);
+      });
+
+      testWidgets('lists accounts and offers add/remove when logged in as the owner', (tester) async {
+        await settings.addAdminAccount(username: 'ibrahim', password: 'owner-pw', isOwner: true);
+        await settings.addAdminAccount(username: 'helper1', password: 'helper-pw', isOwner: false);
+        await tester.runAsync(() => adminAuth.login('ibrahim', 'owner-pw'));
+
+        await _pumpConsole(tester, settings, adminAuth: adminAuth);
+
+        expect(find.text('Konten verwalten'), findsOneWidget);
+        expect(find.text('ibrahim'), findsOneWidget);
+        expect(find.text('helper1'), findsOneWidget);
+        expect(find.byKey(const Key('remove-account-helper1')), findsOneWidget);
+        expect(find.byKey(const Key('remove-account-ibrahim')), findsNothing);
+      });
+
+      testWidgets('adding a helper account through the form succeeds', (tester) async {
+        await settings.addAdminAccount(username: 'ibrahim', password: 'owner-pw', isOwner: true);
+        await tester.runAsync(() => adminAuth.login('ibrahim', 'owner-pw'));
+
+        await _pumpConsole(tester, settings, adminAuth: adminAuth);
+
+        await tester.enterText(find.widgetWithText(TextField, 'Benutzername'), 'helper1');
+        await tester.enterText(find.widgetWithText(TextField, 'Passwort'), 'helper-pw');
+        await tester.enterText(find.widgetWithText(TextField, 'Passwort bestätigen'), 'helper-pw');
+        await tester.tap(find.byKey(const Key('add-admin-account')));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Konto hinzugefügt.'), findsOneWidget);
+        expect(await settings.findMatchingAdminAccount('helper1', 'helper-pw'), isNotNull);
+      });
+
+      testWidgets('removing a helper account through the list succeeds', (tester) async {
+        await settings.addAdminAccount(username: 'ibrahim', password: 'owner-pw', isOwner: true);
+        await settings.addAdminAccount(username: 'helper1', password: 'helper-pw', isOwner: false);
+        await tester.runAsync(() => adminAuth.login('ibrahim', 'owner-pw'));
+
+        await _pumpConsole(tester, settings, adminAuth: adminAuth);
+
+        await tester.tap(find.byKey(const Key('remove-account-helper1')));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Konto entfernt.'), findsOneWidget);
+        expect((await settings.getAdminAccounts()).any((a) => a.username == 'helper1'), isFalse);
+      });
     });
 
     testWidgets('firing onIdleTimeout pops the console back to the caller', (tester) async {
