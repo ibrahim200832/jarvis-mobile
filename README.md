@@ -140,7 +140,7 @@ Als KI kommt dabei **Cloudflare Workers AI** zum Einsatz — ein offenes Modell 
 2. Im Cloudflare-Dashboard: **Workers & Pages → Create → Create Worker** → einen Namen vergeben (z. B. `jarvis-ai`) → **Deploy**.
 3. Auf **Edit code** klicken, den kompletten Inhalt der Datei [`worker/ai-proxy.js`](worker/ai-proxy.js) aus diesem Repo hineinkopieren (vorhandenen Beispielcode überschreiben) → **Deploy**.
 4. Im Worker-Dashboard: **Settings → Bindings → Add → AI** → Binding-Name `AI` eintragen → **Deploy** (macht `wrangler.toml` in diesem Repo automatisch, falls per Actions deployt — siehe unten).
-5. Die Worker-URL steht oben auf der Seite (z. B. `https://jarvis-ai.<dein-name>.workers.dev`) — die in der JARVIS-App unter **Einstellungen → Admin-Zugang → Admin-Konsole → „KI-Server-Adresse"** eintragen und speichern (siehe Abschnitt „Runde 15: Admin-Konsole" weiter unten für die PIN-Einrichtung). Ist das Feld leer, nutzt JARVIS automatisch den kostenlosen Standard-Dienst ohne Setup.
+5. Die Worker-URL steht oben auf der Seite (z. B. `https://jarvis-ai.<dein-name>.workers.dev`) — die in der JARVIS-App unter **Einstellungen → Admin-Zugang → Admin-Konsole → „KI-Server-Adresse"** eintragen und speichern (siehe Abschnitt „Admin-Konsole" weiter unten für die Konto-Einrichtung). Ist das Feld leer, nutzt JARVIS automatisch den kostenlosen Standard-Dienst ohne Setup.
 
 Wird `worker/ai-proxy.js` später im Repo geändert (z. B. um neue Tools), muss der aktualisierte Code auch im bestehenden Worker per **Edit code** eingefügt und neu deployt werden — das passiert nicht automatisch.
 
@@ -357,32 +357,38 @@ KI-Server eingetragen ist, werden kurze Vorschautexte an diesen eigenen Server g
 jede andere KI-Funktion dieser App fällt der Benachrichtigungs-Digest dabei **nie** auf den öffentlichen
 Gratis-Fallback zurück. „Erfasste Benachrichtigungen jetzt löschen" entfernt alles sofort wieder.
 
-## Runde 15/16: Admin-Konsole (PIN-, Passwort- und biometrie-geschützt)
+## Runde 15–18: Admin-Konsole (individuelle Besitzer-/Helfer-Konten)
 
 Eine gesonderte, fortgeschrittene Konsole für sensible/technische Regler — getrennt von den normalen
-Einstellungen, damit diese übersichtlich bleiben. Zugang über **Einstellungen → Admin-Zugang**:
+Einstellungen, damit diese übersichtlich bleiben. Zugang ist auf einzelne, namentlich bekannte Personen
+beschränkt: **einen Besitzer und beliebig viele Helfer**, jede/r mit einem eigenen Nutzername+Passwort —
+kein anonymer PIN- oder Biometrie-Zugang mehr, damit im Zugriffs-Log immer nachvollziehbar ist, wer sich
+angemeldet hat.
 
-1. Admin-PIN einrichten (zwei Felder: PIN + Bestätigung, „PIN speichern"). Wie die Notfall-Sperre wird
-   die PIN **nie im Klartext gespeichert**, nur ein gesalzener SHA-256-Hash — und **es gibt keinen
-   Wiederherstellungsweg** für eine vergessene PIN. „PIN entfernen" bleibt aber jederzeit über die
-   normalen Einstellungen erreichbar (anders als bei der Notfall-Sperre ist hier kein Sperrzustand im
-   Weg), also unkritischer als dort.
-2. Parallel dazu lässt sich ein **Admin-Nutzername + Passwort** einrichten (ein gemeinsames Konto, kein
-   Mehrbenutzer-System) — ebenfalls nur als gesalzener SHA-256-Hash gespeichert, ebenfalls **ohne
-   Wiederherstellungsweg** bei Vergessen, aber genauso jederzeit über „Zugangsdaten entfernen" in den
-   normalen Einstellungen zurücksetzbar. PIN und Passwort sind zwei **gleichwertige** Wege in dieselbe
-   Konsole, keiner ersetzt den anderen.
-3. Optional zusätzlich „Biometrie-Login" aktivieren (Fingerabdruck/Face Unlock, sofern das Gerät das
-   unterstützt) — PIN und Passwort bleiben dabei immer als Rückfallweg nutzbar.
-4. „Admin-Einstellungen" öffnet die Konsole nach erfolgreicher PIN-, Passwort- oder Biometrie-Eingabe —
-   das Entsperren gilt **für die laufende Sitzung**: nach einem Neustart der App ist erneut eine
+1. **Einmalige Einrichtung** unter **Einstellungen → Admin-Zugang**: solange noch kein Konto existiert,
+   wird hier das eigene **Besitzer-Konto** angelegt (Nutzername + Passwort + Bestätigung, „Besitzer-Konto
+   einrichten"). Das Passwort wird **nie im Klartext gespeichert**, nur ein gesalzener SHA-256-Hash.
+   Sobald ein Konto existiert, verschwinden die Eingabefelder hier wieder — jede weitere Kontoverwaltung
+   passiert nur noch innerhalb der Konsole selbst.
+2. **Weitere Helfer-Konten** legt ausschließlich der Besitzer an, direkt in der Konsole unter „Zugang &
+   Sicherheit → Konten verwalten" — von dort lassen sich Helfer-Konten auch wieder entfernen. Das
+   Besitzer-Konto selbst ist nicht entfernbar. Helfer haben denselben Zugriff auf alle übrigen
+   Konsolen-Funktionen, aber keine Kontoverwaltung.
+3. **„Admin-Einstellungen"** öffnet die Konsole nach erfolgreicher Anmeldung mit einem der eingerichteten
+   Konten — das Entsperren gilt **für die laufende Sitzung**: nach einem Neustart der App ist erneut eine
    Eingabe nötig. Nach **5 Minuten Inaktivität** in der Konsole meldet die App automatisch wieder ab
    (Auto-Logout).
 
-PIN- und Passwort-Versuche teilen sich eine gemeinsame **Fehlversuch-Sperre**: nach 5 falschen
-Versuchen (egal ob PIN oder Passwort, auch gemischt) sperrt die Konsole für 5 Minuten — die Sperre
-übersteht auch einen App-Neustart. Biometrie ist davon ausgenommen, da ein Fingerabdruck kein
-erratbares Geheimnis ist.
+Alle Login-Versuche (unabhängig vom Konto) teilen sich eine gemeinsame **Fehlversuch-Sperre**: nach 5
+falschen Versuchen sperrt die Konsole für 5 Minuten — die Sperre übersteht auch einen App-Neustart.
+
+**Wichtig — bewusst kein Wiederherstellungsweg für ein einzelnes vergessenes Passwort:** Da neue Konten
+nur ein bereits eingeloggter Besitzer anlegen kann, gibt es dafür absichtlich keinen Umweg über die
+ungated Einstellungen (das wäre ein Einfallstor für jeden mit entsperrtem Gerätezugriff). Stattdessen
+steht dort ein bewusst destruktiver Sicherheitsanker „**Alle Admin-Konten zurücksetzen**" bereit
+(Bestätigungsdialog) — löscht Besitzer und alle Helfer-Konten unwiderruflich und setzt die Einrichtung
+auf den Anfangszustand zurück. Er erlaubt kein Auslesen oder Übernehmen bestehender Konten, nur ein
+Nullen-und-neu-Anfangen, falls das Besitzer-Passwort verloren geht.
 
 Die Konsole selbst gliedert sich in:
 
@@ -409,9 +415,11 @@ Die Konsole selbst gliedert sich in:
   App).
 - **Erscheinungsbild**: Umschalter zwischen der Standard-Goldpalette und einer alternativen „Dark
   Cyan"-Palette — wirkt sofort, ohne App-Neustart.
-- **Zugang & Sicherheit**: „Passwort ändern" (verlangt zuerst das aktuelle Passwort) sowie ein
-  **Zugriffs-Log** der letzten erfolgreichen Anmeldungen (PIN/Passwort/Biometrie, mit Zeitstempel) —
-  fehlgeschlagene Versuche erscheinen dort bewusst nicht, sondern nur im allgemeinen Live-Log-Viewer.
+- **Zugang & Sicherheit**: „Mein Passwort ändern" (verlangt zuerst das aktuelle Passwort, für jedes
+  eingeloggte Konto), eine nur für den Besitzer sichtbare **„Konten verwalten"**-Sektion (Liste aller
+  Konten mit Rolle, Helfer-Konten hinzufügen/entfernen) sowie ein **Zugriffs-Log** der letzten
+  erfolgreichen Anmeldungen mit Nutzername und Zeitstempel — fehlgeschlagene Versuche erscheinen dort
+  bewusst nicht, sondern nur im allgemeinen Live-Log-Viewer.
 
 **Wichtig:** Der Modell-Geschwindigkeit-Umschalter und der System-Prompt-Override wirken für Nutzer mit
 eigenem KI-Server erst, nachdem `worker/ai-proxy.js` neu deployt wurde (siehe Abschnitt „Sicherheit" oben
