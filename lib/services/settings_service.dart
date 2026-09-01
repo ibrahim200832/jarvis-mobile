@@ -65,6 +65,11 @@ class SettingsService {
   static const _keyAdminPinSalt = 'admin_pin_salt';
   static const _keyAdminPinHash = 'admin_pin_hash';
   static const _keyAdminBiometricEnabled = 'admin_biometric_enabled';
+  static const _keyAdminUsername = 'admin_username';
+  static const _keyAdminPasswordSalt = 'admin_password_salt';
+  static const _keyAdminPasswordHash = 'admin_password_hash';
+  static const _keyAdminFailedAttempts = 'admin_failed_attempts';
+  static const _keyAdminLockoutUntil = 'admin_lockout_until';
   static const _keySystemPromptOverride = 'admin_system_prompt_override';
   static const _keyAiTemperature = 'ai_temperature';
   static const _keyMaxHistoryTurns = 'ai_max_history_turns';
@@ -648,6 +653,82 @@ class SettingsService {
   Future<void> setAdminBiometricEnabled(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyAdminBiometricEnabled, value);
+  }
+
+  /// Sets/replaces the Admin-Konsole's username+password login — a second,
+  /// equally valid way into the same session as the PIN (see setAdminPin),
+  /// not a replacement for it. Same salted-SHA256 pattern as the PIN; the
+  /// username itself is a plain (non-secret) identifier, same split as
+  /// getWebDavUsername()/getWebDavPassword() elsewhere in this file. Never
+  /// stores the password itself, only a salted hash.
+  Future<void> setAdminCredentials(String username, String password) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyAdminUsername, username);
+    final saltBytes = List<int>.generate(16, (_) => Random.secure().nextInt(256));
+    final salt = base64Url.encode(saltBytes);
+    final hash = sha256.convert(utf8.encode('$salt:$password')).toString();
+    await _secureSet(_keyAdminPasswordSalt, salt);
+    await _secureSet(_keyAdminPasswordHash, hash);
+  }
+
+  Future<bool> hasAdminCredentials() async {
+    return (await _secureGet(_keyAdminPasswordHash)) != null;
+  }
+
+  Future<String?> getAdminUsername() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyAdminUsername);
+  }
+
+  /// Case-sensitive exact match on both username and password. Returns
+  /// false (never throws) if no credentials are set, or if the username
+  /// doesn't match the stored one.
+  Future<bool> verifyAdminCredentials(String username, String password) async {
+    final storedUsername = await getAdminUsername();
+    final salt = await _secureGet(_keyAdminPasswordSalt);
+    final storedHash = await _secureGet(_keyAdminPasswordHash);
+    if (storedUsername == null || salt == null || storedHash == null) return false;
+    if (username != storedUsername) return false;
+    final hash = sha256.convert(utf8.encode('$salt:$password')).toString();
+    return hash == storedHash;
+  }
+
+  /// Same "no lockout risk" note as clearAdminPin — only reachable from the
+  /// normal (ungated) settings screen.
+  Future<void> clearAdminCredentials() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_keyAdminUsername);
+    await _secure.delete(_keyAdminPasswordSalt);
+    await _secure.delete(_keyAdminPasswordHash);
+  }
+
+  /// Failed-attempt counter shared by both the Admin-PIN and the
+  /// username/password login (see AdminAuthService) — persisted (not just
+  /// in-memory) so a simple app restart can't be used to dodge a lockout.
+  Future<int> getAdminFailedAttempts() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_keyAdminFailedAttempts) ?? 0;
+  }
+
+  Future<void> setAdminFailedAttempts(int value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keyAdminFailedAttempts, value);
+  }
+
+  Future<DateTime?> getAdminLockoutUntil() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_keyAdminLockoutUntil);
+    return raw == null ? null : DateTime.tryParse(raw);
+  }
+
+  /// Pass null to clear the lockout.
+  Future<void> setAdminLockoutUntil(DateTime? value) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (value == null) {
+      await prefs.remove(_keyAdminLockoutUntil);
+    } else {
+      await prefs.setString(_keyAdminLockoutUntil, value.toIso8601String());
+    }
   }
 
   /// A raw, user-authored system prompt that — when set — fully replaces

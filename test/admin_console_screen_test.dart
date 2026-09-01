@@ -1,6 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:jarvis_mobile/screens/admin_console_screen.dart';
+import 'package:jarvis_mobile/services/admin_auth_service.dart';
+import 'package:jarvis_mobile/services/log_service.dart';
 import 'package:jarvis_mobile/services/secure_storage_service.dart';
 import 'package:jarvis_mobile/services/settings_service.dart';
 import 'package:jarvis_mobile/theme/jarvis_theme.dart';
@@ -21,15 +25,22 @@ class _FakeSecureStorageService extends SecureStorageService {
   Future<void> delete(String key) async => values.remove(key);
 }
 
-/// This screen keeps growing across Runde 15's units — a tall test
+/// This screen keeps growing across Runde 15/16's units — a tall test
 /// viewport keeps every field inflated (ListView children outside the
 /// default 600px-tall test surface + cache extent aren't inflated into
 /// the element tree at all, so `find` can't see them) without needing
 /// per-field dragUntilVisible calls that would need updating each time a
 /// new section is added above an existing one.
+///
+/// AdminConsoleScreen now loads AdminAuthService.recentSuccessfulLogins()
+/// (real dart:io via LogService) in initState()/_load() — same "chained
+/// real I/O under testWidgets()'s fake-async zone" issue documented in
+/// log_viewer_screen_test.dart, so this settles with alternating real
+/// delays + pumps instead of a single pumpAndSettle() alone.
 Future<void> _pumpConsole(
   WidgetTester tester,
   SettingsService settings, {
+  required AdminAuthService adminAuth,
   Future<void> Function()? onClearAiMemory,
 }) async {
   tester.view.physicalSize = const Size(800, 8000);
@@ -38,18 +49,36 @@ Future<void> _pumpConsole(
   await tester.pumpWidget(
     MaterialApp(
       theme: buildJarvisTheme(),
-      home: AdminConsoleScreen(settings: settings, onClearAiMemory: onClearAiMemory ?? () async {}),
+      home: AdminConsoleScreen(
+        settings: settings,
+        onClearAiMemory: onClearAiMemory ?? () async {},
+        adminAuth: adminAuth,
+      ),
     ),
   );
+  for (var i = 0; i < 10; i++) {
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 30)));
+    await tester.pump();
+  }
   await tester.pumpAndSettle();
 }
 
 void main() {
+  late Directory tempDir;
   late SettingsService settings;
+  late LogService log;
+  late AdminAuthService adminAuth;
 
-  setUp(() {
+  setUp(() async {
     SharedPreferences.setMockInitialValues({});
+    tempDir = await Directory.systemTemp.createTemp('jarvis_admin_console_test_');
     settings = SettingsService(secureStorage: _FakeSecureStorageService());
+    log = LogService(directoryOverride: tempDir);
+    adminAuth = AdminAuthService(settings: settings, log: log);
+  });
+
+  tearDown(() async {
+    if (await tempDir.exists()) await tempDir.delete(recursive: true);
   });
 
   // themeVariantNotifier is a process-wide singleton (see main.dart's
@@ -64,7 +93,7 @@ void main() {
     await settings.setAiModel('mistral');
     await settings.setSystemPromptOverride('Du bist ein Pirat.');
 
-    await _pumpConsole(tester, settings);
+    await _pumpConsole(tester, settings, adminAuth: adminAuth);
 
     expect(find.text('https://example.com'), findsOneWidget);
     expect(find.text('top-secret'), findsOneWidget);
@@ -74,7 +103,7 @@ void main() {
   });
 
   testWidgets('saving persists the entered values through SettingsService', (tester) async {
-    await _pumpConsole(tester, settings);
+    await _pumpConsole(tester, settings, adminAuth: adminAuth);
 
     await tester.enterText(find.widgetWithText(TextField, 'KI-Server-Adresse (für freie Gespräche)'), 'https://jarvis.example');
     await tester.enterText(
@@ -96,7 +125,7 @@ void main() {
   testWidgets('an empty HMAC secret clears any previously saved one', (tester) async {
     await settings.setAiHmacSecret('will-be-cleared');
 
-    await _pumpConsole(tester, settings);
+    await _pumpConsole(tester, settings, adminAuth: adminAuth);
 
     await tester.enterText(find.widgetWithText(TextField, 'KI-Server-Schlüssel (Request-Signierung)'), '');
     await tester.tap(find.byKey(const Key('save-server-section')));
@@ -106,7 +135,7 @@ void main() {
   });
 
   testWidgets('saving the system prompt override persists it', (tester) async {
-    await _pumpConsole(tester, settings);
+    await _pumpConsole(tester, settings, adminAuth: adminAuth);
 
     await tester.enterText(
       find.widgetWithText(TextField, 'System-Prompt (überschreibt JARVIS\' Standard-Persönlichkeit komplett)'),
@@ -121,7 +150,7 @@ void main() {
   testWidgets('an empty system prompt override clears a previously saved one', (tester) async {
     await settings.setSystemPromptOverride('will-be-cleared');
 
-    await _pumpConsole(tester, settings);
+    await _pumpConsole(tester, settings, adminAuth: adminAuth);
 
     await tester.enterText(
       find.widgetWithText(TextField, 'System-Prompt (überschreibt JARVIS\' Standard-Persönlichkeit komplett)'),
@@ -136,7 +165,7 @@ void main() {
   testWidgets('"Zurücksetzen" clears the system prompt field without saving', (tester) async {
     await settings.setSystemPromptOverride('still-saved');
 
-    await _pumpConsole(tester, settings);
+    await _pumpConsole(tester, settings, adminAuth: adminAuth);
 
     await tester.tap(find.text('Zurücksetzen'));
     await tester.pumpAndSettle();
@@ -146,7 +175,7 @@ void main() {
   });
 
   testWidgets('saving the default temperature persists 0.3', (tester) async {
-    await _pumpConsole(tester, settings);
+    await _pumpConsole(tester, settings, adminAuth: adminAuth);
 
     expect(find.text('Temperatur: 0.30'), findsOneWidget);
 
@@ -157,7 +186,7 @@ void main() {
   });
 
   testWidgets('saving the default context length persists 8', (tester) async {
-    await _pumpConsole(tester, settings);
+    await _pumpConsole(tester, settings, adminAuth: adminAuth);
 
     expect(find.text('Kontext-Länge: 8 Gesprächsrunden'), findsOneWidget);
 
@@ -170,7 +199,7 @@ void main() {
   testWidgets('loads a previously saved context length', (tester) async {
     await settings.setMaxHistoryTurns(3);
 
-    await _pumpConsole(tester, settings);
+    await _pumpConsole(tester, settings, adminAuth: adminAuth);
 
     expect(find.text('Kontext-Länge: 3 Gesprächsrunden'), findsOneWidget);
   });
@@ -178,7 +207,7 @@ void main() {
   testWidgets('loads a previously saved model tier and lets it be changed', (tester) async {
     await settings.setAiModelTier('fast');
 
-    await _pumpConsole(tester, settings);
+    await _pumpConsole(tester, settings, adminAuth: adminAuth);
 
     expect(find.text('Schnell'), findsOneWidget);
 
@@ -196,7 +225,7 @@ void main() {
     await settings.recordAiRequestToday();
     await settings.recordAiRequestToday();
 
-    await _pumpConsole(tester, settings);
+    await _pumpConsole(tester, settings, adminAuth: adminAuth);
 
     expect(find.text('Anfragen heute: 2'), findsOneWidget);
   });
@@ -207,7 +236,7 @@ void main() {
     // ApiHealthService's synchronous "kein eigener Server konfiguriert"
     // path instead of attempting a real HTTP request (which the Flutter
     // test binding fakes as a 400 response, not a thrown exception).
-    await _pumpConsole(tester, settings);
+    await _pumpConsole(tester, settings, adminAuth: adminAuth);
     await tester.enterText(find.widgetWithText(TextField, 'KI-Server-Adresse (für freie Gespräche)'), '');
 
     await tester.tap(find.text('Latenz jetzt prüfen'));
@@ -226,7 +255,7 @@ void main() {
     // avoid a real, sandbox-incompatible network request.
     await settings.setAiBackendUrl('');
 
-    await _pumpConsole(tester, settings);
+    await _pumpConsole(tester, settings, adminAuth: adminAuth);
 
     await tester.tap(find.text('Selbsttest ausführen'));
     await tester.pumpAndSettle();
@@ -238,7 +267,7 @@ void main() {
 
   testWidgets('clearing AI memory asks for confirmation, then invokes the callback', (tester) async {
     var cleared = 0;
-    await _pumpConsole(tester, settings, onClearAiMemory: () async => cleared++);
+    await _pumpConsole(tester, settings, adminAuth: adminAuth, onClearAiMemory: () async => cleared++);
 
     await tester.tap(find.text('KI-Gedächtnis löschen'));
     await tester.pumpAndSettle();
@@ -254,7 +283,7 @@ void main() {
 
   testWidgets('cancelling the AI-memory confirmation does not invoke the callback', (tester) async {
     var cleared = 0;
-    await _pumpConsole(tester, settings, onClearAiMemory: () async => cleared++);
+    await _pumpConsole(tester, settings, adminAuth: adminAuth, onClearAiMemory: () async => cleared++);
 
     await tester.tap(find.text('KI-Gedächtnis löschen'));
     await tester.pumpAndSettle();
@@ -265,19 +294,19 @@ void main() {
   });
 
   testWidgets('offers a button to run a backup now', (tester) async {
-    await _pumpConsole(tester, settings);
+    await _pumpConsole(tester, settings, adminAuth: adminAuth);
 
     expect(find.text('Backup jetzt ausführen'), findsOneWidget);
   });
 
   testWidgets('offers a button to open the live log viewer', (tester) async {
-    await _pumpConsole(tester, settings);
+    await _pumpConsole(tester, settings, adminAuth: adminAuth);
 
     expect(find.text('Live-Log-Viewer öffnen'), findsOneWidget);
   });
 
   testWidgets('force-local-AI toggle defaults to off and persists when switched on', (tester) async {
-    await _pumpConsole(tester, settings);
+    await _pumpConsole(tester, settings, adminAuth: adminAuth);
 
     expect(
       tester.widget<SwitchListTile>(find.widgetWithText(SwitchListTile, 'Lokale KI erzwingen')).value,
@@ -291,7 +320,7 @@ void main() {
   });
 
   testWidgets('Discord toggle defaults to off and persists when switched on', (tester) async {
-    await _pumpConsole(tester, settings);
+    await _pumpConsole(tester, settings, adminAuth: adminAuth);
 
     expect(
       tester.widget<SwitchListTile>(find.widgetWithText(SwitchListTile, 'Discord-Bot-Versand')).value,
@@ -305,14 +334,14 @@ void main() {
   });
 
   testWidgets('defaults to the gold theme selected', (tester) async {
-    await _pumpConsole(tester, settings);
+    await _pumpConsole(tester, settings, adminAuth: adminAuth);
 
     final segmented = tester.widget<SegmentedButton<ThemeVariant>>(find.byType(SegmentedButton<ThemeVariant>));
     expect(segmented.selected, {ThemeVariant.gold});
   });
 
   testWidgets('picking Dark Cyan persists it and updates the live app theme', (tester) async {
-    await _pumpConsole(tester, settings);
+    await _pumpConsole(tester, settings, adminAuth: adminAuth);
 
     await tester.tap(find.text('Dark Cyan'));
     await tester.pumpAndSettle();
@@ -324,9 +353,105 @@ void main() {
   testWidgets('loads a previously saved Dark Cyan choice', (tester) async {
     await settings.setThemeVariant(ThemeVariant.cyan);
 
-    await _pumpConsole(tester, settings);
+    await _pumpConsole(tester, settings, adminAuth: adminAuth);
 
     final segmented = tester.widget<SegmentedButton<ThemeVariant>>(find.byType(SegmentedButton<ThemeVariant>));
     expect(segmented.selected, {ThemeVariant.cyan});
+  });
+
+  group('Zugang & Sicherheit', () {
+    testWidgets('shows a hint instead of the password-change form when no credentials are set up', (
+      tester,
+    ) async {
+      await _pumpConsole(tester, settings, adminAuth: adminAuth);
+
+      expect(
+        find.textContaining('Noch keine Zugangsdaten eingerichtet'),
+        findsOneWidget,
+      );
+      expect(find.text('Passwort ändern'), findsNothing);
+    });
+
+    testWidgets('shows the Zugriffs-Log empty state when no logins have been recorded', (tester) async {
+      await settings.setAdminCredentials('ibrahim', 'hunter2');
+
+      await _pumpConsole(tester, settings, adminAuth: adminAuth);
+
+      expect(find.text('Noch keine Anmeldung protokolliert.'), findsOneWidget);
+    });
+
+    testWidgets('shows recorded successful logins in the Zugriffs-Log', (tester) async {
+      await settings.setAdminPin('1234');
+      await tester.runAsync(() => adminAuth.unlock('1234'));
+
+      await _pumpConsole(tester, settings, adminAuth: adminAuth);
+
+      expect(find.textContaining('Angemeldet per PIN.'), findsOneWidget);
+    });
+
+    testWidgets('changing the password with the correct current password succeeds', (tester) async {
+      await settings.setAdminCredentials('ibrahim', 'oldpass');
+
+      await _pumpConsole(tester, settings, adminAuth: adminAuth);
+
+      await tester.enterText(find.widgetWithText(TextField, 'Aktuelles Passwort'), 'oldpass');
+      await tester.enterText(find.widgetWithText(TextField, 'Neues Passwort'), 'newpass');
+      await tester.enterText(find.widgetWithText(TextField, 'Neues Passwort bestätigen'), 'newpass');
+      await tester.tap(find.byKey(const Key('change-admin-password')));
+      await tester.pumpAndSettle();
+
+      expect(await settings.verifyAdminCredentials('ibrahim', 'oldpass'), isFalse);
+      expect(await settings.verifyAdminCredentials('ibrahim', 'newpass'), isTrue);
+      expect(find.text('Passwort geändert.'), findsOneWidget);
+    });
+
+    testWidgets('changing the password with the wrong current password fails, leaving it unchanged', (
+      tester,
+    ) async {
+      await settings.setAdminCredentials('ibrahim', 'oldpass');
+
+      await _pumpConsole(tester, settings, adminAuth: adminAuth);
+
+      await tester.enterText(find.widgetWithText(TextField, 'Aktuelles Passwort'), 'wrong');
+      await tester.enterText(find.widgetWithText(TextField, 'Neues Passwort'), 'newpass');
+      await tester.enterText(find.widgetWithText(TextField, 'Neues Passwort bestätigen'), 'newpass');
+      await tester.tap(find.byKey(const Key('change-admin-password')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Aktuelles Passwort ist falsch.'), findsOneWidget);
+      expect(await settings.verifyAdminCredentials('ibrahim', 'oldpass'), isTrue);
+    });
+
+    testWidgets('firing onIdleTimeout pops the console back to the caller', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildJarvisTheme(),
+          home: Builder(
+            builder: (context) => ElevatedButton(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => AdminConsoleScreen(
+                    settings: settings,
+                    onClearAiMemory: () async {},
+                    adminAuth: adminAuth,
+                  ),
+                ),
+              ),
+              child: const Text('open'),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AdminConsoleScreen), findsOneWidget);
+
+      adminAuth.onIdleTimeout?.call();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AdminConsoleScreen), findsNothing);
+      expect(find.text('open'), findsOneWidget);
+    });
   });
 }

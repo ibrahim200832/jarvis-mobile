@@ -183,6 +183,90 @@ void main() {
     });
   });
 
+  group('admin credentials (username/password)', () {
+    test('hasAdminCredentials is false until credentials are set', () async {
+      expect(await settings.hasAdminCredentials(), isFalse);
+      await settings.setAdminCredentials('ibrahim', 'hunter2');
+      expect(await settings.hasAdminCredentials(), isTrue);
+    });
+
+    test('verifyAdminCredentials returns true for the correct username and password', () async {
+      await settings.setAdminCredentials('ibrahim', 'hunter2');
+      expect(await settings.verifyAdminCredentials('ibrahim', 'hunter2'), isTrue);
+    });
+
+    test('verifyAdminCredentials returns false for a wrong password', () async {
+      await settings.setAdminCredentials('ibrahim', 'hunter2');
+      expect(await settings.verifyAdminCredentials('ibrahim', 'wrong'), isFalse);
+    });
+
+    test('verifyAdminCredentials returns false for a wrong username, even with the right password', () async {
+      await settings.setAdminCredentials('ibrahim', 'hunter2');
+      expect(await settings.verifyAdminCredentials('someone-else', 'hunter2'), isFalse);
+    });
+
+    test('verifyAdminCredentials returns false when no credentials have ever been set', () async {
+      expect(await settings.verifyAdminCredentials('ibrahim', 'hunter2'), isFalse);
+    });
+
+    test('the password itself is never stored in plaintext, only a salted hash', () async {
+      await settings.setAdminCredentials('ibrahim', 'hunter2');
+      expect(secure.values.values, isNot(contains('hunter2')));
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getKeys().map((k) => prefs.get(k)), isNot(contains('hunter2')));
+    });
+
+    test('the username is stored so it can be shown/prefilled', () async {
+      await settings.setAdminCredentials('ibrahim', 'hunter2');
+      expect(await settings.getAdminUsername(), 'ibrahim');
+    });
+
+    test('setAdminCredentials overwrites previous credentials', () async {
+      await settings.setAdminCredentials('ibrahim', 'hunter2');
+      await settings.setAdminCredentials('ibrahim', 'newpassword');
+      expect(await settings.verifyAdminCredentials('ibrahim', 'hunter2'), isFalse);
+      expect(await settings.verifyAdminCredentials('ibrahim', 'newpassword'), isTrue);
+    });
+
+    test('clearAdminCredentials removes the credentials entirely', () async {
+      await settings.setAdminCredentials('ibrahim', 'hunter2');
+      await settings.clearAdminCredentials();
+      expect(await settings.hasAdminCredentials(), isFalse);
+      expect(await settings.getAdminUsername(), isNull);
+      expect(await settings.verifyAdminCredentials('ibrahim', 'hunter2'), isFalse);
+    });
+
+    test('admin credentials are independent of the admin PIN', () async {
+      await settings.setAdminPin('1234');
+      await settings.setAdminCredentials('ibrahim', 'hunter2');
+      expect(await settings.verifyAdminPin('hunter2'), isFalse);
+      expect(await settings.verifyAdminCredentials('ibrahim', '1234'), isFalse);
+      expect(await settings.verifyAdminPin('1234'), isTrue);
+      expect(await settings.verifyAdminCredentials('ibrahim', 'hunter2'), isTrue);
+    });
+  });
+
+  group('admin lockout', () {
+    test('failed attempts default to 0 and round-trip', () async {
+      expect(await settings.getAdminFailedAttempts(), 0);
+      await settings.setAdminFailedAttempts(3);
+      expect(await settings.getAdminFailedAttempts(), 3);
+    });
+
+    test('lockout-until defaults to null and round-trips', () async {
+      expect(await settings.getAdminLockoutUntil(), isNull);
+      final until = DateTime(2026, 1, 1, 12, 30);
+      await settings.setAdminLockoutUntil(until);
+      expect(await settings.getAdminLockoutUntil(), until);
+    });
+
+    test('setting lockout-until to null clears it', () async {
+      await settings.setAdminLockoutUntil(DateTime(2026, 1, 1));
+      await settings.setAdminLockoutUntil(null);
+      expect(await settings.getAdminLockoutUntil(), isNull);
+    });
+  });
+
   group('system prompt override & temperature', () {
     test('system prompt override defaults to null and round-trips', () async {
       expect(await settings.getSystemPromptOverride(), isNull);
