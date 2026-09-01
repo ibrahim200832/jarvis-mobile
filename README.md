@@ -350,7 +350,7 @@ KI-Server eingetragen ist, werden kurze Vorschautexte an diesen eigenen Server g
 jede andere KI-Funktion dieser App fällt der Benachrichtigungs-Digest dabei **nie** auf den öffentlichen
 Gratis-Fallback zurück. „Erfasste Benachrichtigungen jetzt löschen" entfernt alles sofort wieder.
 
-## Runde 15: Admin-Konsole (PIN-/biometrie-geschützt)
+## Runde 15/16: Admin-Konsole (PIN-, Passwort- und biometrie-geschützt)
 
 Eine gesonderte, fortgeschrittene Konsole für sensible/technische Regler — getrennt von den normalen
 Einstellungen, damit diese übersichtlich bleiben. Zugang über **Einstellungen → Admin-Zugang**:
@@ -360,10 +360,22 @@ Einstellungen, damit diese übersichtlich bleiben. Zugang über **Einstellungen 
    Wiederherstellungsweg** für eine vergessene PIN. „PIN entfernen" bleibt aber jederzeit über die
    normalen Einstellungen erreichbar (anders als bei der Notfall-Sperre ist hier kein Sperrzustand im
    Weg), also unkritischer als dort.
-2. Optional zusätzlich „Biometrie-Login" aktivieren (Fingerabdruck/Face Unlock, sofern das Gerät das
-   unterstützt) — die PIN bleibt dabei immer als Rückfallweg nutzbar.
-3. „Admin-Einstellungen" öffnet die Konsole nach erfolgreicher PIN-/Biometrie-Eingabe — das Entsperren
-   gilt **für die laufende Sitzung**: nach einem Neustart der App ist erneut eine Eingabe nötig.
+2. Parallel dazu lässt sich ein **Admin-Nutzername + Passwort** einrichten (ein gemeinsames Konto, kein
+   Mehrbenutzer-System) — ebenfalls nur als gesalzener SHA-256-Hash gespeichert, ebenfalls **ohne
+   Wiederherstellungsweg** bei Vergessen, aber genauso jederzeit über „Zugangsdaten entfernen" in den
+   normalen Einstellungen zurücksetzbar. PIN und Passwort sind zwei **gleichwertige** Wege in dieselbe
+   Konsole, keiner ersetzt den anderen.
+3. Optional zusätzlich „Biometrie-Login" aktivieren (Fingerabdruck/Face Unlock, sofern das Gerät das
+   unterstützt) — PIN und Passwort bleiben dabei immer als Rückfallweg nutzbar.
+4. „Admin-Einstellungen" öffnet die Konsole nach erfolgreicher PIN-, Passwort- oder Biometrie-Eingabe —
+   das Entsperren gilt **für die laufende Sitzung**: nach einem Neustart der App ist erneut eine
+   Eingabe nötig. Nach **5 Minuten Inaktivität** in der Konsole meldet die App automatisch wieder ab
+   (Auto-Logout).
+
+PIN- und Passwort-Versuche teilen sich eine gemeinsame **Fehlversuch-Sperre**: nach 5 falschen
+Versuchen (egal ob PIN oder Passwort, auch gemischt) sperrt die Konsole für 5 Minuten — die Sperre
+übersteht auch einen App-Neustart. Biometrie ist davon ausgenommen, da ein Fingerabdruck kein
+erratbares Geheimnis ist.
 
 Die Konsole selbst gliedert sich in:
 
@@ -390,6 +402,9 @@ Die Konsole selbst gliedert sich in:
   App).
 - **Erscheinungsbild**: Umschalter zwischen der Standard-Goldpalette und einer alternativen „Dark
   Cyan"-Palette — wirkt sofort, ohne App-Neustart.
+- **Zugang & Sicherheit**: „Passwort ändern" (verlangt zuerst das aktuelle Passwort) sowie ein
+  **Zugriffs-Log** der letzten erfolgreichen Anmeldungen (PIN/Passwort/Biometrie, mit Zeitstempel) —
+  fehlgeschlagene Versuche erscheinen dort bewusst nicht, sondern nur im allgemeinen Live-Log-Viewer.
 
 **Wichtig:** Der Modell-Geschwindigkeit-Umschalter und der System-Prompt-Override wirken für Nutzer mit
 eigenem KI-Server erst, nachdem `worker/ai-proxy.js` neu deployt wurde (siehe Abschnitt „Sicherheit" oben
