@@ -80,6 +80,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _offlineModelUrlCtrl = TextEditingController();
   final _appLockPinCtrl = TextEditingController();
   final _appLockPinConfirmCtrl = TextEditingController();
+  final _appLockUsernameCtrl = TextEditingController();
+  final _appLockPasswordCtrl = TextEditingController();
+  final _appLockPasswordConfirmCtrl = TextEditingController();
   final _adminPinCtrl = TextEditingController();
   final _adminPinConfirmCtrl = TextEditingController();
   final _adminUsernameCtrl = TextEditingController();
@@ -118,6 +121,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _shakeLocksAppEnabled = false;
   bool _hasAppLockPin = false;
   bool _appLockPinBusy = false;
+  bool _hasAppLockCredentials = false;
+  bool _appLockCredentialsBusy = false;
   bool _hasAdminPin = false;
   bool _adminPinBusy = false;
   bool _hasAdminCredentials = false;
@@ -196,6 +201,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _shakeStartsVoiceEnabled = await widget.settings.getShakeStartsVoiceEnabled();
     _shakeLocksAppEnabled = await widget.settings.getShakeLocksAppEnabled();
     _hasAppLockPin = await widget.settings.hasAppLockPin();
+    _hasAppLockCredentials = await widget.settings.hasAppLockCredentials();
     _hasAdminPin = await widget.settings.hasAdminPin();
     _hasAdminCredentials = await widget.settings.hasAdminCredentials();
     _adminBiometricEnabled = await widget.settings.getAdminBiometricEnabled();
@@ -436,6 +442,46 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _appLockPinBusy = false;
     });
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PIN entfernt.')));
+  }
+
+  Future<void> _saveAppLockCredentials() async {
+    final username = _appLockUsernameCtrl.text.trim();
+    final password = _appLockPasswordCtrl.text;
+    final confirm = _appLockPasswordConfirmCtrl.text;
+    if (username.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Bitte Benutzername und Passwort eingeben.')));
+      return;
+    }
+    if (password != confirm) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Die beiden Passwörter stimmen nicht überein.')));
+      return;
+    }
+    setState(() => _appLockCredentialsBusy = true);
+    await widget.settings.setAppLockCredentials(username, password);
+    if (!mounted) return;
+    _appLockPasswordCtrl.clear();
+    _appLockPasswordConfirmCtrl.clear();
+    setState(() {
+      _hasAppLockCredentials = true;
+      _appLockCredentialsBusy = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Zugangsdaten gespeichert.')));
+  }
+
+  Future<void> _removeAppLockCredentials() async {
+    setState(() => _appLockCredentialsBusy = true);
+    await widget.settings.clearAppLockCredentials();
+    if (!mounted) return;
+    _appLockUsernameCtrl.clear();
+    setState(() {
+      _hasAppLockCredentials = false;
+      _appLockCredentialsBusy = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Zugangsdaten entfernt.')));
   }
 
   Future<void> _saveAdminPin() async {
@@ -901,7 +947,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             contentPadding: EdgeInsets.zero,
             title: const Text('Schütteln → Notfall-Sperre auslösen'),
             subtitle: const Text(
-              'Braucht eine gesetzte PIN (siehe unten) — ohne PIN passiert beim Schütteln nichts.',
+              'Braucht eine gesetzte PIN oder Zugangsdaten (siehe unten) — ohne eins von beidem passiert '
+              'beim Schütteln nichts.',
               style: TextStyle(fontSize: 12),
             ),
             value: _shakeLocksAppEnabled,
@@ -913,8 +960,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             style: const TextStyle(fontSize: 12),
           ),
           const Text(
-            'Achtung: Es gibt keinen "PIN vergessen"-Weg — merk sie dir gut. Zum Entfernen musst du die App '
-            'noch entsperrt haben.',
+            'Achtung: Es gibt keinen "PIN/Passwort vergessen"-Weg — merk sie dir gut. Zum Entfernen musst du '
+            'die App noch entsperrt haben.',
             style: TextStyle(fontSize: 12),
           ),
           const SizedBox(height: 8),
@@ -947,6 +994,50 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   onPressed: (_appLockPinBusy || !_hasAppLockPin) ? null : _removeAppLockPin,
                   icon: const Icon(Icons.lock_open_outlined),
                   label: const Text('PIN entfernen'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            _hasAppLockCredentials ? 'Zugangsdaten sind gesetzt.' : 'Noch keine Zugangsdaten gesetzt.',
+            style: const TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _appLockUsernameCtrl,
+            decoration: const InputDecoration(labelText: 'Benutzername'),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _appLockPasswordCtrl,
+            obscureText: true,
+            decoration: const InputDecoration(labelText: 'Passwort'),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _appLockPasswordConfirmCtrl,
+            obscureText: true,
+            decoration: const InputDecoration(labelText: 'Passwort bestätigen'),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _appLockCredentialsBusy ? null : _saveAppLockCredentials,
+                  icon: const Icon(Icons.person_outline),
+                  label: const Text('Zugangsdaten speichern'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: (_appLockCredentialsBusy || !_hasAppLockCredentials)
+                      ? null
+                      : _removeAppLockCredentials,
+                  icon: const Icon(Icons.person_off_outlined),
+                  label: const Text('Zugangsdaten entfernen'),
                 ),
               ),
             ],

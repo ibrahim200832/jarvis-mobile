@@ -151,6 +151,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _reactiveOrbEnabled = true;
   bool _integrityLocked = false;
   bool _appLocked = false;
+  bool _appLockHasPin = false;
+  bool _appLockHasCredentials = false;
   late final _appLock = AppLockService(settings: _settings);
   String _partialText = '';
   final _appIntegrity = AppIntegrityService();
@@ -296,13 +298,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   /// The emergency lock (unlike everything else in this screen's state)
-  /// persists across an app restart — a forgotten PIN has no
+  /// persists across an app restart — a forgotten PIN/password has no
   /// recovery/bypass, by design, matching IntegrityLockdownScreen's
   /// "kein Bypass" precedent — so this must be checked fresh on every cold
-  /// start, not just set once in response to a trigger.
+  /// start, not just set once in response to a trigger. Also refreshes the
+  /// has-PIN/has-credentials cache EmergencyLockScreen needs, so it's
+  /// always current at the moment the gate is actually shown (cold start,
+  /// shake, or voice command) — called from all three of those, not just
+  /// here.
   Future<void> _checkAppLockState() async {
     final locked = await _appLock.isLocked();
-    if (mounted) setState(() => _appLocked = locked);
+    final hasPin = await _appLock.hasPinConfigured();
+    final hasCredentials = await _appLock.hasPasswordConfigured();
+    if (mounted) {
+      setState(() {
+        _appLocked = locked;
+        _appLockHasPin = hasPin;
+        _appLockHasCredentials = hasCredentials;
+      });
+    }
   }
 
   @override
@@ -348,19 +362,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  /// Shake-to-lock: silently does nothing if no PIN is configured yet,
-  /// since locking without a PIN would make the app permanently
-  /// inaccessible (EmergencyLockScreen has no bypass, by design).
+  /// Shake-to-lock: silently does nothing if neither a PIN nor
+  /// username+password is configured yet, since locking with no way in
+  /// would make the app permanently inaccessible (EmergencyLockScreen has
+  /// no bypass, by design).
   Future<void> _handleShakeLocksApp() async {
-    if (!await _appLock.hasPinConfigured()) return;
+    if (!await _appLock.hasAnyLockMethodConfigured()) return;
     await _appLock.lock();
-    if (mounted) setState(() => _appLocked = true);
+    await _checkAppLockState();
   }
 
   /// Verifies [pin] against the stored PIN and clears the locked state on
   /// success — passed straight into EmergencyLockScreen's onUnlock.
   Future<bool> _tryUnlockApp(String pin) async {
     final correct = await _appLock.unlock(pin);
+    if (correct && mounted) setState(() => _appLocked = false);
+    return correct;
+  }
+
+  /// Verifies [username]/[password] against the stored credentials and
+  /// clears the locked state on success — passed straight into
+  /// EmergencyLockScreen's onLogin.
+  Future<bool> _tryLoginApp(String username, String password) async {
+    final correct = await _appLock.login(username, password);
     if (correct && mounted) setState(() => _appLocked = false);
     return correct;
   }
@@ -790,7 +814,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     if (result.triggerAppLock && mounted) {
       await _appLock.lock();
-      if (mounted) setState(() => _appLocked = true);
+      await _checkAppLockState();
     }
 
     if (result.triggerFocusModeOn && mounted) {
@@ -888,7 +912,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     if (_appLocked) {
-      return EmergencyLockScreen(onUnlock: _tryUnlockApp);
+      return EmergencyLockScreen(
+        hasPinConfigured: _appLockHasPin,
+        hasPasswordConfigured: _appLockHasCredentials,
+        checkLockout: _appLock.remainingLockout,
+        onUnlock: _tryUnlockApp,
+        onLogin: _tryLoginApp,
+      );
     }
     if (_integrityLocked) {
       return const IntegrityLockdownScreen();

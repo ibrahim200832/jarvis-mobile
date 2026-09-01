@@ -58,6 +58,11 @@ class SettingsService {
   static const _keyOfflineLlmModelUrl = 'offline_llm_model_url';
   static const _keyAppLockPinSalt = 'app_lock_pin_salt';
   static const _keyAppLockPinHash = 'app_lock_pin_hash';
+  static const _keyAppLockUsername = 'app_lock_username';
+  static const _keyAppLockPasswordSalt = 'app_lock_password_salt';
+  static const _keyAppLockPasswordHash = 'app_lock_password_hash';
+  static const _keyAppLockFailedAttempts = 'app_lock_failed_attempts';
+  static const _keyAppLockLockoutUntil = 'app_lock_lockout_until';
   static const _keyShakeLocksAppEnabled = 'shake_locks_app_enabled';
   static const _keyDashboardNotificationEnabled = 'dashboard_notification_enabled';
   static const _keyNotificationHubEnabled = 'notification_hub_enabled';
@@ -562,6 +567,84 @@ class SettingsService {
   Future<void> clearAppLockPin() async {
     await _secure.delete(_keyAppLockPinSalt);
     await _secure.delete(_keyAppLockPinHash);
+  }
+
+  /// Sets/replaces the emergency-lock's username+password login — a second,
+  /// equally valid way to unlock the whole app, alongside the PIN (see
+  /// setAppLockPin), not a replacement for it. Completely separate
+  /// credentials from the Admin-Konsole's (see setAdminCredentials) — the
+  /// two protect different things and are never shared. Same salted-SHA256
+  /// pattern as the PIN; the username itself is a plain (non-secret)
+  /// identifier. Never stores the password itself, only a salted hash.
+  Future<void> setAppLockCredentials(String username, String password) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyAppLockUsername, username);
+    final saltBytes = List<int>.generate(16, (_) => Random.secure().nextInt(256));
+    final salt = base64Url.encode(saltBytes);
+    final hash = sha256.convert(utf8.encode('$salt:$password')).toString();
+    await _secureSet(_keyAppLockPasswordSalt, salt);
+    await _secureSet(_keyAppLockPasswordHash, hash);
+  }
+
+  Future<bool> hasAppLockCredentials() async {
+    return (await _secureGet(_keyAppLockPasswordHash)) != null;
+  }
+
+  Future<String?> getAppLockUsername() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyAppLockUsername);
+  }
+
+  /// Case-sensitive exact match on both username and password. Returns
+  /// false (never throws) if no credentials are set, or if the username
+  /// doesn't match the stored one.
+  Future<bool> verifyAppLockCredentials(String username, String password) async {
+    final storedUsername = await getAppLockUsername();
+    final salt = await _secureGet(_keyAppLockPasswordSalt);
+    final storedHash = await _secureGet(_keyAppLockPasswordHash);
+    if (storedUsername == null || salt == null || storedHash == null) return false;
+    if (username != storedUsername) return false;
+    final hash = sha256.convert(utf8.encode('$salt:$password')).toString();
+    return hash == storedHash;
+  }
+
+  /// Unlike clearAppLockPin's PIN, removing these credentials carries no
+  /// lockout risk — only reachable from the normal (ungated) settings
+  /// screen, never while the app is actually locked.
+  Future<void> clearAppLockCredentials() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_keyAppLockUsername);
+    await _secure.delete(_keyAppLockPasswordSalt);
+    await _secure.delete(_keyAppLockPasswordHash);
+  }
+
+  /// Failed-attempt counter shared by both the emergency-lock PIN and the
+  /// username/password login (see AppLockService) — persisted (not just
+  /// in-memory) so a simple app restart can't be used to dodge a lockout.
+  Future<int> getAppLockFailedAttempts() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_keyAppLockFailedAttempts) ?? 0;
+  }
+
+  Future<void> setAppLockFailedAttempts(int value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keyAppLockFailedAttempts, value);
+  }
+
+  Future<DateTime?> getAppLockLockoutUntil() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_keyAppLockLockoutUntil);
+    return raw == null ? null : DateTime.tryParse(raw);
+  }
+
+  /// Pass null to clear the lockout.
+  Future<void> setAppLockLockoutUntil(DateTime? value) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (value == null) {
+      await prefs.remove(_keyAppLockLockoutUntil);
+    } else {
+      await prefs.setString(_keyAppLockLockoutUntil, value.toIso8601String());
+    }
   }
 
   /// Whether the persistent "Lockscreen-Dashboard" status notification

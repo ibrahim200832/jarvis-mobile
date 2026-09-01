@@ -125,6 +125,104 @@ void main() {
     });
   });
 
+  group('app lock credentials (username/password)', () {
+    test('hasAppLockCredentials is false until credentials are set', () async {
+      expect(await settings.hasAppLockCredentials(), isFalse);
+      await settings.setAppLockCredentials('ibrahim', 'hunter2');
+      expect(await settings.hasAppLockCredentials(), isTrue);
+    });
+
+    test('verifyAppLockCredentials returns true for the correct username and password', () async {
+      await settings.setAppLockCredentials('ibrahim', 'hunter2');
+      expect(await settings.verifyAppLockCredentials('ibrahim', 'hunter2'), isTrue);
+    });
+
+    test('verifyAppLockCredentials returns false for a wrong password', () async {
+      await settings.setAppLockCredentials('ibrahim', 'hunter2');
+      expect(await settings.verifyAppLockCredentials('ibrahim', 'wrong'), isFalse);
+    });
+
+    test('verifyAppLockCredentials returns false for a wrong username, even with the right password', () async {
+      await settings.setAppLockCredentials('ibrahim', 'hunter2');
+      expect(await settings.verifyAppLockCredentials('someone-else', 'hunter2'), isFalse);
+    });
+
+    test('verifyAppLockCredentials returns false when no credentials have ever been set', () async {
+      expect(await settings.verifyAppLockCredentials('ibrahim', 'hunter2'), isFalse);
+    });
+
+    test('the password itself is never stored in plaintext, only a salted hash', () async {
+      await settings.setAppLockCredentials('ibrahim', 'hunter2');
+      expect(secure.values.values, isNot(contains('hunter2')));
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getKeys().map((k) => prefs.get(k)), isNot(contains('hunter2')));
+    });
+
+    test('the username is stored so it can be shown/prefilled', () async {
+      await settings.setAppLockCredentials('ibrahim', 'hunter2');
+      expect(await settings.getAppLockUsername(), 'ibrahim');
+    });
+
+    test('setAppLockCredentials overwrites previous credentials', () async {
+      await settings.setAppLockCredentials('ibrahim', 'hunter2');
+      await settings.setAppLockCredentials('ibrahim', 'newpassword');
+      expect(await settings.verifyAppLockCredentials('ibrahim', 'hunter2'), isFalse);
+      expect(await settings.verifyAppLockCredentials('ibrahim', 'newpassword'), isTrue);
+    });
+
+    test('clearAppLockCredentials removes the credentials entirely', () async {
+      await settings.setAppLockCredentials('ibrahim', 'hunter2');
+      await settings.clearAppLockCredentials();
+      expect(await settings.hasAppLockCredentials(), isFalse);
+      expect(await settings.getAppLockUsername(), isNull);
+      expect(await settings.verifyAppLockCredentials('ibrahim', 'hunter2'), isFalse);
+    });
+
+    test('app lock credentials are independent of the app lock PIN', () async {
+      await settings.setAppLockPin('1234');
+      await settings.setAppLockCredentials('ibrahim', 'hunter2');
+      expect(await settings.verifyAppLockPin('hunter2'), isFalse);
+      expect(await settings.verifyAppLockCredentials('ibrahim', '1234'), isFalse);
+      expect(await settings.verifyAppLockPin('1234'), isTrue);
+      expect(await settings.verifyAppLockCredentials('ibrahim', 'hunter2'), isTrue);
+    });
+
+    test('app lock credentials are independent of the admin credentials', () async {
+      await settings.setAdminCredentials('ibrahim', 'admin-secret');
+      await settings.setAppLockCredentials('ibrahim', 'applock-secret');
+      expect(await settings.verifyAdminCredentials('ibrahim', 'applock-secret'), isFalse);
+      expect(await settings.verifyAppLockCredentials('ibrahim', 'admin-secret'), isFalse);
+      expect(await settings.verifyAdminCredentials('ibrahim', 'admin-secret'), isTrue);
+      expect(await settings.verifyAppLockCredentials('ibrahim', 'applock-secret'), isTrue);
+    });
+  });
+
+  group('app lock lockout', () {
+    test('failed attempts default to 0 and round-trip', () async {
+      expect(await settings.getAppLockFailedAttempts(), 0);
+      await settings.setAppLockFailedAttempts(3);
+      expect(await settings.getAppLockFailedAttempts(), 3);
+    });
+
+    test('lockout-until defaults to null and round-trips', () async {
+      expect(await settings.getAppLockLockoutUntil(), isNull);
+      final until = DateTime(2026, 1, 1, 12, 30);
+      await settings.setAppLockLockoutUntil(until);
+      expect(await settings.getAppLockLockoutUntil(), until);
+    });
+
+    test('setting lockout-until to null clears it', () async {
+      await settings.setAppLockLockoutUntil(DateTime(2026, 1, 1));
+      await settings.setAppLockLockoutUntil(null);
+      expect(await settings.getAppLockLockoutUntil(), isNull);
+    });
+
+    test('app lock lockout is independent of the admin lockout', () async {
+      await settings.setAppLockFailedAttempts(5);
+      expect(await settings.getAdminFailedAttempts(), 0);
+    });
+  });
+
   group('admin PIN', () {
     test('hasAdminPin is false until a PIN is set', () async {
       expect(await settings.hasAdminPin(), isFalse);

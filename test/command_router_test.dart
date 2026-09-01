@@ -1156,6 +1156,12 @@ void main() {
       expect(result.triggerAppLock, isTrue);
     });
 
+    test('sperre die app with only credentials configured (no PIN) also sets the triggerAppLock flag', () async {
+      await settings.setAppLockCredentials('ibrahim', 'hunter2');
+      final result = await router.handle('notfall-sperre');
+      expect(result.triggerAppLock, isTrue);
+    });
+
     test('aktiviere fokus-modus sets the triggerFocusModeOn flag', () async {
       final result = await router.handle('aktiviere fokus-modus');
       expect(result.triggerFocusModeOn, isTrue);
