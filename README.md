@@ -382,13 +382,13 @@ angemeldet hat.
 Alle Login-Versuche (unabhängig vom Konto) teilen sich eine gemeinsame **Fehlversuch-Sperre**: nach 5
 falschen Versuchen sperrt die Konsole für 5 Minuten — die Sperre übersteht auch einen App-Neustart.
 
-**Wichtig — bewusst kein Wiederherstellungsweg für ein einzelnes vergessenes Passwort:** Da neue Konten
-nur ein bereits eingeloggter Besitzer anlegen kann, gibt es dafür absichtlich keinen Umweg über die
-ungated Einstellungen (das wäre ein Einfallstor für jeden mit entsperrtem Gerätezugriff). Stattdessen
-steht dort ein bewusst destruktiver Sicherheitsanker „**Alle Admin-Konten zurücksetzen**" bereit
-(Bestätigungsdialog) — löscht Besitzer und alle Helfer-Konten unwiderruflich und setzt die Einrichtung
-auf den Anfangszustand zurück. Er erlaubt kein Auslesen oder Übernehmen bestehender Konten, nur ein
-Nullen-und-neu-Anfangen, falls das Besitzer-Passwort verloren geht.
+**Wichtig — bewusst kein Wiederherstellungsweg für ein vergessenes Besitzer-Passwort:** Da neue Konten
+nur ein bereits eingeloggter Besitzer anlegen kann, gibt es dafür absichtlich **keinen** Umweg über die
+ungated Einstellungen — anders als noch in Runde 18 existiert dort **kein** Reset-Anker mehr, weil er
+selbst ohne Kenntnis eines Passworts von jeder Person mit entsperrtem Gerätezugriff nutzbar gewesen wäre,
+um den Besitzer zu löschen und sich selbst als neuen Besitzer einzurichten. Ein vergessenes
+Besitzer-Passwort lässt sich also nur noch durch eine komplette App-Neuinstallation beheben — was dann
+aber auch alle anderen App-Daten löscht (Notizen, Erinnerungen usw.), nicht nur die Admin-Konten.
 
 Die Konsole selbst gliedert sich in:
 

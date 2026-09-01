@@ -297,13 +297,6 @@ void main() {
       expect(await settings.updateAdminAccountPassword('nobody', 'new-pw'), isFalse);
     });
 
-    test('resetAdminAccounts wipes every account, owner and helpers alike', () async {
-      await settings.addAdminAccount(username: 'ibrahim', password: 'owner-pw', isOwner: true);
-      await settings.addAdminAccount(username: 'helper1', password: 'helper-pw', isOwner: false);
-      await settings.resetAdminAccounts();
-      expect(await settings.getAdminAccounts(), isEmpty);
-    });
-
     // The pre-Runde-18 single-shared-account setters (setAdminCredentials/
     // setAdminPin/setAdminBiometricEnabled) no longer exist — these tests
     // simulate data that a real device could still have on disk from

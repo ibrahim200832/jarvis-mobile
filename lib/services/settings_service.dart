@@ -822,18 +822,6 @@ class SettingsService {
     return true;
   }
 
-  /// Deletes every Admin-Konsole account (owner and all helpers), reachable
-  /// from the normal (ungated) settings screen as a deliberate, destructive
-  /// safety valve — a forgotten owner password would otherwise permanently
-  /// lock everyone out with no in-app way back in, since new accounts can
-  /// only be created by someone already logged in as the owner. This can't
-  /// read or take over an existing account, only wipe the list back to the
-  /// empty/bootstrap state — strictly weaker than what unlocked physical
-  /// device access already grants (clearing all app data).
-  Future<void> resetAdminAccounts() async {
-    await _secure.delete(_keyAdminAccounts);
-  }
-
   /// Failed-attempt counter shared across every Admin-Konsole login attempt
   /// (see AdminAuthService), regardless of which account was guessed —
   /// persisted (not just in-memory) so a simple app restart can't be used

@@ -510,37 +510,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Besitzer-Konto eingerichtet.')));
   }
 
-  /// Deliberately destructive safety valve: wipes every Admin-Konsole
-  /// account (owner and all helpers) so the section returns to the
-  /// bootstrap state. Doesn't expose or take over any existing account —
-  /// only reachable escape hatch for a forgotten owner password, since new
-  /// accounts can otherwise only be created by someone already logged in
-  /// as the owner.
-  Future<void> _resetAdminAccounts() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Alle Admin-Konten zurücksetzen?'),
-        content: const Text(
-          'Löscht den Besitzer und alle Helfer-Konten unwiderruflich. Danach muss ein neues '
-          'Besitzer-Konto eingerichtet werden. Das kann nicht rückgängig gemacht werden.',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Abbrechen')),
-          TextButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text('Zurücksetzen')),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-    await widget.settings.resetAdminAccounts();
-    if (!mounted) return;
-    setState(() {
-      _hasAdminAccounts = false;
-      _adminOwnerUsername = null;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Alle Admin-Konten wurden zurückgesetzt.')));
-  }
-
   /// Entry point for the "Admin-Einstellungen" button: already logged in
   /// this session → straight to the console; no accounts set up yet →
   /// point at the bootstrap form above instead of showing a gate with
@@ -1050,12 +1019,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onPressed: _openAdminConsole,
               icon: const Icon(Icons.admin_panel_settings_outlined),
               label: const Text('Admin-Einstellungen'),
-            ),
-            const SizedBox(height: 8),
-            TextButton.icon(
-              onPressed: _resetAdminAccounts,
-              icon: const Icon(Icons.warning_amber_outlined),
-              label: const Text('Alle Admin-Konten zurücksetzen'),
             ),
           ],
           const SizedBox(height: 24),
