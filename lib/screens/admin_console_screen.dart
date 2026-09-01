@@ -1,5 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../services/admin_auth_service.dart';
 import '../services/api_health_service.dart';
@@ -82,6 +85,12 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
   bool _addingHelper = false;
   List<AdminAccount> _adminAccounts = [];
   List<LogEntry> _recentLogins = [];
+  List<LogEntry> _recentIssues = [];
+  List<MapEntry<DateTime, ({int errors, int warnings})>> _errorTrend = [];
+  PackageInfo? _packageInfo;
+  int _logEntryCount = 0;
+  DateTime? _oldestLogEntry;
+  bool _exportingLog = false;
 
   static const _aiModels = {
     'openai': 'ChatGPT (Standard)',
@@ -123,7 +132,42 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
     _discordWebhookEnabled = await widget.settings.getDiscordWebhookEnabled();
     _adminAccounts = await widget.settings.getAdminAccounts();
     _recentLogins = await widget.adminAuth.recentSuccessfulLogins();
+    _recentIssues = await widget.adminAuth.log.recentIssues();
+    _errorTrend = await widget.adminAuth.log.countsByDay();
+    final allLogs = await widget.adminAuth.log.readAll();
+    _logEntryCount = allLogs.length;
+    _oldestLogEntry = allLogs.isEmpty ? null : allLogs.last.timestamp;
+    _packageInfo = await PackageInfo.fromPlatform();
     if (mounted) setState(() {});
+  }
+
+  String get _platformLabel => kIsWeb ? 'Web' : defaultTargetPlatform.name;
+
+  /// Shares the on-device log file via the OS share sheet, or tells the
+  /// user there's nothing to export yet — mirrors LogService.exportableFile
+  /// returning null when no error/warning/info has ever been logged.
+  Future<void> _exportLogFile() async {
+    setState(() => _exportingLog = true);
+    try {
+      final file = await widget.adminAuth.log.exportableFile();
+      if (file == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Noch keine Log-Datei vorhanden.')),
+        );
+        return;
+      }
+      await SharePlus.instance.share(
+        ShareParams(files: [XFile(file.path)], text: 'JARVIS-Log-Datei'),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Export fehlgeschlagen: $e')));
+    } finally {
+      if (mounted) setState(() => _exportingLog = false);
+    }
   }
 
   /// Persists the choice AND updates the live app immediately via the
@@ -732,12 +776,97 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
             OutlinedButton.icon(
               onPressed: () => Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) =>
-                      LogViewerScreen(logService: LogService(), liveMode: true),
+                  builder: (_) => LogViewerScreen(
+                    logService: widget.adminAuth.log,
+                    liveMode: true,
+                  ),
                 ),
               ),
               icon: const Icon(Icons.bug_report_outlined),
               label: const Text('Live-Log-Viewer öffnen'),
+            ),
+            const SizedBox(height: 16),
+            Text('Fehler-Historie', style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: 4),
+            const Text(
+              'Die letzten protokollierten Fehler und Warnungen, ohne extra Navigation.',
+              style: TextStyle(fontSize: 12),
+            ),
+            const SizedBox(height: 8),
+            if (_recentIssues.isEmpty)
+              Text(
+                'Keine Fehler oder Warnungen protokolliert.',
+                style: TextStyle(fontSize: 12, color: palette.mutedForeground),
+              )
+            else
+              ..._recentIssues.map(
+                (entry) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 3),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        entry.level == LogLevel.error
+                            ? Icons.error_outline
+                            : Icons.warning_amber_outlined,
+                        color: entry.level == LogLevel.error
+                            ? palette.error
+                            : Colors.amber,
+                        size: 16,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '${DateFormat('dd.MM. HH:mm:ss').format(entry.timestamp)} · ${entry.source} — ${entry.message}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: palette.mutedForeground,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            const SizedBox(height: 16),
+            Text(
+              'Verlauf über die Zeit (7 Tage)',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+            const SizedBox(height: 8),
+            _ErrorTrendChart(trend: _errorTrend, palette: palette),
+            const SizedBox(height: 16),
+            Text(
+              'System-Info auf einen Blick',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Version: ${_packageInfo?.version ?? '?'} (${_packageInfo?.buildNumber ?? '?'})',
+              style: const TextStyle(fontSize: 12),
+            ),
+            Text('Plattform: $_platformLabel', style: const TextStyle(fontSize: 12)),
+            Text(
+              'Theme: ${_themeVariant == ThemeVariant.gold ? 'Gold' : 'Dark Cyan'}',
+              style: const TextStyle(fontSize: 12),
+            ),
+            Text(
+              _oldestLogEntry == null
+                  ? 'Log-Einträge: $_logEntryCount'
+                  : 'Log-Einträge: $_logEntryCount (ältester: ${DateFormat('dd.MM.yyyy').format(_oldestLogEntry!)})',
+              style: const TextStyle(fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _exportingLog ? null : _exportLogFile,
+              icon: _exportingLog
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.ios_share),
+              label: const Text('Log-Datei exportieren'),
             ),
             const SizedBox(height: 12),
             SwitchListTile(
@@ -911,6 +1040,83 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Compact 7-day error/warning bar chart for the "Verlauf über die Zeit"
+/// section — deliberately plain Containers instead of pulling in a
+/// charting package, since this is just seven small stacked bars.
+class _ErrorTrendChart extends StatelessWidget {
+  const _ErrorTrendChart({required this.trend, required this.palette});
+
+  final List<MapEntry<DateTime, ({int errors, int warnings})>> trend;
+  final JarvisPaletteExtension palette;
+
+  static const _maxBarHeight = 60.0;
+  static const _minBarHeight = 2.0;
+
+  // Deliberately not DateFormat('E', 'de_DE') — that needs
+  // initializeDateFormatting('de_DE') to have run first (done in
+  // main.dart, which never runs under flutter test), so a plain lookup
+  // avoids coupling this widget's correctness to app startup order.
+  static const _weekdayAbbr = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+
+  @override
+  Widget build(BuildContext context) {
+    if (trend.isEmpty) return const SizedBox.shrink();
+    final maxTotal = trend
+        .map((e) => e.value.errors + e.value.warnings)
+        .fold(0, (a, b) => a > b ? a : b);
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: trend.map((e) {
+        final errors = e.value.errors;
+        final warnings = e.value.warnings;
+        final total = errors + warnings;
+        final scale = maxTotal == 0 ? 0.0 : _maxBarHeight / maxTotal;
+        final errorHeight = errors == 0 ? 0.0 : (errors * scale).clamp(_minBarHeight, _maxBarHeight);
+        final warningHeight = warnings == 0 ? 0.0 : (warnings * scale).clamp(_minBarHeight, _maxBarHeight);
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('$total', style: const TextStyle(fontSize: 10)),
+            const SizedBox(height: 2),
+            SizedBox(
+              height: _maxBarHeight,
+              width: 14,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  if (errorHeight > 0)
+                    Container(
+                      height: errorHeight,
+                      decoration: BoxDecoration(
+                        color: palette.error,
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(2)),
+                      ),
+                    ),
+                  if (warningHeight > 0)
+                    Container(
+                      height: warningHeight,
+                      color: Colors.amber,
+                    ),
+                  if (total == 0)
+                    Container(
+                      height: _minBarHeight,
+                      color: palette.mutedForeground.withValues(alpha: 0.3),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              _weekdayAbbr[e.key.weekday - 1],
+              style: TextStyle(fontSize: 10, color: palette.mutedForeground),
+            ),
+          ],
+        );
+      }).toList(),
     );
   }
 }

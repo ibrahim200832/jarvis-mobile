@@ -36,6 +36,11 @@ class AdminAuthService {
   final SettingsService _settings;
   final LogService _log;
 
+  /// Exposes the injected LogService instance so AdminConsoleScreen can
+  /// reuse it for Fehler-Historie/Verlauf/Export instead of constructing a
+  /// second, independent instance pointed at the same file.
+  LogService get log => _log;
+
   /// How long the console may sit idle (no recorded interaction, see
   /// [recordActivity]) before it auto-locks — an instance field rather than
   /// a constant so tests can shrink it instead of waiting real minutes.

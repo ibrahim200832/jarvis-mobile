@@ -104,4 +104,43 @@ class LogService {
     final trimmed = lines.sublist(lines.length - maxEntries);
     await file.writeAsString('${trimmed.join('\n')}\n');
   }
+
+  /// Newest warnings/errors first, info entries skipped — for the Admin-
+  /// Konsole's inline "Fehler-Historie" (see admin_console_screen.dart).
+  Future<List<LogEntry>> recentIssues({int limit = 10}) async {
+    final all = await readAll();
+    return all.where((e) => e.level != LogLevel.info).take(limit).toList();
+  }
+
+  /// Warning/error counts per day for the last [days] days (today
+  /// included), oldest day first — days with zero entries are still
+  /// present with (0, 0) so the caller can render a fixed-width chart.
+  Future<List<MapEntry<DateTime, ({int errors, int warnings})>>> countsByDay({int days = 7, DateTime? now}) async {
+    final all = await readAll();
+    final today = now ?? DateTime.now();
+    final todayMidnight = DateTime(today.year, today.month, today.day);
+    final buckets = <DateTime, ({int errors, int warnings})>{
+      for (var i = days - 1; i >= 0; i--) todayMidnight.subtract(Duration(days: i)): (errors: 0, warnings: 0),
+    };
+    for (final entry in all) {
+      final day = DateTime(entry.timestamp.year, entry.timestamp.month, entry.timestamp.day);
+      final bucket = buckets[day];
+      if (bucket == null || entry.level == LogLevel.info) continue;
+      buckets[day] = entry.level == LogLevel.error
+          ? (errors: bucket.errors + 1, warnings: bucket.warnings)
+          : (errors: bucket.errors, warnings: bucket.warnings + 1);
+    }
+    return buckets.entries.toList();
+  }
+
+  /// The log file for sharing/exporting, or null if it doesn't exist yet
+  /// (e.g. a freshly installed device with no errors so far).
+  Future<File?> exportableFile() async {
+    try {
+      final file = await _logFile();
+      return await file.exists() ? file : null;
+    } catch (_) {
+      return null;
+    }
+  }
 }

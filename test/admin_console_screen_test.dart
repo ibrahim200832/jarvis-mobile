@@ -8,6 +8,7 @@ import 'package:jarvis_mobile/services/log_service.dart';
 import 'package:jarvis_mobile/services/secure_storage_service.dart';
 import 'package:jarvis_mobile/services/settings_service.dart';
 import 'package:jarvis_mobile/theme/jarvis_theme.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// In-memory stand-in for flutter_secure_storage, same fake as
@@ -36,14 +37,31 @@ class _FakeSecureStorageService extends SecureStorageService {
 /// (real dart:io via LogService) in initState()/_load() — same "chained
 /// real I/O under testWidgets()'s fake-async zone" issue documented in
 /// log_viewer_screen_test.dart, so this settles with alternating real
-/// delays + pumps instead of a single pumpAndSettle() alone.
+/// delays + pumps instead of a single pumpAndSettle() alone. Runde 20 added
+/// four more sequential real-I/O readAll() chains to _load() (recentIssues/
+/// countsByDay/readAll on top of the existing recentSuccessfulLogins), so
+/// this needs more hops than before — also reused after any later
+/// interaction (e.g. tapping "Log-Datei exportieren") that triggers more
+/// real dart:io on its own, since pumpAndSettle() alone can't resolve it.
+Future<void> _settleRealIo(WidgetTester tester) async {
+  for (var i = 0; i < 20; i++) {
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 30)));
+    await tester.pump();
+  }
+  await tester.pumpAndSettle();
+}
+
 Future<void> _pumpConsole(
   WidgetTester tester,
   SettingsService settings, {
   required AdminAuthService adminAuth,
   Future<void> Function()? onClearAiMemory,
 }) async {
-  tester.view.physicalSize = const Size(800, 8000);
+  // Runde 20 added four new sections (Fehler-Historie/Verlauf/System-Info/
+  // Log-Export) to "Entwickler-Tools", pushing everything below it further
+  // down — the viewport has to grow with the content or later sections
+  // (Erscheinungsbild, Zugang & Sicherheit) fall outside the render window.
+  tester.view.physicalSize = const Size(800, 11000);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
   await tester.pumpWidget(
@@ -56,11 +74,7 @@ Future<void> _pumpConsole(
       ),
     ),
   );
-  for (var i = 0; i < 10; i++) {
-    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 30)));
-    await tester.pump();
-  }
-  await tester.pumpAndSettle();
+  await _settleRealIo(tester);
 }
 
 void main() {
@@ -71,6 +85,13 @@ void main() {
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
+    PackageInfo.setMockInitialValues(
+      appName: 'JARVIS',
+      packageName: 'com.jarvismobile.app',
+      version: '1.2.3',
+      buildNumber: '45',
+      buildSignature: '',
+    );
     tempDir = await Directory.systemTemp.createTemp('jarvis_admin_console_test_');
     settings = SettingsService(secureStorage: _FakeSecureStorageService());
     log = LogService(directoryOverride: tempDir);
@@ -303,6 +324,56 @@ void main() {
     await _pumpConsole(tester, settings, adminAuth: adminAuth);
 
     expect(find.text('Live-Log-Viewer öffnen'), findsOneWidget);
+  });
+
+  group('Fehler-Historie, Verlauf, System-Info, Log-Export', () {
+    testWidgets('Fehler-Historie shows the empty state when nothing was logged', (tester) async {
+      await _pumpConsole(tester, settings, adminAuth: adminAuth);
+
+      expect(find.text('Keine Fehler oder Warnungen protokolliert.'), findsOneWidget);
+    });
+
+    testWidgets('Fehler-Historie shows logged warnings/errors but not info entries', (tester) async {
+      await tester.runAsync(() async {
+        await log.info('Test', 'info entry');
+        await log.warning('Test', 'warn entry');
+        await log.error('Test', 'error entry');
+      });
+
+      await _pumpConsole(tester, settings, adminAuth: adminAuth);
+
+      expect(find.textContaining('warn entry'), findsOneWidget);
+      expect(find.textContaining('error entry'), findsOneWidget);
+      expect(find.textContaining('info entry'), findsNothing);
+    });
+
+    testWidgets('System-Info shows version, platform and theme at a glance', (tester) async {
+      await _pumpConsole(tester, settings, adminAuth: adminAuth);
+
+      expect(find.textContaining('Version: 1.2.3'), findsOneWidget);
+      expect(find.textContaining('Plattform:'), findsOneWidget);
+      expect(find.textContaining('Theme: Gold'), findsOneWidget);
+      expect(find.textContaining('Log-Einträge: 0'), findsOneWidget);
+    });
+
+    testWidgets('System-Info reflects a saved Dark Cyan theme and non-zero log count', (tester) async {
+      await settings.setThemeVariant(ThemeVariant.cyan);
+      await tester.runAsync(() => log.error('Test', 'x'));
+
+      await _pumpConsole(tester, settings, adminAuth: adminAuth);
+
+      expect(find.textContaining('Theme: Dark Cyan'), findsOneWidget);
+      expect(find.textContaining('Log-Einträge: 1'), findsOneWidget);
+    });
+
+    testWidgets('exporting the log file with none present shows a hint instead of sharing', (tester) async {
+      await _pumpConsole(tester, settings, adminAuth: adminAuth);
+
+      await tester.tap(find.text('Log-Datei exportieren'));
+      await _settleRealIo(tester);
+
+      expect(find.text('Noch keine Log-Datei vorhanden.'), findsOneWidget);
+    });
   });
 
   testWidgets('force-local-AI toggle defaults to off and persists when switched on', (tester) async {
