@@ -23,6 +23,7 @@ import '../services/call_service.dart';
 import '../services/challenge_service.dart';
 import '../services/code_snippet_service.dart';
 import '../services/contacts_service.dart';
+import '../services/crash_report_service.dart';
 import '../services/dashboard_notification_service.dart';
 import '../services/device_info_service.dart';
 import '../services/email_service.dart';
@@ -243,6 +244,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     unawaited(_refreshHomeWidget());
     _widgetClickSubscription = _homeWidget.widgetClicks.listen(_handleWidgetClick);
     unawaited(_handleColdStartFromWidget());
+    unawaited(CrashReportService(settings: _settings).applyRemoteOverridesIfAny());
   }
 
   /// Pushes the same status/latency + open-to-do content shown in the

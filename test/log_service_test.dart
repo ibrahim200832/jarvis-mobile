@@ -160,4 +160,29 @@ void main() {
       expect(await file!.exists(), isTrue);
     });
   });
+
+  group('onError', () {
+    test('fires for error() but not warning() or info()', () async {
+      final seen = <LogEntry>[];
+      log.onError = seen.add;
+
+      await log.info('S', 'info');
+      await log.warning('S', 'warning');
+      expect(seen, isEmpty);
+
+      await log.error('S', 'boom');
+      expect(seen, hasLength(1));
+      expect(seen.single.level, LogLevel.error);
+      expect(seen.single.message, 'boom');
+    });
+
+    test('a throwing callback does not prevent error() from completing or logging locally', () async {
+      log.onError = (_) => throw StateError('callback exploded');
+
+      await log.error('S', 'still logged');
+
+      final entries = await log.readAll();
+      expect(entries.single.message, 'still logged');
+    });
+  });
 }

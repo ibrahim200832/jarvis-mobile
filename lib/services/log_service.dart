@@ -56,20 +56,37 @@ class LogService {
   static const maxEntries = 500;
   static const _fileName = 'jarvis_log.txt';
 
+  /// Set once from main.dart to forward every [error] call to
+  /// CrashReportService (Runde 21) — kept as a callback rather than a
+  /// direct import so LogService stays purely local/offline on its own
+  /// (see class doc). Only fires for [error], not warning/info, matching
+  /// "wir wollen nur wissen was der Fehler ist". Called after the local
+  /// write, and wrapped in its own try/catch below — a broken callback
+  /// must never break local logging.
+  void Function(LogEntry entry)? onError;
+
   Future<File> _logFile() async {
     final dir = _directoryOverride ?? await getApplicationSupportDirectory();
     return File('${dir.path}/$_fileName');
   }
 
   Future<void> log(LogLevel level, String source, String message) async {
+    LogEntry? entry;
     try {
       final file = await _logFile();
-      final entry = LogEntry(timestamp: DateTime.now(), level: level, source: source, message: message);
+      entry = LogEntry(timestamp: DateTime.now(), level: level, source: source, message: message);
       await file.create(recursive: true);
       await file.writeAsString('${entry.toLine()}\n', mode: FileMode.append, flush: true);
       await _trimIfNeeded(file);
     } catch (_) {
       // See class doc: logging must never throw.
+    }
+    if (entry != null && level == LogLevel.error) {
+      try {
+        onError?.call(entry);
+      } catch (_) {
+        // See class doc: logging must never throw.
+      }
     }
   }
 

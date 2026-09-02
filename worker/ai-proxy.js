@@ -486,6 +486,38 @@ export default {
       }
       return handleIntegrityVerify(rawBody, env, origin);
     }
+    if (url.pathname === '/report-error') {
+      if (request.method !== 'POST') {
+        return json({ error: 'method not allowed' }, 405, origin);
+      }
+      return handleReportError(rawBody, env, origin);
+    }
+    if (url.pathname === '/remote-config') {
+      if (request.method !== 'GET') {
+        return json({ error: 'method not allowed' }, 405, origin);
+      }
+      return handleRemoteConfig(url, env, origin);
+    }
+    if (url.pathname === '/admin/installs') {
+      if (request.method !== 'GET') {
+        return json({ error: 'method not allowed' }, 405, origin);
+      }
+      return handleAdminListInstalls(request, env, origin);
+    }
+    const installErrorsMatch = url.pathname.match(/^\/admin\/installs\/([^/]+)\/errors$/);
+    if (installErrorsMatch) {
+      if (request.method !== 'GET') {
+        return json({ error: 'method not allowed' }, 405, origin);
+      }
+      return handleAdminInstallErrors(request, decodeURIComponent(installErrorsMatch[1]), env, origin);
+    }
+    const installConfigMatch = url.pathname.match(/^\/admin\/installs\/([^/]+)\/config$/);
+    if (installConfigMatch) {
+      if (request.method !== 'POST') {
+        return json({ error: 'method not allowed' }, 405, origin);
+      }
+      return handleAdminSetConfig(request, rawBody, decodeURIComponent(installConfigMatch[1]), env, origin);
+    }
 
     if (request.method !== 'POST') {
       return json({ error: 'method not allowed' }, 405, origin);
@@ -769,6 +801,194 @@ async function handleIntegrityVerify(rawBody, env, origin) {
   return json({ ok, verdict: { deviceVerdicts, appVerdict, nonceMatches, packageMatches } }, 200, origin);
 }
 
+// How much of a single error report's free-text fields to keep — a
+// defensive cap against a misbehaving/malicious client sending huge
+// payloads, not a meaningful UX limit (real log messages are short).
+const MAX_ERROR_MESSAGE_LENGTH = 2000;
+const MAX_ERROR_FIELD_LENGTH = 200;
+
+// Anonymous per-install crash/error reporting (Runde 21) — deliberately
+// carries only technical error data (level/source/message/app version/
+// platform), never chat message content. installId is a random,
+// per-install opaque string generated client-side (see
+// SettingsService.getInstallId), not tied to any account or personal
+// data. Runs under the same (optional) HMAC protection as every other
+// endpoint on this Worker — see verifySignedRequest's doc comment for why
+// that's graceful-if-unset, same trust model as the rest of this file.
+async function handleReportError(rawBody, env, origin) {
+  if (!env.DB) {
+    return json({ error: 'Fehlerberichte sind auf diesem Worker nicht eingerichtet.' }, 500, origin);
+  }
+  let body;
+  try {
+    body = JSON.parse(rawBody);
+  } catch (_) {
+    return json({ error: 'invalid json body' }, 400, origin);
+  }
+  const installId = typeof body.installId === 'string' ? body.installId.trim() : '';
+  const level = typeof body.level === 'string' ? body.level.trim().slice(0, 20) : '';
+  const source = typeof body.source === 'string' ? body.source.trim().slice(0, MAX_ERROR_FIELD_LENGTH) : '';
+  const message = typeof body.message === 'string' ? body.message.trim().slice(0, MAX_ERROR_MESSAGE_LENGTH) : '';
+  const appVersion = typeof body.appVersion === 'string' ? body.appVersion.trim().slice(0, MAX_ERROR_FIELD_LENGTH) : null;
+  const platform = typeof body.platform === 'string' ? body.platform.trim().slice(0, MAX_ERROR_FIELD_LENGTH) : null;
+  if (!installId || !level || !source || !message) {
+    return json({ error: 'installId/level/source/message fehlt' }, 400, origin);
+  }
+
+  const now = Date.now();
+  try {
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO installs (install_id, first_seen, last_seen, app_version, platform) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(install_id) DO UPDATE SET last_seen = excluded.last_seen, app_version = excluded.app_version, platform = excluded.platform`,
+      ).bind(installId, now, now, appVersion, platform),
+      env.DB.prepare(
+        'INSERT INTO error_reports (install_id, level, source, message, created_at) VALUES (?, ?, ?, ?, ?)',
+      ).bind(installId, level, source, message, now),
+    ]);
+  } catch (err) {
+    return json({ error: 'Fehlerbericht konnte nicht gespeichert werden', detail: String(err) }, 502, origin);
+  }
+  return json({ ok: true }, 200, origin);
+}
+
+// Called once per app start (fire-and-forget on the client) — doubles as a
+// lightweight "this install is alive" check-in (updates installs.last_seen)
+// and returns any admin-set remote overrides for it. Fails soft: an
+// unconfigured/unreachable D1 just means "no overrides", never an error the
+// client needs to handle specially.
+async function handleRemoteConfig(url, env, origin) {
+  const installId = (url.searchParams.get('installId') || '').trim();
+  if (!installId) {
+    return json({ error: 'installId fehlt' }, 400, origin);
+  }
+  if (!env.DB) {
+    return json({ forceLocalAiEnabled: null }, 200, origin);
+  }
+
+  const now = Date.now();
+  try {
+    await env.DB.prepare(
+      `INSERT INTO installs (install_id, first_seen, last_seen) VALUES (?, ?, ?)
+       ON CONFLICT(install_id) DO UPDATE SET last_seen = excluded.last_seen`,
+    )
+      .bind(installId, now, now)
+      .run();
+    const row = await env.DB.prepare('SELECT force_local_ai_enabled FROM remote_overrides WHERE install_id = ?')
+      .bind(installId)
+      .first();
+    return json({ forceLocalAiEnabled: toNullableBool(row?.force_local_ai_enabled) }, 200, origin);
+  } catch (_) {
+    return json({ forceLocalAiEnabled: null }, 200, origin);
+  }
+}
+
+// Guards the /admin/* endpoints below, which expose every installation's
+// error reports — the graceful-if-unset HMAC signature (see
+// verifySignedRequest) is NOT sufficient here, since ordinary end-user
+// installs never have that secret configured. This is a separate,
+// unconditionally required shared secret (ADMIN_API_KEY, see README),
+// entered only in the Admin-Konsole on the operator's own device.
+function requireAdminKey(request, env) {
+  if (!env.ADMIN_API_KEY) {
+    return { ok: false, error: 'Admin-Endpunkte sind auf diesem Worker nicht eingerichtet.' };
+  }
+  const provided = request.headers.get('X-Jarvis-Admin-Key') || '';
+  if (!timingSafeEqual(provided, env.ADMIN_API_KEY)) {
+    return { ok: false, error: 'Ungültiger Admin-Schlüssel.' };
+  }
+  return { ok: true };
+}
+
+function toNullableBool(value) {
+  return value === null || value === undefined ? null : Boolean(value);
+}
+
+async function handleAdminListInstalls(request, env, origin) {
+  const auth = requireAdminKey(request, env);
+  if (!auth.ok) return json({ error: auth.error }, 401, origin);
+  if (!env.DB) return json({ error: 'Fehlerberichte sind auf diesem Worker nicht eingerichtet.' }, 500, origin);
+
+  try {
+    const { results } = await env.DB.prepare(
+      `SELECT i.install_id, i.first_seen, i.last_seen, i.app_version, i.platform,
+              (SELECT COUNT(*) FROM error_reports e WHERE e.install_id = i.install_id) AS error_count,
+              r.force_local_ai_enabled
+       FROM installs i
+       LEFT JOIN remote_overrides r ON r.install_id = i.install_id
+       ORDER BY i.last_seen DESC
+       LIMIT 200`,
+    ).all();
+    const installs = results.map((row) => ({
+      installId: row.install_id,
+      firstSeen: row.first_seen,
+      lastSeen: row.last_seen,
+      appVersion: row.app_version,
+      platform: row.platform,
+      errorCount: row.error_count,
+      forceLocalAiEnabled: toNullableBool(row.force_local_ai_enabled),
+    }));
+    return json({ installs }, 200, origin);
+  } catch (err) {
+    return json({ error: 'Installationen konnten nicht geladen werden', detail: String(err) }, 502, origin);
+  }
+}
+
+async function handleAdminInstallErrors(request, installId, env, origin) {
+  const auth = requireAdminKey(request, env);
+  if (!auth.ok) return json({ error: auth.error }, 401, origin);
+  if (!env.DB) return json({ error: 'Fehlerberichte sind auf diesem Worker nicht eingerichtet.' }, 500, origin);
+  if (!installId) return json({ error: 'installId fehlt' }, 400, origin);
+
+  try {
+    const { results } = await env.DB.prepare(
+      'SELECT level, source, message, created_at FROM error_reports WHERE install_id = ? ORDER BY created_at DESC LIMIT 20',
+    )
+      .bind(installId)
+      .all();
+    const errors = results.map((row) => ({
+      level: row.level,
+      source: row.source,
+      message: row.message,
+      createdAt: row.created_at,
+    }));
+    return json({ errors }, 200, origin);
+  } catch (err) {
+    return json({ error: 'Fehlerberichte konnten nicht geladen werden', detail: String(err) }, 502, origin);
+  }
+}
+
+async function handleAdminSetConfig(request, rawBody, installId, env, origin) {
+  const auth = requireAdminKey(request, env);
+  if (!auth.ok) return json({ error: auth.error }, 401, origin);
+  if (!env.DB) return json({ error: 'Fehlerberichte sind auf diesem Worker nicht eingerichtet.' }, 500, origin);
+  if (!installId) return json({ error: 'installId fehlt' }, 400, origin);
+
+  let body;
+  try {
+    body = JSON.parse(rawBody);
+  } catch (_) {
+    return json({ error: 'invalid json body' }, 400, origin);
+  }
+  const forceLocalAiEnabled = body.forceLocalAiEnabled;
+  if (forceLocalAiEnabled !== null && typeof forceLocalAiEnabled !== 'boolean') {
+    return json({ error: 'forceLocalAiEnabled muss true, false oder null sein' }, 400, origin);
+  }
+  const value = forceLocalAiEnabled === null ? null : forceLocalAiEnabled ? 1 : 0;
+
+  try {
+    await env.DB.prepare(
+      `INSERT INTO remote_overrides (install_id, force_local_ai_enabled, updated_at) VALUES (?, ?, ?)
+       ON CONFLICT(install_id) DO UPDATE SET force_local_ai_enabled = excluded.force_local_ai_enabled, updated_at = excluded.updated_at`,
+    )
+      .bind(installId, value, Date.now())
+      .run();
+  } catch (err) {
+    return json({ error: 'Konnte nicht gespeichert werden', detail: String(err) }, 502, origin);
+  }
+  return json({ ok: true }, 200, origin);
+}
+
 // Exchanges the service account's private key for a short-lived Google
 // OAuth2 access token via the JWT-bearer grant — standard service-account
 // auth flow, hand-rolled with Web Crypto since there is no Google Cloud
@@ -950,8 +1170,13 @@ function resolveAllowedOrigin(request, env) {
 
 function corsHeaders(origin) {
   const headers = {
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, X-Jarvis-Timestamp, X-Jarvis-Nonce, X-Jarvis-Signature',
+    // GET added for /remote-config and the /admin/installs* endpoints
+    // (Runde 21) — /search already used GET without a preflight-triggering
+    // custom header, but the admin endpoints' X-Jarvis-Admin-Key does
+    // trigger one, so GET has to be explicitly allowed here too.
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers':
+      'Content-Type, X-Jarvis-Timestamp, X-Jarvis-Nonce, X-Jarvis-Signature, X-Jarvis-Admin-Key',
   };
   if (origin) headers['Access-Control-Allow-Origin'] = origin;
   return headers;

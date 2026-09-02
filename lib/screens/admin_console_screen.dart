@@ -10,9 +10,11 @@ import '../services/backup_export_service.dart';
 import '../services/log_service.dart';
 import '../services/settings_service.dart';
 import '../services/system_diagnostic_service.dart';
+import '../services/telemetry_admin_service.dart';
 import '../services/tls_pinning_service.dart';
 import '../theme/jarvis_theme.dart';
 import 'log_viewer_screen.dart';
+import 'telemetry_screen.dart';
 
 /// Advanced/sensitive settings gated behind the Admin-PIN (see
 /// AdminAuthService/AdminGateScreen) — reachable only via the
@@ -53,6 +55,7 @@ class AdminConsoleScreen extends StatefulWidget {
 class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
   final _aiBackendCtrl = TextEditingController();
   final _aiHmacSecretCtrl = TextEditingController();
+  final _telemetryAdminKeyCtrl = TextEditingController();
   final _certPinsCtrl = TextEditingController();
   final _systemPromptOverrideCtrl = TextEditingController();
   final _tlsPinning = TlsPinningService();
@@ -119,6 +122,7 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
   Future<void> _load() async {
     _aiBackendCtrl.text = await widget.settings.getAiBackendUrl() ?? '';
     _aiHmacSecretCtrl.text = await widget.settings.getAiHmacSecret() ?? '';
+    _telemetryAdminKeyCtrl.text = await widget.settings.getAdminApiKey() ?? '';
     _certPinsCtrl.text = (await widget.settings.getCertPins()).join('\n');
     _aiModel = await widget.settings.getAiModel();
     _systemPromptOverrideCtrl.text =
@@ -379,6 +383,11 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
     } else {
       await widget.settings.setAiHmacSecret(_aiHmacSecretCtrl.text.trim());
     }
+    if (_telemetryAdminKeyCtrl.text.trim().isEmpty) {
+      await widget.settings.clearAdminApiKey();
+    } else {
+      await widget.settings.setAdminApiKey(_telemetryAdminKeyCtrl.text.trim());
+    }
     final certPins = _certPinsCtrl.text
         .split(RegExp(r'[\n,]'))
         .map((p) => p.trim())
@@ -610,6 +619,19 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
               label: const Text('Aktuellen Fingerabdruck anzeigen'),
             ),
             const SizedBox(height: 16),
+            TextField(
+              controller: _telemetryAdminKeyCtrl,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: 'Telemetrie-Admin-Schlüssel',
+                helperText:
+                    'Muss exakt mit ADMIN_API_KEY im Worker übereinstimmen (siehe README) — schaltet unten '
+                    '"Installationen & Fehler anderer Nutzer" frei. Ohne diesen Schlüssel lehnt der Worker jede '
+                    'Anfrage an diese Endpunkte ab.',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 16),
             DropdownButtonFormField<String>(
               initialValue: _aiModel,
               decoration: const InputDecoration(
@@ -784,6 +806,16 @@ class _AdminConsoleScreenState extends State<AdminConsoleScreen> {
               ),
               icon: const Icon(Icons.bug_report_outlined),
               label: const Text('Live-Log-Viewer öffnen'),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => TelemetryScreen(telemetryAdmin: TelemetryAdminService(settings: widget.settings)),
+                ),
+              ),
+              icon: const Icon(Icons.devices_other_outlined),
+              label: const Text('Installationen & Fehler anderer Nutzer'),
             ),
             const SizedBox(height: 16),
             Text('Fehler-Historie', style: Theme.of(context).textTheme.titleSmall),

@@ -472,4 +472,61 @@ void main() {
       expect(await settings.getHomeAssistantToken(), 'new-secure-token');
     });
   });
+
+  group('installId', () {
+    test('generates a value and returns the same one on every later call', () async {
+      final first = await settings.getInstallId();
+      expect(first, isNotEmpty);
+      expect(await settings.getInstallId(), first);
+    });
+
+    test('two different SettingsService instances over the same storage agree once generated', () async {
+      final id = await settings.getInstallId();
+      final other = SettingsService(secureStorage: secure);
+      expect(await other.getInstallId(), id);
+    });
+  });
+
+  group('crash reporting toggle', () {
+    test('defaults to enabled', () async {
+      expect(await settings.getCrashReportingEnabled(), isTrue);
+    });
+
+    test('can be disabled and re-enabled', () async {
+      await settings.setCrashReportingEnabled(false);
+      expect(await settings.getCrashReportingEnabled(), isFalse);
+      await settings.setCrashReportingEnabled(true);
+      expect(await settings.getCrashReportingEnabled(), isTrue);
+    });
+  });
+
+  group('telemetry backend URL', () {
+    test('defaults to the same Worker URL as getAiBackendUrl', () async {
+      expect(await settings.getTelemetryBackendUrl(), await settings.getAiBackendUrl());
+    });
+
+    test('can be overridden independently of the AI backend URL', () async {
+      await settings.setTelemetryBackendUrl('https://my-own-telemetry.example');
+      expect(await settings.getTelemetryBackendUrl(), 'https://my-own-telemetry.example');
+      expect(await settings.getAiBackendUrl(), isNot('https://my-own-telemetry.example'));
+    });
+  });
+
+  group('admin API key (secure storage)', () {
+    test('round-trips through secure storage', () async {
+      await settings.setAdminApiKey('top-secret-admin-key');
+      expect(await settings.getAdminApiKey(), 'top-secret-admin-key');
+      expect(secure.values['admin_api_key'], 'top-secret-admin-key');
+    });
+
+    test('is null before ever being set', () async {
+      expect(await settings.getAdminApiKey(), isNull);
+    });
+
+    test('clearAdminApiKey removes it', () async {
+      await settings.setAdminApiKey('will-be-cleared');
+      await settings.clearAdminApiKey();
+      expect(await settings.getAdminApiKey(), isNull);
+    });
+  });
 }

@@ -232,6 +232,32 @@ gegen einen unabhängig erzeugten Test-Schlüssel isoliert verifiziert (gültige
 Verdikt-Auswertung bei verschiedenen Antworten), die native Android-Anbindung nur so weit wie ohne
 echtes Gerät möglich (Kotlin-Code + Gradle-Abhängigkeit, kompiliert über die reguläre APK-Build-Pipeline).
 
+### Fehlerberichte & Fernkonfiguration (Runde 21)
+
+Jede Installation kann anonyme Fehlerberichte an den Betreiber des eigenen `worker/ai-proxy.js` senden,
+damit Probleme bei anderen Nutzern erkannt und behoben werden können — **ausschließlich technische
+Daten** (Fehlermeldung, Quelle, App-Version, Plattform, ein zufälliger, nicht auf eine Person
+rückführbarer Installations-Code), **niemals Chat-Inhalte oder etwas, das jemand JARVIS geschrieben
+hat**. In den Einstellungen steht dazu ein kurzer Hinweistext plus ein Schalter „Fehlerberichte senden"
+(Standard: an — jede/r Nutzer/in kann es jederzeit selbst abschalten).
+
+Die Admin-Konsole zeigt unter **„Entwickler-Tools" → „Installationen & Fehler anderer Nutzer"** alle
+Installationen, die je einen Fehler gemeldet oder sich gemeldet haben, mit ihren letzten Fehlern — und
+erlaubt, für eine einzelne Installation die Einstellung „Lokale KI erzwingen" aus der Ferne zu setzen
+(wirkt beim nächsten Start dieser Installation). Diese Ansicht ist durch ein **eigenes, separates**
+Geheimnis geschützt (unabhängig vom Request-Signierungs-Schlüssel oben, da normale Installationen den
+gar nicht kennen):
+
+1. Ein zufälliges Geheimnis erzeugen, z. B. `openssl rand -hex 32`.
+2. Im [Cloudflare-Dashboard](https://dash.cloudflare.com) → Worker öffnen → **Settings → Variables and
+   Secrets → Add**: Name `ADMIN_API_KEY`, Typ **Secret**, Wert = das erzeugte Geheimnis → **Deploy**.
+3. Denselben Wert in der JARVIS-App unter **Admin-Konsole → „Telemetrie-Admin-Schlüssel"** eintragen.
+
+Ohne gesetzten `ADMIN_API_KEY` lehnt der Worker jede Anfrage an diese Endpunkte ab (sicherer Default) —
+das normale Melden von Fehlerberichten funktioniert davon unabhängig immer. Die dafür nötige
+D1-Datenbank (`jarvis-telemetry`) wird beim Deploy automatisch angelegt, keine manuelle Einrichtung
+nötig.
+
 ## Runde 13: Automatisierung, Backups & Offline-KI (optional)
 
 ### Crash-Reporting & Log-Viewer

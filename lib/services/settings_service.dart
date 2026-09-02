@@ -112,6 +112,10 @@ class SettingsService {
   static const _keyThemeVariant = 'theme_variant';
   static const _keyForceLocalAiEnabled = 'force_local_ai_enabled';
   static const _keyDiscordWebhookEnabled = 'discord_webhook_enabled';
+  static const _keyInstallId = 'install_id';
+  static const _keyCrashReportingEnabled = 'crash_reporting_enabled';
+  static const _keyTelemetryBackendUrl = 'telemetry_backend_url';
+  static const _keyAdminApiKey = 'admin_api_key';
 
   /// Reads a secret from secure (AES-256) storage. If it hasn't been
   /// migrated yet, transparently pulls a legacy plaintext SharedPreferences
@@ -975,5 +979,67 @@ class SettingsService {
     final prefs = await SharedPreferences.getInstance();
     if (prefs.getString(_keyAiRequestCountDate) != today) return 0;
     return prefs.getInt(_keyAiRequestCountValue) ?? 0;
+  }
+
+  /// A random, anonymous opaque string identifying this one installation —
+  /// never tied to any account or personal data, generated once and reused
+  /// for as long as the app stays installed (see CrashReportService). Not a
+  /// secret, so plain SharedPreferences is fine, same as any other
+  /// non-sensitive identifier in this class.
+  Future<String> getInstallId() async {
+    final prefs = await SharedPreferences.getInstance();
+    final existing = prefs.getString(_keyInstallId);
+    if (existing != null) return existing;
+    final bytes = List<int>.generate(16, (_) => Random.secure().nextInt(256));
+    final id = base64Url.encode(bytes).replaceAll('=', '');
+    await prefs.setString(_keyInstallId, id);
+    return id;
+  }
+
+  /// Whether anonymous crash/error reports (technical data only — never
+  /// chat message content, see CrashReportService) are sent to the
+  /// developer. Default ON, unlike this app's other background/network
+  /// toggles: the whole point of this feature is that the developer sees
+  /// errors from every installation, so an opt-in default would defeat it.
+  /// Transparency is instead handled by the explanatory text next to the
+  /// switch in Einstellungen — anyone who reads it can still turn this off.
+  Future<bool> getCrashReportingEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyCrashReportingEnabled) ?? true;
+  }
+
+  Future<void> setCrashReportingEnabled(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyCrashReportingEnabled, value);
+  }
+
+  /// Where CrashReportService sends error reports/fetches remote overrides
+  /// — deliberately a separate setting from [getAiBackendUrl], even though
+  /// both default to the same Worker: a user who points their AI chat at a
+  /// different server (their own Worker) shouldn't also silently redirect
+  /// their error reports away from the developer, and vice versa.
+  Future<String?> getTelemetryBackendUrl() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyTelemetryBackendUrl) ?? _defaultAiBackendUrl;
+  }
+
+  Future<void> setTelemetryBackendUrl(String value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyTelemetryBackendUrl, value);
+  }
+
+  /// Shared secret required by the Worker's /admin/installs* endpoints
+  /// (Runde 21) — separate from [getAiHmacSecret], which ordinary
+  /// installations never configure and so can't gate admin-only,
+  /// all-installations data. Must match ADMIN_API_KEY set on the Worker via
+  /// `wrangler secret put` (see README).
+  Future<String?> getAdminApiKey() => _secureGet(_keyAdminApiKey);
+
+  Future<void> setAdminApiKey(String value) => _secureSet(_keyAdminApiKey, value);
+
+  Future<void> clearAdminApiKey() async {
+    await _secure.delete(_keyAdminApiKey);
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.containsKey(_keyAdminApiKey)) await prefs.remove(_keyAdminApiKey);
   }
 }

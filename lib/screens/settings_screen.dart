@@ -122,6 +122,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _hasAdminAccounts = false;
   String? _adminOwnerUsername;
   bool _adminBootstrapBusy = false;
+  bool _crashReportingEnabled = true;
   bool _moodAutoAdjustEnabled = true;
   bool _testingHomeAssistant = false;
   bool _testingWebDav = false;
@@ -198,6 +199,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final adminAccounts = await widget.settings.getAdminAccounts();
     _hasAdminAccounts = adminAccounts.isNotEmpty;
     _adminOwnerUsername = adminAccounts.where((a) => a.isOwner).firstOrNull?.username;
+    _crashReportingEnabled = await widget.settings.getCrashReportingEnabled();
     _moodAutoAdjustEnabled = await widget.settings.getMoodAutoAdjustEnabled();
     _rssFeedCheckEnabled = await widget.settings.getRssFeedCheckEnabled();
     _weeklyBackupExportEnabled = await widget.settings.getWeeklyBackupExportEnabled();
@@ -276,6 +278,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await widget.settings.setFaceDownFocusEnabled(_faceDownFocusEnabled);
     await widget.settings.setShakeStartsVoiceEnabled(_shakeStartsVoiceEnabled);
     await widget.settings.setShakeLocksAppEnabled(_shakeLocksAppEnabled);
+    await widget.settings.setCrashReportingEnabled(_crashReportingEnabled);
     await widget.settings.setMoodAutoAdjustEnabled(_moodAutoAdjustEnabled);
     await widget.settings.setRssFeedCheckEnabled(_rssFeedCheckEnabled);
     await widget.settings.setWeeklyBackupExportEnabled(_weeklyBackupExportEnabled);
@@ -1021,6 +1024,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
               label: const Text('Admin-Einstellungen'),
             ),
           ],
+          const SizedBox(height: 24),
+          Text('Fehlerberichte', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 4),
+          const Text(
+            'Anonyme Fehlerberichte (nur technische Daten wie Fehlermeldung, App-Version, Plattform — niemals '
+            'Chat-Inhalte oder etwas, das du JARVIS geschrieben hast) werden automatisch an den Entwickler '
+            'gesendet, damit Probleme behoben werden können.',
+            style: TextStyle(fontSize: 12),
+          ),
+          const SizedBox(height: 8),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Fehlerberichte senden'),
+            value: _crashReportingEnabled,
+            onChanged: (value) => setState(() => _crashReportingEnabled = value),
+          ),
           const SizedBox(height: 24),
           Text('Homescreen-Widget', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 4),

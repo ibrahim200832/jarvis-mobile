@@ -4,3 +4,14 @@ compatibility_date = "2024-11-01"
 
 [ai]
 binding = "AI"
+
+# Anonymous per-install error reports + admin remote-config overrides
+# (see worker/schema.sql, worker/ai-proxy.js's /report-error, /remote-config
+# and /admin/* handlers). database_id is patched in by deploy-worker.yml's
+# "Ensure D1 database exists" step on first deploy — see
+# .github/workflows/deploy-snake-multiplayer.yml for the same pattern used
+# by the separate snake-multiplayer worker.
+[[d1_databases]]
+binding = "DB"
+database_name = "jarvis-telemetry"
+database_id = "__D1_DATABASE_ID__"
