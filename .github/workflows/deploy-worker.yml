@@ -33,15 +33,32 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          LIST_JSON=$(npx wrangler d1 list --json)
-          DB_ID=$(echo "$LIST_JSON" | jq -r '((.result // .) | map(select(.name=="jarvis-telemetry")) | .[0].uuid) // empty')
+          set +e
+          LIST_JSON=$(npx wrangler d1 list --json 2>&1)
+          LIST_EXIT=$?
+          set -e
+          if [ $LIST_EXIT -ne 0 ]; then
+            echo "::error::wrangler d1 list fehlgeschlagen (Exit $LIST_EXIT):"
+            echo "$LIST_JSON"
+            exit 1
+          fi
+          DB_ID=$(echo "$LIST_JSON" | jq -r '((.result // .) | map(select(.name=="jarvis-telemetry")) | .[0].uuid) // empty' 2>/dev/null)
           if [ -z "$DB_ID" ]; then
             echo "Creating jarvis-telemetry D1 database..."
-            CREATE_JSON=$(npx wrangler d1 create jarvis-telemetry --json)
-            DB_ID=$(echo "$CREATE_JSON" | jq -r '(.result.uuid // .uuid)')
+            set +e
+            CREATE_JSON=$(npx wrangler d1 create jarvis-telemetry --json 2>&1)
+            CREATE_EXIT=$?
+            set -e
+            if [ $CREATE_EXIT -ne 0 ]; then
+              echo "::error::wrangler d1 create fehlgeschlagen (Exit $CREATE_EXIT):"
+              echo "$CREATE_JSON"
+              exit 1
+            fi
+            DB_ID=$(echo "$CREATE_JSON" | jq -r '(.result.uuid // .uuid)' 2>/dev/null)
           fi
           if [ -z "$DB_ID" ] || [ "$DB_ID" = "null" ]; then
-            echo "::error::Konnte die D1-Datenbank-ID nicht ermitteln."
+            echo "::error::Konnte die D1-Datenbank-ID nicht ermitteln. Rohausgabe:"
+            echo "$LIST_JSON"
             exit 1
           fi
           echo "D1 database id: $DB_ID"
