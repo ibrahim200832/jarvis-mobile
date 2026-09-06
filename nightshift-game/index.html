@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Nachtschicht</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="wrap">
+    <div class="title">
+      <img class="logo" src="icon.svg" alt="" width="40" height="40">
+      <h1>Nachtschicht</h1>
+    </div>
+
+    <section id="lobby" class="lobby screen">
+      <p class="lobby-highscore">Bestleistung: <strong id="lobby-best">Noch keine Nacht geschafft</strong></p>
+      <button id="continue-btn" class="primary-btn hidden">Weiter</button>
+      <button id="newgame-btn" class="secondary-btn">Neu starten (Nacht 1)</button>
+      <p class="hint">Lauf herum, rede mit Kollegen, erledige Aufgaben und erwisch den Bus &ndash;
+        aber irgendwas anderes ist auch unterwegs.</p>
+    </section>
+
+    <section id="game" class="game screen hidden">
+      <div class="hud">
+        <span id="hud-night" class="hud-night">Nacht 1</span>
+        <span id="hud-quest" class="hud-quest">Quest: &ndash;</span>
+      </div>
+
+      <div class="stage-wrap">
+        <canvas id="stage"></canvas>
+
+        <div id="fade" class="fade"></div>
+        <div id="toast" class="toast hidden"></div>
+
+        <div id="dialogue-panel" class="dialogue-panel hidden">
+          <div class="dialogue-head">
+            <canvas id="dialogue-portrait" width="64" height="64"></canvas>
+            <strong id="dialogue-name">Name</strong>
+          </div>
+          <p id="dialogue-text">...</p>
+          <button id="dialogue-next" class="primary-btn">Weiter</button>
+        </div>
+
+        <div id="overlay" class="overlay hidden">
+          <p id="overlay-title">Erwischt!</p>
+          <p id="overlay-text"></p>
+          <div class="overlay-actions">
+            <button id="overlay-primary-btn">Nochmal versuchen</button>
+            <button id="overlay-secondary-btn">Zur Lobby</button>
+          </div>
+        </div>
+
+        <div id="touch-controls" class="touch-controls">
+          <div id="look-zone" class="look-zone"></div>
+
+          <div id="joystick-zone" class="joystick-zone">
+            <div id="joystick-base" class="joystick-base">
+              <div id="joystick-knob" class="joystick-knob"></div>
+            </div>
+          </div>
+
+          <button id="flashlight-btn" class="icon-btn">&#128161;</button>
+          <button id="interact-btn" class="interact-btn hidden">Interagieren</button>
+        </div>
+      </div>
+
+      <div id="inventory-bar" class="inventory-bar"></div>
+      <p class="hint">Joystick zum Laufen, Wischen zum Umschauen &middot; Desktop: WASD + Maus, E = Interagieren, F = Taschenlampe</p>
+    </section>
+  </main>
+
+  <script src="vendor/three.min.js"></script>
+  <script src="js/namespace.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/textures.js"></script>
+  <script src="js/character.js"></script>
+  <script src="js/environment.js"></script>
+  <script src="js/inventory.js"></script>
+  <script src="js/npc.js"></script>
+  <script src="js/quests.js"></script>
+  <script src="js/threat.js"></script>
+  <script src="js/nights-data.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
