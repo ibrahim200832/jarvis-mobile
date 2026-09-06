@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffd97a"/>
+      <stop offset="1" stop-color="#6ec3e8"/>
+    </linearGradient>
+    <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2fa9c9"/>
+      <stop offset="1" stop-color="#146b96"/>
+    </linearGradient>
+    <linearGradient id="isle" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8bd15a"/>
+      <stop offset="1" stop-color="#4f9e3a"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#sky)"/>
+  <circle cx="46" cy="16" r="7" fill="#fff3c4"/>
+  <rect x="0" y="34" width="64" height="30" fill="url(#sea)"/>
+  <path d="M0 34 Q16 29 32 34 T64 34 V64 H0 Z" fill="url(#sea)"/>
+  <ellipse cx="26" cy="40" rx="20" ry="9" fill="url(#isle)"/>
+  <path d="M24 40 C24 28 22 22 15 17" stroke="#5b3a22" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <path d="M15 17 C10 15 7 17 4 15 M15 17 C11 12 12 8 10 5 M15 17 C19 14 23 15 26 12 M15 17 C18 21 22 22 25 21" stroke="#3f7d2c" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <ellipse cx="38" cy="41" rx="5" ry="4" fill="#7a8087"/>
+  <ellipse cx="45" cy="43" rx="4" ry="3.2" fill="#8d939a"/>
+  <rect x="30" y="45" width="9" height="7" rx="1.5" fill="#a3652c" stroke="#5b3a1a" stroke-width="1.5"/>
+  <rect x="30" y="45" width="9" height="3" rx="1.2" fill="#c98a42" stroke="#5b3a1a" stroke-width="1.5"/>
+  <circle cx="34.5" cy="48.5" r="1.1" fill="#ffe27a"/>
+</svg>

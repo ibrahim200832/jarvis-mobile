@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Relic Island</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0a0f16">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ============ START SCREEN ============ -->
+  <section id="start-screen" class="screen">
+    <div class="start-card">
+      <div class="title-row">
+        <img class="logo" src="icon.svg" alt="" width="52" height="52">
+        <div>
+          <h1>Relic Island</h1>
+          <p class="subtitle">Ein 3D-Open-World-Abenteuer</p>
+        </div>
+      </div>
+
+      <p class="blurb">
+        Erkunde eine offene Insel, sammle Holz &amp; Stein, kämpfe gegen Schleime,
+        baue ein Lager, öffne Truhen und erfülle Quests. Dein Fortschritt wird
+        automatisch gespeichert.
+      </p>
+
+      <div class="controls-hint" id="controls-hint-desktop">
+        <div class="hint-row"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>Bewegen</span></div>
+        <div class="hint-row"><span class="hint-icon">🖱️</span><span>Ziehen = Kamera drehen</span></div>
+        <div class="hint-row"><kbd>Leertaste</kbd><span>Springen</span></div>
+        <div class="hint-row"><kbd>Shift</kbd><span>Rennen</span></div>
+        <div class="hint-row"><kbd>F</kbd><span>Angriff / Ernten</span></div>
+        <div class="hint-row"><kbd>E</kbd><span>Interagieren</span></div>
+        <div class="hint-row"><kbd>B</kbd><span>Bauen</span></div>
+        <div class="hint-row"><kbd>Esc</kbd><span>Pause</span></div>
+      </div>
+      <div class="controls-hint" id="controls-hint-touch">
+        <div class="hint-row"><span class="hint-icon">🕹️</span><span>Linker Stick = Bewegen</span></div>
+        <div class="hint-row"><span class="hint-icon">👆</span><span>Rechte Seite ziehen = Kamera</span></div>
+        <div class="hint-row"><span class="hint-icon">⚔️</span><span>Buttons unten rechts = Aktionen</span></div>
+      </div>
+
+      <div class="start-actions">
+        <button id="new-game-btn" class="primary-btn">Neues Spiel</button>
+        <button id="continue-btn" class="secondary-btn hidden">Weiterspielen</button>
+        <button id="wipe-save-btn" class="text-btn hidden">Spielstand löschen</button>
+      </div>
+
+      <p class="orientation-hint">📱 Am besten im Querformat spielen</p>
+    </div>
+  </section>
+
+  <!-- ============ GAME SCREEN ============ -->
+  <section id="game-screen" class="screen hidden">
+    <canvas id="stage"></canvas>
+    <div id="damage-flash"></div>
+
+    <div id="loading-overlay" class="overlay">
+      <div class="loading-box">
+        <div class="spinner"></div>
+        <p id="loading-text">Welt wird erschaffen …</p>
+      </div>
+    </div>
+
+    <!-- HUD -->
+    <div id="hud" class="hud hidden">
+
+      <div class="hud-top-left">
+        <div class="bar-row">
+          <span class="bar-icon">❤️</span>
+          <div class="bar-track"><div id="bar-health" class="bar-fill health"></div></div>
+        </div>
+        <div class="bar-row">
+          <span class="bar-icon">⚡</span>
+          <div class="bar-track"><div id="bar-stamina" class="bar-fill stamina"></div></div>
+        </div>
+        <div class="bar-row">
+          <span class="bar-icon lvl-badge" id="level-badge">1</span>
+          <div class="bar-track"><div id="bar-xp" class="bar-fill xp"></div></div>
+        </div>
+      </div>
+
+      <div class="hud-resources">
+        <span class="res"><span class="res-icon">🪵</span><span id="res-wood">0</span></span>
+        <span class="res"><span class="res-icon">🪨</span><span id="res-stone">0</span></span>
+        <span class="res"><span class="res-icon">🍓</span><span id="res-berry">0</span></span>
+        <span class="res"><span class="res-icon">🪙</span><span id="res-coin">0</span></span>
+      </div>
+
+      <div class="hud-top-right">
+        <div class="daytime-chip"><span id="daytime-icon">☀️</span><span id="daytime-text">Tag</span></div>
+        <canvas id="minimap" width="128" height="128"></canvas>
+        <button id="pause-btn" class="icon-btn">⏸</button>
+      </div>
+
+      <div id="quest-tracker" class="quest-tracker hidden">
+        <p class="quest-title" id="quest-title">Quest</p>
+        <p class="quest-desc" id="quest-desc">...</p>
+        <div class="quest-progress-track"><div id="quest-progress-fill" class="quest-progress-fill"></div></div>
+      </div>
+
+      <div id="toast-stack" class="toast-stack"></div>
+
+      <div id="interact-prompt" class="interact-prompt hidden"></div>
+
+      <!-- Mobile controls -->
+      <div id="mobile-controls" class="mobile-controls">
+        <div id="joystick-zone" class="joystick-zone">
+          <div id="joystick-base" class="joystick-base">
+            <div id="joystick-stick" class="joystick-stick"></div>
+          </div>
+        </div>
+        <div class="action-buttons">
+          <button id="btn-build" class="action-btn small">🔨</button>
+          <button id="btn-interact" class="action-btn small">✋</button>
+          <button id="btn-jump" class="action-btn medium">⤴</button>
+          <button id="btn-attack" class="action-btn big">⚔️</button>
+        </div>
+        <button id="btn-sprint" class="sprint-btn">🏃</button>
+      </div>
+    </div>
+
+    <!-- Build menu -->
+    <div id="build-menu" class="overlay hidden">
+      <div class="panel">
+        <h2>Bauen</h2>
+        <p class="panel-sub">Wähle etwas zum Platzieren, dann mit <kbd>E</kbd> / ✋ bestätigen.</p>
+        <div class="build-options" id="build-options"></div>
+        <button id="build-cancel-btn" class="secondary-btn">Abbrechen</button>
+      </div>
+    </div>
+
+    <!-- Pause menu -->
+    <div id="pause-menu" class="overlay hidden">
+      <div class="panel">
+        <h2>Pause</h2>
+        <button id="resume-btn" class="primary-btn">Weiter</button>
+        <div class="settings-block">
+          <label class="settings-label">Kamera-Empfindlichkeit
+            <input type="range" id="sens-slider" min="0.4" max="2.5" step="0.1" value="1">
+          </label>
+          <label class="settings-label">Lautstärke
+            <input type="range" id="vol-slider" min="0" max="1" step="0.05" value="0.6">
+          </label>
+        </div>
+        <button id="save-btn" class="secondary-btn">Jetzt speichern</button>
+        <button id="quit-btn" class="text-btn">Zum Hauptmenü</button>
+      </div>
+    </div>
+
+    <!-- Death overlay -->
+    <div id="death-menu" class="overlay hidden">
+      <div class="panel">
+        <h2 class="death-title">Du wurdest besiegt</h2>
+        <p id="death-info" class="panel-sub"></p>
+        <button id="respawn-btn" class="primary-btn">Wiederbeleben</button>
+      </div>
+    </div>
+
+    <!-- Quest complete banner (all quests done) -->
+    <div id="quest-log-btn-wrap"></div>
+  </section>
+
+</div>
+
+<script src="vendor/three.min.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
