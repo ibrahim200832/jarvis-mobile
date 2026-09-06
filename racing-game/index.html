@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>3D Racer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="wrap">
+    <div class="title">
+      <img class="logo" src="icon.svg" alt="" width="40" height="40">
+      <h1>3D Racer</h1>
+    </div>
+
+    <section id="lobby" class="lobby screen">
+      <p class="lobby-highscore">Highscore: <strong id="lobby-highscore">0</strong> m</p>
+
+      <div class="option-group">
+        <span class="option-label">Schwierigkeit</span>
+        <div class="option-buttons" data-option="difficulty">
+          <button class="option-btn" data-value="easy">Leicht</button>
+          <button class="option-btn selected" data-value="normal">Normal</button>
+          <button class="option-btn" data-value="hard">Schwer</button>
+        </div>
+      </div>
+
+      <button id="start-btn" class="primary-btn">Spiel starten</button>
+    </section>
+
+    <section id="game" class="game screen hidden">
+      <div class="hud">
+        <span>Distanz: <strong id="score">0</strong> m</span>
+        <span>Tempo: <strong id="speed">0</strong> km/h</span>
+        <span>Highscore: <strong id="highscore">0</strong> m</span>
+      </div>
+
+      <div class="stage-wrap">
+        <canvas id="stage"></canvas>
+        <div id="overlay" class="overlay hidden">
+          <p id="overlay-title">Crash!</p>
+          <p id="overlay-score"></p>
+          <div class="overlay-actions">
+            <button id="restart-btn">Neu starten</button>
+            <button id="lobby-btn">Zur Lobby</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="wheel" aria-hidden="true">
+        <button id="steer-left" class="wheel-btn">&#9664;</button>
+        <button id="steer-right" class="wheel-btn">&#9654;</button>
+      </div>
+
+      <p class="hint">Pfeiltasten/A-D oder die Buttons zum Spurwechseln.</p>
+    </section>
+  </main>
+
+  <script src="vendor/three.min.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
