@@ -11,6 +11,13 @@
     const emissive = opts.emissive || null;
 
     const group = new THREE.Group();
+    const settings = NS.Settings.load();
+
+    function tagShadow(mesh) {
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      return mesh;
+    }
 
     const hipY = 0.9 * scale;
     const torsoMat = new THREE.MeshLambertMaterial({ color: uniformColor });
@@ -18,23 +25,18 @@
       torsoMat.emissive = new THREE.Color(emissive);
       torsoMat.emissiveIntensity = 0.35;
     }
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.5 * scale, 0.7 * scale, 0.3 * scale), torsoMat);
+    const torso = tagShadow(new THREE.Mesh(new THREE.BoxGeometry(0.5 * scale, 0.7 * scale, 0.3 * scale), torsoMat));
     torso.position.y = hipY + 0.35 * scale;
     group.add(torso);
 
     const headSize = 0.34 * scale;
-    const faceTexture = NS.Textures.buildFaceTexture(facePreset, 64);
+    const faceTexture = NS.Textures.buildFaceTexture(facePreset, NS.Settings.getTextureSize(64, settings));
     const skinMat = new THREE.MeshLambertMaterial({ color: skinColor });
     const faceMat = new THREE.MeshLambertMaterial({ map: faceTexture });
     // BoxGeometry face material order is [+x, -x, +y, -y, +z, -z]; +z is the front.
-    const head = new THREE.Mesh(new THREE.BoxGeometry(headSize, headSize, headSize), [
-      skinMat,
-      skinMat,
-      skinMat,
-      skinMat,
-      faceMat,
-      skinMat,
-    ]);
+    const head = tagShadow(
+      new THREE.Mesh(new THREE.BoxGeometry(headSize, headSize, headSize), [skinMat, skinMat, skinMat, skinMat, faceMat, skinMat])
+    );
     head.position.y = torso.position.y + 0.35 * scale + headSize / 2;
     group.add(head);
 
@@ -42,9 +44,11 @@
       const pivot = new THREE.Group();
       const length = (isArm ? 0.55 : 0.8) * scale;
       const thickness = (isArm ? 0.12 : 0.16) * scale;
-      const mesh = new THREE.Mesh(
-        new THREE.BoxGeometry(thickness, length, thickness),
-        new THREE.MeshLambertMaterial({ color: isArm ? uniformColor : limbColor })
+      const mesh = tagShadow(
+        new THREE.Mesh(
+          new THREE.BoxGeometry(thickness, length, thickness),
+          new THREE.MeshLambertMaterial({ color: isArm ? uniformColor : limbColor })
+        )
       );
       mesh.position.y = -length / 2;
       pivot.add(mesh);

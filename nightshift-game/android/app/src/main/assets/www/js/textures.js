@@ -8,31 +8,34 @@
     return c;
   }
 
-  function buildWallTexture(baseColor, lineColor) {
-    const c = makeCanvas(64, 64);
+  function buildWallTexture(baseColor, lineColor, size) {
+    size = size || 64;
+    const s = size / 64;
+    const c = makeCanvas(size, size);
     const g = c.getContext("2d");
     g.fillStyle = baseColor;
-    g.fillRect(0, 0, 64, 64);
+    g.fillRect(0, 0, size, size);
     g.strokeStyle = lineColor;
-    g.lineWidth = 2;
-    g.strokeRect(1, 1, 62, 62);
+    g.lineWidth = 2 * s;
+    g.strokeRect(1 * s, 1 * s, size - 2 * s, size - 2 * s);
     g.beginPath();
-    g.moveTo(32, 0);
-    g.lineTo(32, 64);
-    g.moveTo(0, 32);
-    g.lineTo(64, 32);
+    g.moveTo(size / 2, 0);
+    g.lineTo(size / 2, size);
+    g.moveTo(0, size / 2);
+    g.lineTo(size, size / 2);
     g.stroke();
     return new THREE.CanvasTexture(c);
   }
 
-  function buildFloorTexture(colorA, colorB) {
-    const c = makeCanvas(64, 64);
+  function buildFloorTexture(colorA, colorB, size) {
+    size = size || 64;
+    const c = makeCanvas(size, size);
     const g = c.getContext("2d");
     g.fillStyle = colorA;
-    g.fillRect(0, 0, 64, 64);
+    g.fillRect(0, 0, size, size);
     g.fillStyle = colorB;
-    g.fillRect(0, 0, 32, 32);
-    g.fillRect(32, 32, 32, 32);
+    g.fillRect(0, 0, size / 2, size / 2);
+    g.fillRect(size / 2, size / 2, size / 2, size / 2);
     return new THREE.CanvasTexture(c);
   }
 

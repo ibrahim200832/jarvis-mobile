@@ -94,6 +94,55 @@ h1 {
   color: var(--accent-glow);
 }
 
+.screen-title {
+  margin: 0;
+  font-weight: 700;
+  color: var(--accent-glow);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 14px;
+}
+
+.option-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.option-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.option-buttons {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+}
+
+.option-btn {
+  flex: 1;
+  padding: 8px 0;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.option-btn.selected {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 700;
+}
+
 .primary-btn {
   width: 100%;
   padding: 12px 0;
@@ -170,15 +219,26 @@ canvas#stage {
   border-radius: 16px;
   display: block;
   touch-action: none;
+  filter: contrast(1.08) saturate(1.15);
   box-shadow:
     0 0 0 1px rgba(178, 58, 58, 0.08),
     0 0 50px rgba(178, 58, 58, 0.08),
     0 20px 60px rgba(0, 0, 0, 0.55);
 }
 
+.vignette {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: 16px;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 45%, rgba(0, 0, 0, 0.65) 100%);
+}
+
 .fade {
   position: absolute;
   inset: 0;
+  z-index: 6;
   background: #000;
   border-radius: 16px;
   opacity: 0;
@@ -192,6 +252,7 @@ canvas#stage {
 
 .toast {
   position: absolute;
+  z-index: 4;
   top: 14px;
   left: 50%;
   transform: translateX(-50%);
@@ -214,6 +275,7 @@ canvas#stage {
 .touch-controls {
   position: absolute;
   inset: 0;
+  z-index: 2;
   border-radius: 16px;
   overflow: hidden;
 }

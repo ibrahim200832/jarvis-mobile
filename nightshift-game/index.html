@@ -18,8 +18,51 @@
       <p class="lobby-highscore">Bestleistung: <strong id="lobby-best">Noch keine Nacht geschafft</strong></p>
       <button id="continue-btn" class="primary-btn hidden">Weiter</button>
       <button id="newgame-btn" class="secondary-btn">Neu starten (Nacht 1)</button>
+      <button id="settings-btn" class="secondary-btn">&#9881; Einstellungen</button>
       <p class="hint">Lauf herum, rede mit Kollegen, erledige Aufgaben und erwisch den Bus &ndash;
         aber irgendwas anderes ist auch unterwegs.</p>
+    </section>
+
+    <section id="settings" class="lobby screen hidden">
+      <p class="screen-title">Grafikeinstellungen</p>
+
+      <div class="option-group">
+        <span class="option-label">Qualit&auml;t</span>
+        <div class="option-buttons" data-option="quality">
+          <button class="option-btn" data-value="low">Niedrig</button>
+          <button class="option-btn" data-value="medium">Mittel</button>
+          <button class="option-btn" data-value="high">Hoch</button>
+        </div>
+      </div>
+
+      <div class="option-group">
+        <span class="option-label">Sichtweite</span>
+        <div class="option-buttons" data-option="drawDistance">
+          <button class="option-btn" data-value="short">Kurz</button>
+          <button class="option-btn" data-value="medium">Mittel</button>
+          <button class="option-btn" data-value="far">Weit</button>
+        </div>
+      </div>
+
+      <div class="option-group">
+        <span class="option-label">Schatten</span>
+        <div class="option-buttons" data-option="shadows">
+          <button class="option-btn" data-value="false">Aus</button>
+          <button class="option-btn" data-value="true">An</button>
+        </div>
+      </div>
+
+      <div class="option-group">
+        <span class="option-label">Vignette-Effekt</span>
+        <div class="option-buttons" data-option="vignette">
+          <button class="option-btn" data-value="false">Aus</button>
+          <button class="option-btn" data-value="true">An</button>
+        </div>
+      </div>
+
+      <button id="settings-done-btn" class="primary-btn">Fertig</button>
+      <p class="hint">Schatten und hohe Qualit&auml;t sehen am besten aus, kosten aber mehr Leistung &ndash;
+        bei Rucklern einfach eine Stufe runterstellen.</p>
     </section>
 
     <section id="game" class="game screen hidden">
@@ -31,6 +74,7 @@
       <div class="stage-wrap">
         <canvas id="stage"></canvas>
 
+        <div id="vignette" class="vignette"></div>
         <div id="fade" class="fade"></div>
         <div id="toast" class="toast hidden"></div>
 
@@ -73,6 +117,7 @@
 
   <script src="vendor/three.min.js"></script>
   <script src="js/namespace.js"></script>
+  <script src="js/settings.js"></script>
   <script src="js/audio.js"></script>
   <script src="js/textures.js"></script>
   <script src="js/character.js"></script>

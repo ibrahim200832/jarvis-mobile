@@ -9,37 +9,58 @@
     colliders.push({ minX, maxX, minZ, maxZ });
   }
 
+  function tagShadow(mesh, cast, receive) {
+    mesh.castShadow = cast !== false;
+    mesh.receiveShadow = receive !== false;
+    return mesh;
+  }
+
   function wallMesh(w, h, d, texture) {
     const mat = new THREE.MeshLambertMaterial({ map: texture });
-    return new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    return tagShadow(new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat));
   }
 
   function build(scene) {
     colliders.length = 0;
     placedCounts = {};
 
-    const wallTex = NS.Textures.buildWallTexture("#2b3038", "#20242b");
+    const settings = NS.Settings.load();
+    const texSize = NS.Settings.getTextureSize(64, settings);
+
+    const wallTex = NS.Textures.buildWallTexture("#2b3038", "#20242b", texSize);
     wallTex.wrapS = wallTex.wrapT = THREE.RepeatWrapping;
-    const floorTex = NS.Textures.buildFloorTexture("#3a3f47", "#33383f");
+    const floorTex = NS.Textures.buildFloorTexture("#3a3f47", "#33383f", texSize);
     floorTex.wrapS = floorTex.wrapT = THREE.RepeatWrapping;
     floorTex.repeat.set(6, 6);
 
     const group = new THREE.Group();
 
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(12, 10), new THREE.MeshLambertMaterial({ map: floorTex }));
+    const floor = tagShadow(
+      new THREE.Mesh(new THREE.PlaneGeometry(12, 10), new THREE.MeshLambertMaterial({ map: floorTex })),
+      false,
+      true
+    );
     floor.rotation.x = -Math.PI / 2;
     floor.position.set(0, 0, -1);
     group.add(floor);
 
-    const backFloor = new THREE.Mesh(new THREE.PlaneGeometry(4, 4), new THREE.MeshLambertMaterial({ map: floorTex }));
+    const backFloor = tagShadow(
+      new THREE.Mesh(new THREE.PlaneGeometry(4, 4), new THREE.MeshLambertMaterial({ map: floorTex })),
+      false,
+      true
+    );
     backFloor.rotation.x = -Math.PI / 2;
     backFloor.position.set(0, 0, -7.85);
     group.add(backFloor);
 
-    const exteriorTex = NS.Textures.buildFloorTexture("#12161c", "#171c22");
+    const exteriorTex = NS.Textures.buildFloorTexture("#12161c", "#171c22", texSize);
     exteriorTex.wrapS = exteriorTex.wrapT = THREE.RepeatWrapping;
     exteriorTex.repeat.set(10, 20);
-    const exterior = new THREE.Mesh(new THREE.PlaneGeometry(30, 40), new THREE.MeshLambertMaterial({ map: exteriorTex }));
+    const exterior = tagShadow(
+      new THREE.Mesh(new THREE.PlaneGeometry(30, 40), new THREE.MeshLambertMaterial({ map: exteriorTex })),
+      false,
+      true
+    );
     exterior.rotation.x = -Math.PI / 2;
     exterior.position.set(0, -0.01, 18);
     group.add(exterior);
@@ -86,25 +107,24 @@
     group.add(backWallEast);
     addCollider(1.95, 2.25, -9.7, -6);
 
-    const counter = new THREE.Mesh(new THREE.BoxGeometry(2, 1, 0.7), new THREE.MeshLambertMaterial({ color: 0x4a4038 }));
+    const counter = tagShadow(new THREE.Mesh(new THREE.BoxGeometry(2, 1, 0.7), new THREE.MeshLambertMaterial({ color: 0x4a4038 })));
     counter.position.set(-4.5, 0.5, 2.5);
     group.add(counter);
     addCollider(-5.5, -3.5, 2.15, 2.85);
 
-    const till = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.3, 0.3), new THREE.MeshLambertMaterial({ color: 0x1c1f24 }));
+    const till = tagShadow(new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.3, 0.3), new THREE.MeshLambertMaterial({ color: 0x1c1f24 })));
     till.position.set(-4.5, 1.15, 2.5);
     group.add(till);
 
     function buildShelf(x, z) {
       const shelf = new THREE.Group();
-      const frame = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.4, 0.5), new THREE.MeshLambertMaterial({ color: 0x2e3238 }));
+      const frame = tagShadow(new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.4, 0.5), new THREE.MeshLambertMaterial({ color: 0x2e3238 })));
       frame.position.y = 0.7;
       shelf.add(frame);
       const productColors = [0xe6544c, 0xf2c94c, 0x6bbf59];
       for (let i = 0; i < 3; i++) {
-        const product = new THREE.Mesh(
-          new THREE.BoxGeometry(0.25, 0.25, 0.25),
-          new THREE.MeshLambertMaterial({ color: productColors[i] })
+        const product = tagShadow(
+          new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.25, 0.25), new THREE.MeshLambertMaterial({ color: productColors[i] }))
         );
         product.position.set(-0.5 + i * 0.5, 1.25, 0.05);
         shelf.add(product);
@@ -118,19 +138,24 @@
     buildShelf(-1.5, 0);
     buildShelf(1.5, 0);
 
-    const fridge = new THREE.Mesh(
-      new THREE.BoxGeometry(0.6, 1.8, 1.6),
-      new THREE.MeshLambertMaterial({ color: 0x1c2a30, emissive: new THREE.Color(0x123044), emissiveIntensity: 0.4 })
+    const fridge = tagShadow(
+      new THREE.Mesh(
+        new THREE.BoxGeometry(0.6, 1.8, 1.6),
+        new THREE.MeshLambertMaterial({ color: 0x1c2a30, emissive: new THREE.Color(0x123044), emissiveIntensity: 0.4 })
+      )
     );
     fridge.position.set(5.5, 0.9, -1);
     group.add(fridge);
     addCollider(5.1, 5.9, -1.8, -0.2);
 
+    const poleSegments = NS.Settings.getSegments(6, settings);
     const busGroup = new THREE.Group();
-    const bench = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.5, 0.5), new THREE.MeshLambertMaterial({ color: 0x3a3f47 }));
+    const bench = tagShadow(new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.5, 0.5), new THREE.MeshLambertMaterial({ color: 0x3a3f47 })));
     bench.position.y = 0.25;
     busGroup.add(bench);
-    const sign = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2, 6), new THREE.MeshLambertMaterial({ color: 0x555b63 }));
+    const sign = tagShadow(
+      new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2, poleSegments), new THREE.MeshLambertMaterial({ color: 0x555b63 }))
+    );
     sign.position.set(0.8, 1, 0);
     busGroup.add(sign);
     busGroup.position.set(0, 0, 22);
@@ -138,7 +163,7 @@
 
     const pumpMat = new THREE.MeshLambertMaterial({ color: 0x8a3a3a });
     [-3, 3].forEach((x) => {
-      const pump = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.4, 0.5), pumpMat);
+      const pump = tagShadow(new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.4, 0.5), pumpMat));
       pump.position.set(x, 0.7, 12);
       group.add(pump);
       addCollider(x - 0.35, x + 0.35, 11.75, 12.25);

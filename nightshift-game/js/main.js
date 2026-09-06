@@ -12,9 +12,13 @@
 
   const lobbySection = document.getElementById("lobby");
   const gameSection = document.getElementById("game");
+  const settingsSection = document.getElementById("settings");
   const continueBtn = document.getElementById("continue-btn");
   const newgameBtn = document.getElementById("newgame-btn");
+  const settingsBtn = document.getElementById("settings-btn");
+  const settingsDoneBtn = document.getElementById("settings-done-btn");
   const lobbyBestEl = document.getElementById("lobby-best");
+  const vignetteEl = document.getElementById("vignette");
 
   const stageCanvas = document.getElementById("stage");
   const hudNightEl = document.getElementById("hud-night");
@@ -50,6 +54,9 @@
   let cameraPitch = 0.15;
   let flashlightLight, ambientLight, fixtureLight;
   let flashlightOn = false;
+
+  let currentSettings = NS.Settings.load();
+  let currentEnvBase = null;
 
   let currentNightIndex = 0;
   let nightElapsed = 0;
@@ -103,6 +110,7 @@
   function showLobby() {
     lobbySection.classList.remove("hidden");
     gameSection.classList.add("hidden");
+    settingsSection.classList.add("hidden");
     const best = loadBestNight();
     continueBtn.classList.toggle("hidden", best <= 0);
     lobbyBestEl.textContent = best <= 0 ? "Noch keine Nacht geschafft" : "Nacht " + best + " erreicht";
@@ -110,7 +118,40 @@
 
   function showGameScreen() {
     lobbySection.classList.add("hidden");
+    settingsSection.classList.add("hidden");
     gameSection.classList.remove("hidden");
+  }
+
+  function syncSettingsUI() {
+    settingsSection.querySelectorAll(".option-buttons").forEach((group) => {
+      const option = group.dataset.option;
+      group.querySelectorAll(".option-btn").forEach((btn) => {
+        const value = btn.dataset.value === "true" ? true : btn.dataset.value === "false" ? false : btn.dataset.value;
+        btn.classList.toggle("selected", value === currentSettings[option]);
+      });
+    });
+  }
+
+  function showSettings() {
+    lobbySection.classList.add("hidden");
+    gameSection.classList.add("hidden");
+    settingsSection.classList.remove("hidden");
+    syncSettingsUI();
+  }
+
+  function applyLiveSettings() {
+    if (renderer) {
+      renderer.setPixelRatio(NS.Settings.getPixelRatio(currentSettings));
+      renderer.shadowMap.enabled = currentSettings.shadows;
+    }
+    if (flashlightLight) flashlightLight.castShadow = currentSettings.shadows;
+    if (scene && scene.fog && currentEnvBase) {
+      const fogMul = NS.Settings.getFogMultiplier(currentSettings);
+      scene.fog.near = currentEnvBase.fogNear * fogMul;
+      scene.fog.far = currentEnvBase.fogFar * fogMul;
+    }
+    vignetteEl.classList.toggle("hidden", !currentSettings.vignette);
+    resizeRenderer();
   }
 
   function resizeRenderer() {
@@ -125,14 +166,16 @@
 
   function buildItemMesh(itemId) {
     const group = new THREE.Group();
+    const segments = NS.Settings.getSegments(10, currentSettings);
     let core;
     if (itemId === "cleaning_spray") {
-      core = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 0.28, 10), new THREE.MeshLambertMaterial({ color: 0x6bbf59 }));
+      core = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 0.28, segments), new THREE.MeshLambertMaterial({ color: 0x6bbf59 }));
     } else if (itemId === "snack_box") {
       core = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.16, 0.14), new THREE.MeshLambertMaterial({ color: 0xf2c94c }));
     } else {
-      core = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.22, 10), new THREE.MeshLambertMaterial({ color: 0xe6544c }));
+      core = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.22, segments), new THREE.MeshLambertMaterial({ color: 0xe6544c }));
     }
+    core.castShadow = true;
     core.position.y = 0.4;
     group.add(core);
     group.userData.baseY = 0.4;
@@ -151,7 +194,9 @@
     if (renderer) return;
 
     renderer = new THREE.WebGLRenderer({ canvas: stageCanvas, antialias: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setPixelRatio(NS.Settings.getPixelRatio(currentSettings));
+    renderer.shadowMap.enabled = currentSettings.shadows;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x05060a);
@@ -171,6 +216,10 @@
 
     flashlightLight = new THREE.SpotLight(0xffffff, 1.6, 15, Math.PI / 7, 0.4);
     flashlightLight.visible = false;
+    flashlightLight.castShadow = currentSettings.shadows;
+    flashlightLight.shadow.mapSize.set(1024, 1024);
+    flashlightLight.shadow.camera.near = 0.5;
+    flashlightLight.shadow.camera.far = 16;
     scene.add(flashlightLight);
     scene.add(flashlightLight.target);
 
@@ -208,7 +257,9 @@
     cameraPitch = 0.15;
 
     ambientLight.intensity = nightData.environment.ambientIntensity;
-    scene.fog = new THREE.Fog(0x05060a, nightData.environment.fogNear, nightData.environment.fogFar);
+    currentEnvBase = nightData.environment;
+    const fogMul = NS.Settings.getFogMultiplier(currentSettings);
+    scene.fog = new THREE.Fog(0x05060a, nightData.environment.fogNear * fogMul, nightData.environment.fogFar * fogMul);
 
     NS.Inventory.init(inventoryBar);
     NS.Quests.load(nightData.quests);
@@ -483,7 +534,7 @@
     NS.Audio.init();
     initSceneOnce();
     showGameScreen();
-    resizeRenderer();
+    applyLiveSettings();
     loadNight(startIndex);
     running = true;
     lastTime = performance.now();
@@ -495,6 +546,23 @@
     startGame(Math.min(best, NS.NIGHTS.length - 1));
   });
   newgameBtn.addEventListener("click", () => startGame(0));
+
+  settingsBtn.addEventListener("click", showSettings);
+  settingsDoneBtn.addEventListener("click", showLobby);
+
+  settingsSection.querySelectorAll(".option-buttons").forEach((group) => {
+    group.querySelectorAll(".option-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        group.querySelectorAll(".option-btn").forEach((b) => b.classList.remove("selected"));
+        btn.classList.add("selected");
+        const option = group.dataset.option;
+        const raw = btn.dataset.value;
+        currentSettings[option] = raw === "true" ? true : raw === "false" ? false : raw;
+        NS.Settings.save(currentSettings);
+        applyLiveSettings();
+      });
+    });
+  });
 
   overlayPrimaryBtn.addEventListener("click", () => {
     overlayEl.classList.add("hidden");
