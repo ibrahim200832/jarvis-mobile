@@ -9,10 +9,19 @@
   /* ------------------------------------------------------------------------
      Konstanten
      ------------------------------------------------------------------------ */
-  const SAVE_KEY = 'relic-island-save-v1';
-  const ISLAND_RADIUS = 95;
-  const SPAWN = { x: 0, z: 38 };
-  const MOUNTAIN_POS = { x: -38, z: 18 };
+  const SAVE_KEY = 'relic-island-save-v2';
+  const WORLD_RADIUS = 100; // unsichtbare Wand weit hinter dem letzten Eiland
+  const ISLANDS = [
+    { id: 'home', name: 'Hafen-Eiland', cx: -38, cz: -34, r: 28 },
+    { id: 'mountain', name: 'Berg-Eiland', cx: -42, cz: 30, r: 30 },
+    { id: 'village', name: 'Dorf-Eiland', cx: 40, cz: 34, r: 28 },
+    { id: 'castle', name: 'Burg-Eiland', cx: 46, cz: -32, r: 30 },
+  ];
+  const BRIDGE_LINKS = [['home', 'mountain'], ['mountain', 'village'], ['village', 'castle'], ['castle', 'home']];
+  const SPAWN = { x: -30, z: -26 };
+  const MOUNTAIN_POS = { x: -42, z: 30 };
+  const PATH_SEGMENTS = []; // wird in buildWorld() aus den Brücken-Ankern gefüllt
+  const PATH_WIDTH = 3.2;
   const GRAVITY = 18;
   const JUMP_SPEED = 6.4;
   const PLAYER_RADIUS = 0.35;
@@ -70,21 +79,43 @@
   const worldRand = mulberry32(1337);
 
   /* ------------------------------------------------------------------------
-     Terrain-Höhenfunktion (deterministisch, kein Perlin nötig)
+     Terrain-Höhenfunktion: mehrere Eiland-Kuppeln (deterministisch, kein
+     Perlin nötig) + ein See dazwischen, da wo keine Kuppel hinreicht.
      ------------------------------------------------------------------------ */
   function heightAt(x, z) {
-    const d = Math.hypot(x, z);
-    const fall = clamp(1 - Math.pow(d / ISLAND_RADIUS, 1.8), -1, 1);
-    let h = fall * 9;
-    const noiseAmp = Math.max(fall, 0.08);
-    h += Math.sin(x * 0.05 + 1.3) * Math.cos(z * 0.045 - 0.6) * 3.2 * noiseAmp;
-    h += Math.sin(x * 0.11 - z * 0.08) * 1.4 * noiseAmp;
-    h += Math.cos(x * 0.023 + z * 0.031) * 2.0 * noiseAmp;
+    let h = -3; // Seeboden zwischen den Eilanden
+    for (let i = 0; i < ISLANDS.length; i++) {
+      const isle = ISLANDS[i];
+      const dx = x - isle.cx, dz = z - isle.cz;
+      const d = Math.hypot(dx, dz);
+      const fall = clamp(1 - Math.pow(d / isle.r, 1.9), 0, 1);
+      if (fall <= 0) continue;
+      let local = fall * 8.5;
+      local += Math.sin(x * 0.05 + 1.3 + i) * Math.cos(z * 0.045 - 0.6 + i) * 2.6 * fall;
+      local += Math.sin(x * 0.11 - z * 0.08 + i * 2) * 1.2 * fall;
+      if (local > h) h = local;
+    }
     const md = Math.hypot(x - MOUNTAIN_POS.x, z - MOUNTAIN_POS.z);
-    h += Math.pow(Math.max(0, 1 - md / 26), 2) * 22;
+    h += Math.pow(Math.max(0, 1 - md / 22), 2) * 22;
     return h;
   }
   let peakHeight = 0; // wird in buildWorld() gesetzt
+
+  function pointInLocalBox(px, pz, cx, cz, rotY, hw, hd) {
+    const dx = px - cx, dz = pz - cz;
+    const cosT = Math.cos(rotY || 0), sinT = Math.sin(rotY || 0);
+    const lx = dx * cosT - dz * sinT;
+    const lz = dx * sinT + dz * cosT;
+    return Math.abs(lx) <= hw && Math.abs(lz) <= hd;
+  }
+  function distToSegment(px, pz, ax, az, bx, bz) {
+    const abx = bx - ax, abz = bz - az;
+    const lenSq = abx * abx + abz * abz || 1;
+    const t = clamp(((px - ax) * abx + (pz - az) * abz) / lenSq, 0, 1);
+    const cx = ax + abx * t, cz = az + abz * t;
+    return Math.hypot(px - cx, pz - cz);
+  }
+  function getIsland(id) { return ISLANDS.find((i) => i.id === id); }
 
   /* ------------------------------------------------------------------------
      Audio (rein prozedural via WebAudio, keine Dateien nötig)
@@ -174,6 +205,8 @@
 
   const trees = [], rocks = [], bushes = [], chests = [], enemies = [];
   const structures = [], walls = [], structureColliders = [], campfires = [];
+  const bridgeColliders = []; // dauerhafte begehbare Brücken, unabhängig vom Bau-System
+  const landmarkColliders = [], minimapLandmarks = [];
   const particlePool = [];
   const tweens = [];
 
@@ -274,7 +307,7 @@
   }
 
   function buildTerrain() {
-    const size = 220, seg = 72;
+    const size = 220, seg = 90;
     const geo = new THREE.PlaneGeometry(size, size, seg, seg);
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position;
@@ -284,6 +317,7 @@
     const grassHi = new THREE.Color(0x8bd15a);
     const rock = new THREE.Color(0x8a8f97);
     const snow = new THREE.Color(0xf3f6f8);
+    const pathColor = new THREE.Color(0xcbb27a);
     const tmp = new THREE.Color();
     for (let i = 0; i < pos.count; i++) {
       const x = pos.getX(i), z = pos.getZ(i);
@@ -294,6 +328,12 @@
       else if (h < 15) c = tmp.copy(grassLo).lerp(grassHi, clamp01((h - 0.4) / 14.6));
       else if (h < 24) c = tmp.copy(grassHi).lerp(rock, clamp01((h - 15) / 9));
       else c = tmp.copy(rock).lerp(snow, clamp01((h - 24) / 8));
+      if (h > 0.35) {
+        for (let p = 0; p < PATH_SEGMENTS.length; p++) {
+          const seg2 = PATH_SEGMENTS[p];
+          if (distToSegment(x, z, seg2.ax, seg2.az, seg2.bx, seg2.bz) < seg2.width / 2) { c = pathColor; break; }
+        }
+      }
       colors[i * 3] = c.r; colors[i * 3 + 1] = c.g; colors[i * 3 + 2] = c.b;
     }
     geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
@@ -352,19 +392,20 @@
 
   /* --- Scatter-Helfer --- */
   function scatterPositions(count, opts) {
-    const minR = opts.minR || 8, maxR = opts.maxR || (ISLAND_RADIUS - 6);
+    const centerX = opts.centerX || 0, centerZ = opts.centerZ || 0;
+    const minR = opts.minR || 8, maxR = opts.maxR || 24;
     const minSpacing = opts.minSpacing || 4;
     const minHeight = opts.minHeight != null ? opts.minHeight : 0.4;
     const maxHeight = opts.maxHeight != null ? opts.maxHeight : 999;
     const existing = opts.existing || [];
     const results = [];
     let attempts = 0;
-    const maxAttempts = count * 70;
+    const maxAttempts = count * 150 + 200;
     while (results.length < count && attempts < maxAttempts) {
       attempts++;
       const a = worldRand() * Math.PI * 2;
       const r = minR + worldRand() * (maxR - minR);
-      const x = Math.cos(a) * r, z = Math.sin(a) * r;
+      const x = centerX + Math.cos(a) * r, z = centerZ + Math.sin(a) * r;
       const h = heightAt(x, z);
       if (h < minHeight || h > maxHeight) continue;
       if (flatDistXZ(x, z, SPAWN.x, SPAWN.z) < 6) continue;
@@ -556,28 +597,208 @@
     return rec;
   }
 
-  function scatterAndCreateObjects() {
-    const occupied = [];
-    const treePos = scatterPositions(38, { minR: 10, maxR: ISLAND_RADIUS - 6, minSpacing: 4.2, minHeight: 0.6, maxHeight: 17, existing: occupied });
-    treePos.forEach((p) => occupied.push(p));
-    treePos.forEach((p) => trees.push(makeTree(p, worldRand() < 0.55 ? 0 : 1)));
+  /* --- Landmarken: Hütte, Burg, Wachturm, Leuchtturm, Brücke --- */
+  function makeHut(pos, rotY) {
+    const group = new THREE.Group();
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0xd9c48a, flatShading: true });
+    const roofMat = new THREE.MeshStandardMaterial({ color: 0x8a5a3a, flatShading: true });
+    const wall = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.2, 1.4, 8), wallMat);
+    wall.position.y = 0.7; wall.castShadow = true; wall.receiveShadow = true;
+    group.add(wall);
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(1.5, 1.3, 8), roofMat);
+    roof.position.y = 1.4 + 0.65; roof.castShadow = true;
+    group.add(roof);
+    const door = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.8, 0.1), new THREE.MeshStandardMaterial({ color: 0x4a3320 }));
+    door.position.set(0, 0.4, 1.15);
+    group.add(door);
+    const h = heightAt(pos.x, pos.z);
+    group.position.set(pos.x, h, pos.z);
+    group.rotation.y = rotY || 0;
+    scene.add(group);
+    landmarkColliders.push({ x: pos.x, z: pos.z, radius: 1.5 });
+    minimapLandmarks.push({ pos: group.position, color: '#d9c48a' });
+    return group;
+  }
 
-    const rockPos = scatterPositions(20, { minR: 8, maxR: ISLAND_RADIUS - 5, minSpacing: 4, minHeight: 0.5, maxHeight: 26, existing: occupied });
-    rockPos.forEach((p) => occupied.push(p));
-    rockPos.forEach((p) => rocks.push(makeRock(p)));
+  function makeCastle(pos) {
+    const group = new THREE.Group();
+    const stoneMat = new THREE.MeshStandardMaterial({ color: 0xa8a8ad, flatShading: true, roughness: 1 });
+    const roofMat = new THREE.MeshStandardMaterial({ color: 0x5a6a8a, flatShading: true });
+    function tower(x, z, r, hgt, roofH) {
+      const t = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 1.05, hgt, 8), stoneMat);
+      t.position.set(x, hgt / 2, z); t.castShadow = true; t.receiveShadow = true;
+      group.add(t);
+      const roof = new THREE.Mesh(new THREE.ConeGeometry(r * 1.2, roofH, 8), roofMat);
+      roof.position.set(x, hgt + roofH / 2, z); roof.castShadow = true;
+      group.add(roof);
+    }
+    tower(0, 0, 2.2, 5.5, 2.4);
+    tower(-3.4, -1.6, 1.3, 3.8, 1.7);
+    tower(3.4, -1.6, 1.3, 3.8, 1.7);
+    const wallGeo = new THREE.BoxGeometry(3.6, 2.2, 0.6);
+    const wallL = new THREE.Mesh(wallGeo, stoneMat);
+    wallL.position.set(-1.9, 1.1, -1.7); wallL.rotation.y = 0.4; wallL.castShadow = true;
+    group.add(wallL);
+    const wallR = new THREE.Mesh(wallGeo, stoneMat);
+    wallR.position.set(1.9, 1.1, -1.7); wallR.rotation.y = -0.4; wallR.castShadow = true;
+    group.add(wallR);
+    const h = heightAt(pos.x, pos.z);
+    group.position.set(pos.x, h, pos.z);
+    scene.add(group);
+    landmarkColliders.push({ x: pos.x, z: pos.z, radius: 4.6 });
+    minimapLandmarks.push({ pos: group.position, color: '#c94c4c' });
+    return group;
+  }
 
-    const bushPos = scatterPositions(12, { minR: 8, maxR: ISLAND_RADIUS - 8, minSpacing: 4, minHeight: 0.6, maxHeight: 14, existing: occupied });
-    bushPos.forEach((p) => occupied.push(p));
-    bushPos.forEach((p) => bushes.push(makeBush(p)));
+  function makeWatchtower(pos) {
+    const group = new THREE.Group();
+    const mat = new THREE.MeshStandardMaterial({ color: 0x8a8f97, flatShading: true, roughness: 1 });
+    const tower = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.9, 5.5, 7), mat);
+    tower.position.y = 2.75; tower.castShadow = true; tower.receiveShadow = true;
+    group.add(tower);
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(1.0, 1.2, 7), new THREE.MeshStandardMaterial({ color: 0x6b4a2b, flatShading: true }));
+    roof.position.y = 5.5 + 0.6; roof.castShadow = true;
+    group.add(roof);
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.4, 4), new THREE.MeshStandardMaterial({ color: 0x3a2e1a }));
+    pole.position.y = 5.5 + 1.2 + 0.7;
+    group.add(pole);
+    const flag = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.32), new THREE.MeshStandardMaterial({ color: 0xe6544c, side: THREE.DoubleSide }));
+    flag.position.set(0.26, 5.5 + 1.2 + 1.15, 0);
+    group.add(flag);
+    group.userData.flag = flag;
+    const h = heightAt(pos.x, pos.z);
+    group.position.set(pos.x, h, pos.z);
+    scene.add(group);
+    landmarkColliders.push({ x: pos.x, z: pos.z, radius: 1.1 });
+    minimapLandmarks.push({ pos: group.position, color: '#8a8f97' });
+    return group;
+  }
 
-    const chestPos = scatterPositions(8, { minR: 14, maxR: ISLAND_RADIUS - 10, minSpacing: 14, minHeight: 0.6, maxHeight: 22, existing: occupied });
-    chestPos.forEach((p, i) => { occupied.push(p); chests.push(makeChest(p, i)); });
+  function makeLighthouse(pos) {
+    const group = new THREE.Group();
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0xf2f6f8, flatShading: true });
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.3, 4.5, 8), bodyMat);
+    base.position.y = 2.25; base.castShadow = true; base.receiveShadow = true;
+    group.add(base);
+    const stripe = new THREE.Mesh(new THREE.CylinderGeometry(1.02, 1.15, 1.2, 8), new THREE.MeshStandardMaterial({ color: 0xe6544c, flatShading: true }));
+    stripe.position.y = 2.6;
+    group.add(stripe);
+    const top = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.8, 1.0, 8), new THREE.MeshStandardMaterial({ color: 0x3a4a5a, flatShading: true }));
+    top.position.y = 4.5 + 0.5;
+    group.add(top);
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 6), new THREE.MeshBasicMaterial({ color: 0xffe27a }));
+    bulb.position.y = 4.5 + 1.0 + 0.3;
+    group.add(bulb);
+    const light = new THREE.PointLight(0xffe27a, 1.0, 15);
+    light.position.y = 4.5 + 1.0 + 0.3;
+    group.add(light);
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(0.85, 0.7, 8), new THREE.MeshStandardMaterial({ color: 0x3a4a5a, flatShading: true }));
+    roof.position.y = 4.5 + 1.0 + 0.6 + 0.35;
+    group.add(roof);
+    const h = heightAt(pos.x, pos.z);
+    group.position.set(pos.x, h, pos.z);
+    scene.add(group);
+    landmarkColliders.push({ x: pos.x, z: pos.z, radius: 1.4 });
+    minimapLandmarks.push({ pos: group.position, color: '#f2f6f8' });
+    return group;
+  }
 
-    const enemyHomes = scatterPositions(7, { minR: 12, maxR: ISLAND_RADIUS - 8, minSpacing: 12, minHeight: 0.7, maxHeight: 16, existing: occupied });
-    enemyHomes.forEach((p) => { occupied.push(p); enemies.push(makeEnemy(p)); });
+  function makeBridge(pA, pB, topY) {
+    const width = 2.6;
+    const dx = pB.x - pA.x, dz = pB.z - pA.z;
+    const length = Math.hypot(dx, dz);
+    const angle = Math.atan2(-dz, dx);
+    const cx = (pA.x + pB.x) / 2, cz = (pA.z + pB.z) / 2;
+    const group = new THREE.Group();
+    const deckMat = new THREE.MeshStandardMaterial({ color: 0x9c7a4a, flatShading: true });
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(length, 0.3, width), deckMat);
+    deck.castShadow = true; deck.receiveShadow = true;
+    group.add(deck);
+    const postMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, flatShading: true });
+    const postCount = Math.max(2, Math.round(length / 4));
+    for (let i = 0; i <= postCount; i++) {
+      const t = (i / postCount - 0.5) * length;
+      [-1, 1].forEach((side) => {
+        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.9, 5), postMat);
+        post.position.set(t, 0.55, side * width / 2);
+        group.add(post);
+      });
+    }
+    group.position.set(cx, topY, cz);
+    group.rotation.y = angle;
+    scene.add(group);
+    bridgeColliders.push({ x: cx, z: cz, hw: length / 2, hd: width / 2, rotY: angle, topY: topY + 0.15 });
+    return group;
+  }
+
+  function isleEdgeAnchor(isle, towardX, towardZ, inset) {
+    const dx = towardX - isle.cx, dz = towardZ - isle.cz;
+    const d = Math.hypot(dx, dz) || 1;
+    const r = isle.r - inset;
+    return { x: isle.cx + (dx / d) * r, z: isle.cz + (dz / d) * r };
+  }
+
+  function buildLandmarksAndBridges() {
+    const bridgeTopY = 0.85;
+    BRIDGE_LINKS.forEach(([idA, idB]) => {
+      const a = getIsland(idA), b = getIsland(idB);
+      const anchorA = isleEdgeAnchor(a, b.cx, b.cz, 4);
+      const anchorB = isleEdgeAnchor(b, a.cx, a.cz, 4);
+      makeBridge(anchorA, anchorB, bridgeTopY);
+      PATH_SEGMENTS.push({ ax: a.cx, az: a.cz, bx: anchorA.x, bz: anchorA.z, width: PATH_WIDTH });
+      PATH_SEGMENTS.push({ ax: b.cx, az: b.cz, bx: anchorB.x, bz: anchorB.z, width: PATH_WIDTH });
+    });
+
+    const village = getIsland('village');
+    const hutSpots = scatterPositions(4, { centerX: village.cx, centerZ: village.cz, minR: 3, maxR: village.r * 0.55, minSpacing: 4.5, minHeight: 0.6, maxHeight: 14 });
+    hutSpots.forEach((p) => makeHut(p, worldRand() * Math.PI * 2));
+
+    const castleIsle = getIsland('castle');
+    makeCastle({ x: castleIsle.cx, z: castleIsle.cz });
+    const towerSpot = { x: castleIsle.cx + castleIsle.r * 0.55, z: castleIsle.cz - castleIsle.r * 0.4 };
+    makeWatchtower(towerSpot);
+
+    const home = getIsland('home');
+    const lighthousePos = isleEdgeAnchor(home, 0, 0, 6);
+    makeLighthouse(lighthousePos);
 
     buildRelicMarker();
     peakHeight = heightAt(MOUNTAIN_POS.x, MOUNTAIN_POS.z);
+  }
+
+  function scatterAndCreateObjects() {
+    const occupied = [];
+    const counts = {
+      home: { trees: 9, rocks: 4, bushes: 3, chests: 2, enemies: 1 },
+      mountain: { trees: 10, rocks: 6, bushes: 2, chests: 2, enemies: 2 },
+      village: { trees: 5, rocks: 2, bushes: 4, chests: 2, enemies: 0 },
+      castle: { trees: 4, rocks: 7, bushes: 1, chests: 2, enemies: 3 },
+    };
+    let chestIdCounter = 0;
+    ISLANDS.forEach((isle) => {
+      const c = counts[isle.id];
+      const base = { centerX: isle.cx, centerZ: isle.cz, minR: 4, maxR: isle.r - 5, existing: occupied };
+
+      const treePos = scatterPositions(c.trees, Object.assign({}, base, { minSpacing: 4.2, minHeight: 0.6, maxHeight: 17 }));
+      treePos.forEach((p) => occupied.push(p));
+      treePos.forEach((p) => trees.push(makeTree(p, worldRand() < 0.55 ? 0 : 1)));
+
+      const rockPos = scatterPositions(c.rocks, Object.assign({}, base, { minSpacing: 4, minHeight: 0.5, maxHeight: 26 }));
+      rockPos.forEach((p) => occupied.push(p));
+      rockPos.forEach((p) => rocks.push(makeRock(p)));
+
+      const bushPos = scatterPositions(c.bushes, Object.assign({}, base, { minSpacing: 4, minHeight: 0.6, maxHeight: 14 }));
+      bushPos.forEach((p) => occupied.push(p));
+      bushPos.forEach((p) => bushes.push(makeBush(p)));
+
+      const chestPos = scatterPositions(c.chests, Object.assign({}, base, { maxR: isle.r - 6, minSpacing: 6, minHeight: 0.6, maxHeight: 22 }));
+      chestPos.forEach((p) => { occupied.push(p); chests.push(makeChest(p, chestIdCounter++)); });
+
+      const enemyHomes = scatterPositions(c.enemies, Object.assign({}, base, { maxR: isle.r - 6, minSpacing: 6, minHeight: 0.7, maxHeight: 16 }));
+      enemyHomes.forEach((p) => { occupied.push(p); enemies.push(makeEnemy(p)); });
+    });
+
+    buildLandmarksAndBridges();
   }
 
   /* --- Spieler-Rig --- */
@@ -628,10 +849,10 @@
   }
 
   function buildWorld() {
-    buildTerrain();
     buildWater();
     buildStars();
-    scatterAndCreateObjects();
+    scatterAndCreateObjects(); // füllt u.a. PATH_SEGMENTS (Brücken-Anker) für die Terrain-Einfärbung
+    buildTerrain();
     player.rig = buildPlayerRig();
     worldBuilt = true;
     worldReady = true;
@@ -644,7 +865,11 @@
     let h = heightAt(x, z);
     for (let i = 0; i < structureColliders.length; i++) {
       const s = structureColliders[i];
-      if (Math.abs(x - s.x) < s.hw && Math.abs(z - s.z) < s.hd) h = Math.max(h, s.topY);
+      if (pointInLocalBox(x, z, s.x, s.z, s.rotY, s.hw, s.hd)) h = Math.max(h, s.topY);
+    }
+    for (let i = 0; i < bridgeColliders.length; i++) {
+      const s = bridgeColliders[i];
+      if (pointInLocalBox(x, z, s.x, s.z, s.rotY, s.hw, s.hd)) h = Math.max(h, s.topY);
     }
     return h;
   }
@@ -662,6 +887,7 @@
     for (let i = 0; i < trees.length; i++) { const t = trees[i]; if (!t.hidden) pushOutCircle(pos, t.mesh.position, TREE_COLLIDE_R + PLAYER_RADIUS); }
     for (let i = 0; i < rocks.length; i++) { const r = rocks[i]; if (!r.hidden) pushOutCircle(pos, r.mesh.position, ROCK_COLLIDE_R + PLAYER_RADIUS); }
     for (let i = 0; i < walls.length; i++) { pushOutCircle(pos, walls[i].pos, WALL_COLLIDE_R + PLAYER_RADIUS); }
+    for (let i = 0; i < landmarkColliders.length; i++) { const l = landmarkColliders[i]; pushOutCircle(pos, l, l.radius + PLAYER_RADIUS); }
   }
 
   /* ------------------------------------------------------------------------
@@ -701,7 +927,7 @@
     resolveWorldCollisions(player.pos);
 
     const distC = Math.hypot(player.pos.x, player.pos.z);
-    if (distC > ISLAND_RADIUS - 2) { const k = (ISLAND_RADIUS - 2) / distC; player.pos.x *= k; player.pos.z *= k; }
+    if (distC > WORLD_RADIUS - 2) { const k = (WORLD_RADIUS - 2) / distC; player.pos.x *= k; player.pos.z *= k; }
 
     player.pos.y += player.vel.y * dt;
     const groundY = getGroundHeight(player.pos.x, player.pos.z);
@@ -1047,7 +1273,7 @@
     placementGhost.position.set(px, py, pz);
     placementGhost.rotation.y = player.yaw;
     const opt = BUILD_OPTIONS.find((o) => o.id === selectedBuildType);
-    let valid = py > 0.5 && Math.hypot(px, pz) < ISLAND_RADIUS - 4;
+    let valid = py > 0.5 && Math.hypot(px, pz) < WORLD_RADIUS - 4;
     if (valid) for (let i = 0; i < trees.length; i++) { const t = trees[i]; if (!t.hidden && flatDistXZ(px, pz, t.mesh.position.x, t.mesh.position.z) < opt.footprint + 0.6) { valid = false; break; } }
     if (valid) for (let i = 0; i < rocks.length; i++) { const r = rocks[i]; if (!r.hidden && flatDistXZ(px, pz, r.mesh.position.x, r.mesh.position.z) < opt.footprint + 0.5) { valid = false; break; } }
     if (valid) for (let i = 0; i < structures.length; i++) { const s = structures[i]; if (flatDistXZ(px, pz, s.mesh.position.x, s.mesh.position.z) < opt.footprint + 0.8) { valid = false; break; } }
@@ -1266,6 +1492,7 @@
     enemies.forEach((en) => { if (!en.dead && flatDist(player.pos, en.mesh.position) < viewR) dot(en.mesh.position.x, en.mesh.position.z, '#e6544c', 2.6); });
     campfires.forEach((c) => dot(c.mesh.position.x, c.mesh.position.z, '#ff9d3c', 2.6));
     structures.forEach((s) => { if (s.type !== 'campfire') dot(s.mesh.position.x, s.mesh.position.z, '#9c7a4a', 2.2); });
+    minimapLandmarks.forEach((l) => dot(l.pos.x, l.pos.z, l.color, 2.8));
     dot(MOUNTAIN_POS.x, MOUNTAIN_POS.z, '#8a5cff', 3.2);
 
     ctx.restore();
