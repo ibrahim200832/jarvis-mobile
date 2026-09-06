@@ -504,7 +504,17 @@
     }
 
     if (lookPointerId === null && isMoving && performance.now() - lastLookInputTime > LOOK_RECENTER_DELAY_MS) {
-      cameraYaw = lerpAngle(cameraYaw, playerYaw, Math.min(1, dt * 1.5));
+      // Only recenter while the input is mostly forward/backward. Recentering
+      // during a pure sideways strafe would chase a target 90° away from the
+      // camera, which keeps shifting cameraYaw and reintroducing the same
+      // 90° offset next frame - a runaway spin. Fading the recenter out as
+      // the input turns more sideways (instead of a hard on/off) avoids a
+      // visible snap at the threshold.
+      const forwardRatio = input.magnitude > 0.001 ? Math.abs(input.y) / input.magnitude : 0;
+      const recenterStrength = Math.max(0, forwardRatio - 0.5) * 2;
+      if (recenterStrength > 0) {
+        cameraYaw = lerpAngle(cameraYaw, playerYaw, Math.min(1, dt * 1.5 * recenterStrength));
+      }
     }
 
     const camX = playerX - Math.sin(cameraYaw) * CAMERA_FOLLOW_DIST;

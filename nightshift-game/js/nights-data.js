@@ -5,7 +5,16 @@
     cola_can: "Cola",
     snack_box: "Snacks",
     cleaning_spray: "Reiniger",
+    old_battery: "Batterie",
+    energy_drink: "Energy-Drink",
   };
+
+  // Bonus finds in the extended map - not needed for any quest, just a
+  // reward for exploring the storage room / kiosk detour.
+  const BONUS_ITEMS = [
+    { itemId: "old_battery", position: [0, 0.3, -14.3] },
+    { itemId: "energy_drink", position: [9.7, 0.3, 20] },
+  ];
 
   const mike = (questId, dialogue) => ({
     id: "mike",
@@ -64,6 +73,7 @@
         { itemId: "cola_can", position: [-1.5, 0.3, -2.6] },
         { itemId: "cola_can", position: [1.5, 0.3, -2.6] },
         { itemId: "cola_can", position: [-1.5, 0.3, 0.6] },
+        ...BONUS_ITEMS,
       ],
       placementZones: [],
       environment: { ambientIntensity: 0.22, fogNear: 6, fogFar: 34 },
@@ -81,6 +91,7 @@
           [-1.5, 0, -3],
           [1.5, 0, -3],
           [0, 0, -1],
+          [0, 0, -12.35],
         ],
         scriptedScares: [],
       },
@@ -110,6 +121,7 @@
       itemsToSpawn: [
         { itemId: "snack_box", position: [-4.8, 0.3, -5] },
         { itemId: "snack_box", position: [4.8, 0.3, -5] },
+        ...BONUS_ITEMS,
       ],
       placementZones: [{ id: "shelf_restock", position: [1.5, 0, 0.6], itemId: "snack_box" }],
       environment: { ambientIntensity: 0.18, fogNear: 5.5, fogFar: 30 },
@@ -127,6 +139,8 @@
           [-4, 0, -4],
           [4, 0, -4],
           [0, 0, 2],
+          [0, 0, -12.35],
+          [-4.6, 0, -12.35],
         ],
         scriptedScares: [{ atSeconds: 60, type: "shelfNoise", position: [1.5, 0, -3] }],
       },
@@ -160,9 +174,9 @@
         { id: "n3_spill", giverId: "lena", type: "place", itemId: "cleaning_spray", targetCount: 1, zoneId: "spill_zone", title: "Fleck wegputzen" },
         { id: "n3_checkout", giverId: "tom", type: "useCheckout", targetCount: 3, title: "Kasse 3x benutzen" },
       ],
-      itemsToSpawn: [{ itemId: "cleaning_spray", position: [-5, 0.3, 2.8] }],
+      itemsToSpawn: [{ itemId: "cleaning_spray", position: [-5, 0.3, 2.8] }, ...BONUS_ITEMS],
       placementZones: [
-        { id: "back_room_check", position: [0, 0, -7.85], itemId: null, radius: 1.8, autoTrigger: true },
+        { id: "back_room_check", position: [0, 0, -13.5], itemId: null, radius: 1.8, autoTrigger: true },
         { id: "spill_zone", position: [-1.5, 0, -2.6], itemId: "cleaning_spray" },
       ],
       environment: { ambientIntensity: 0.14, fogNear: 5, fogFar: 26 },
@@ -180,6 +194,9 @@
           [-1.5, 0, -3],
           [1.5, 0, 0],
           [-4, 0, 2],
+          [0, 0, -13.5],
+          [-4.6, 0, -12.35],
+          [-7.6, 0, -6],
         ],
         scriptedScares: [
           { atSeconds: 45, type: "shelfNoise", position: [-1.5, 0, 0] },
@@ -209,7 +226,7 @@
         { id: "n4_survive", giverId: "mike", type: "surviveUntil", targetSeconds: 90, title: "Bis Ladenschluss durchhalten" },
         { id: "n4_checkout", giverId: "lena", type: "useCheckout", targetCount: 4, title: "Kasse 4x benutzen" },
       ],
-      itemsToSpawn: [],
+      itemsToSpawn: [...BONUS_ITEMS],
       placementZones: [],
       environment: { ambientIntensity: 0.1, fogNear: 4.5, fogFar: 22 },
       threat: {
@@ -227,6 +244,10 @@
           [4, 0, -4],
           [0, 0, 2],
           [-4, 0, 2],
+          [0, 0, -13.5],
+          [-4.6, 0, -12.35],
+          [-7.6, 0, -6],
+          [9.7, 0, 20],
         ],
         scriptedScares: [
           { atSeconds: 30, type: "shelfNoise", position: [1.5, 0, -3] },

@@ -8,6 +8,25 @@
     return c;
   }
 
+  function shadeColor(hex, percent) {
+    const num = parseInt(hex.replace("#", ""), 16);
+    let r = (num >> 16) & 0xff;
+    let g = (num >> 8) & 0xff;
+    let b = num & 0xff;
+    r = Math.max(0, Math.min(255, Math.round(r + (percent < 0 ? r : 255 - r) * percent)));
+    g = Math.max(0, Math.min(255, Math.round(g + (percent < 0 ? g : 255 - g) * percent)));
+    b = Math.max(0, Math.min(255, Math.round(b + (percent < 0 ? b : 255 - b) * percent)));
+    return "rgb(" + r + "," + g + "," + b + ")";
+  }
+
+  function hexToRgba(hex, alpha) {
+    const num = parseInt(hex.replace("#", ""), 16);
+    const r = (num >> 16) & 0xff;
+    const g = (num >> 8) & 0xff;
+    const b = num & 0xff;
+    return "rgba(" + r + "," + g + "," + b + "," + alpha + ")";
+  }
+
   function buildWallTexture(baseColor, lineColor, size) {
     size = size || 64;
     const s = size / 64;
@@ -91,6 +110,221 @@
     return new THREE.CanvasTexture(c);
   }
 
+  function buildWoodTexture(baseColor, grainColor, size) {
+    size = size || 64;
+    const c = makeCanvas(size, size);
+    const g = c.getContext("2d");
+
+    g.fillStyle = baseColor;
+    g.fillRect(0, 0, size, size);
+
+    const shade = g.createLinearGradient(0, 0, 0, size);
+    shade.addColorStop(0, "rgba(0,0,0,0.08)");
+    shade.addColorStop(0.5, "rgba(0,0,0,0)");
+    shade.addColorStop(1, "rgba(0,0,0,0.08)");
+    g.fillStyle = shade;
+    g.fillRect(0, 0, size, size);
+
+    const plankCount = size >= 128 ? 4 : 3;
+    const plankWidth = size / plankCount;
+    const lineWidth = Math.max(1, size / 64);
+    for (let i = 1; i < plankCount; i++) {
+      const x = i * plankWidth;
+      g.strokeStyle = "rgba(30,16,8,0.5)";
+      g.lineWidth = lineWidth;
+      g.beginPath();
+      g.moveTo(x, 0);
+      g.lineTo(x, size);
+      g.stroke();
+      g.strokeStyle = "rgba(255,255,255,0.06)";
+      g.beginPath();
+      g.moveTo(x + lineWidth, 0);
+      g.lineTo(x + lineWidth, size);
+      g.stroke();
+    }
+
+    const linesPerPlank = size >= 128 ? 10 : 6;
+    for (let p = 0; p < plankCount; p++) {
+      const plankX0 = p * plankWidth;
+      for (let i = 0; i < linesPerPlank; i++) {
+        const baseX = plankX0 + Math.random() * plankWidth;
+        const freq = 0.05 + Math.random() * 0.1;
+        const amplitude = (2 + Math.random() * 4) * (size / 64);
+        const phase = Math.random() * Math.PI * 2;
+        g.strokeStyle = Math.random() < 0.5 ? shadeColor(grainColor, 0.15) : shadeColor(grainColor, -0.15);
+        g.globalAlpha = 0.15 + Math.random() * 0.25;
+        g.lineWidth = 0.5 + Math.random() * 2;
+        g.beginPath();
+        const steps = 8;
+        for (let s = 0; s <= steps; s++) {
+          const y = (s / steps) * size;
+          const x = baseX + Math.sin(y * freq + phase) * amplitude;
+          if (s === 0) g.moveTo(x, y);
+          else g.lineTo(x, y);
+        }
+        g.stroke();
+
+        if (Math.random() < 0.1) {
+          const knotY = Math.random() * size;
+          const knotX = baseX + Math.sin(knotY * freq + phase) * amplitude;
+          for (let k = 3; k > 0; k--) {
+            g.globalAlpha = 0.25;
+            g.fillStyle = shadeColor(grainColor, -0.1 * k);
+            g.beginPath();
+            g.ellipse(knotX, knotY, k * 1.6 * (size / 64), k * 1.1 * (size / 64), 0, 0, Math.PI * 2);
+            g.fill();
+          }
+        }
+      }
+    }
+    g.globalAlpha = 1;
+
+    const speckleCount = Math.min(800, Math.round((size * size) / 8));
+    for (let i = 0; i < speckleCount; i++) {
+      g.globalAlpha = 0.05 + Math.random() * 0.1;
+      g.fillStyle = Math.random() < 0.5 ? shadeColor(baseColor, 0.2) : shadeColor(baseColor, -0.2);
+      g.fillRect(Math.random() * size, Math.random() * size, 1, 1);
+    }
+    g.globalAlpha = 1;
+
+    return new THREE.CanvasTexture(c);
+  }
+
+  function generateVeinPoints(size, depth) {
+    let x = Math.random() * size;
+    let y = Math.random() < 0.5 ? 0 : size;
+    let angle = (y === 0 ? Math.PI / 2 : -Math.PI / 2) + (Math.random() - 0.5) * 0.6;
+    const points = [[x, y]];
+    const branches = [];
+    const steps = 12 + Math.floor(Math.random() * 10);
+    const stepLen = (size / steps) * 1.5;
+    for (let i = 0; i < steps; i++) {
+      angle += (Math.random() - 0.5) * 0.6;
+      x += Math.cos(angle) * stepLen;
+      y += Math.sin(angle) * stepLen;
+      points.push([x, y]);
+      if (depth < 1 && Math.random() < 0.12) {
+        branches.push(generateVeinPoints(size, depth + 1));
+      }
+      if (x < -5 || x > size + 5 || y < -5 || y > size + 5) break;
+    }
+    return { points, branches };
+  }
+
+  function strokeVein(g, vein, color) {
+    g.strokeStyle = color;
+    g.lineWidth = 0.5 + Math.random();
+    g.globalAlpha = 0.2 + Math.random() * 0.2;
+    g.beginPath();
+    vein.points.forEach((pt, i) => {
+      if (i === 0) g.moveTo(pt[0], pt[1]);
+      else g.lineTo(pt[0], pt[1]);
+    });
+    g.stroke();
+    vein.branches.forEach((b) => strokeVein(g, b, color));
+    g.globalAlpha = 1;
+  }
+
+  function buildStoneTexture(baseColor, accentColor, size, opts) {
+    size = size || 64;
+    opts = opts || {};
+    const c = makeCanvas(size, size);
+    const g = c.getContext("2d");
+
+    g.fillStyle = baseColor;
+    g.fillRect(0, 0, size, size);
+
+    const mottleCount = Math.max(20, Math.round((size * size) / 40));
+    for (let i = 0; i < mottleCount; i++) {
+      const r = (2 + Math.random() * 6) * (size / 64);
+      g.globalAlpha = 0.05 + Math.random() * 0.1;
+      g.fillStyle = Math.random() < 0.5 ? shadeColor(baseColor, 0.15) : shadeColor(baseColor, -0.15);
+      g.beginPath();
+      g.arc(Math.random() * size, Math.random() * size, r, 0, Math.PI * 2);
+      g.fill();
+    }
+
+    const speckleCount = Math.max(40, Math.round((size * size) / 6));
+    for (let i = 0; i < speckleCount; i++) {
+      g.globalAlpha = 0.1 + Math.random() * 0.2;
+      g.fillStyle = Math.random() < 0.5 ? shadeColor(baseColor, 0.25) : shadeColor(baseColor, -0.25);
+      g.fillRect(Math.random() * size, Math.random() * size, 1 + Math.random(), 1 + Math.random());
+    }
+    g.globalAlpha = 1;
+
+    if (opts.veins) {
+      const veinCount = 2 + Math.floor(Math.random() * 4);
+      for (let v = 0; v < veinCount; v++) {
+        strokeVein(g, generateVeinPoints(size, 0), accentColor);
+      }
+    }
+
+    if (opts.blocks) {
+      const grid = size >= 128 ? 3 : 2;
+      g.strokeStyle = shadeColor(baseColor, -0.35);
+      g.lineWidth = Math.max(1, size / 64);
+      g.globalAlpha = 0.6;
+      for (let i = 1; i < grid; i++) {
+        const p = (i / grid) * size;
+        g.beginPath();
+        g.moveTo(p, 0);
+        g.lineTo(p, size);
+        g.stroke();
+        g.beginPath();
+        g.moveTo(0, p);
+        g.lineTo(size, p);
+        g.stroke();
+      }
+      g.globalAlpha = 1;
+    }
+
+    return new THREE.CanvasTexture(c);
+  }
+
+  function buildMetalTexture(baseColor, highlightColor, size) {
+    size = size || 64;
+    const c = makeCanvas(size, size);
+    const g = c.getContext("2d");
+
+    g.fillStyle = baseColor;
+    g.fillRect(0, 0, size, size);
+
+    const streakCount = Math.round(size * 1.5);
+    for (let i = 0; i < streakCount; i++) {
+      const w = size * (0.2 + Math.random() * 0.6);
+      g.globalAlpha = 0.08 + Math.random() * 0.12;
+      g.fillStyle = Math.random() < 0.5 ? shadeColor(baseColor, 0.08) : shadeColor(baseColor, -0.08);
+      g.fillRect(Math.random() * (size - w), Math.random() * size, w, 1);
+    }
+    g.globalAlpha = 1;
+
+    const sheen = g.createLinearGradient(0, 0, size, 0);
+    sheen.addColorStop(0, "rgba(0,0,0,0)");
+    sheen.addColorStop(0.45, "rgba(0,0,0,0)");
+    sheen.addColorStop(0.55, hexToRgba(highlightColor, 0.25));
+    sheen.addColorStop(0.65, "rgba(0,0,0,0)");
+    sheen.addColorStop(1, "rgba(0,0,0,0)");
+    g.fillStyle = sheen;
+    g.fillRect(0, 0, size, size);
+
+    for (let i = 0; i < 5; i++) {
+      const x1 = Math.random() * size;
+      const y1 = Math.random() * size;
+      const len = size * (0.15 + Math.random() * 0.25);
+      const angle = Math.PI / 4 + (Math.random() - 0.5) * 0.5;
+      g.strokeStyle = shadeColor(baseColor, 0.3);
+      g.globalAlpha = 0.06 + Math.random() * 0.06;
+      g.lineWidth = 0.5;
+      g.beginPath();
+      g.moveTo(x1, y1);
+      g.lineTo(x1 + Math.cos(angle) * len, y1 + Math.sin(angle) * len);
+      g.stroke();
+    }
+    g.globalAlpha = 1;
+
+    return new THREE.CanvasTexture(c);
+  }
+
   function buildRingTexture(color) {
     const c = makeCanvas(64, 64);
     const g = c.getContext("2d");
@@ -106,6 +340,9 @@
   NS.Textures = {
     buildWallTexture,
     buildFloorTexture,
+    buildWoodTexture,
+    buildStoneTexture,
+    buildMetalTexture,
     buildFaceTexture,
     buildLabelTexture,
     buildRingTexture,
