@@ -976,8 +976,12 @@
     const dirLen = Math.hypot(dirX, dirZ);
     if (dirLen > 1e-4) { dirX /= dirLen; dirZ /= dirLen; }
 
-    player.vel.x = dirX * moveSpeed;
-    player.vel.z = dirZ * moveSpeed;
+    const targetVelX = dirX * moveSpeed;
+    const targetVelZ = dirZ * moveSpeed;
+    const accel = moveLen > 0.1 ? 16 : 22;
+    const velT = clamp(dt * accel, 0, 1);
+    player.vel.x = lerp(player.vel.x, targetVelX, velT);
+    player.vel.z = lerp(player.vel.z, targetVelZ, velT);
 
     if (moveLen > 0.15) {
       const targetYaw = Math.atan2(dirX, dirZ);
@@ -1664,12 +1668,27 @@
   /* ------------------------------------------------------------------------
      Kamera
      ------------------------------------------------------------------------ */
+  function cameraOcclusionDist(desiredDist) {
+    const eyeHeight = 1.5;
+    const samples = 8;
+    for (let i = 1; i <= samples; i++) {
+      const t = i / samples;
+      const d = desiredDist * t;
+      const sx = player.pos.x - Math.sin(camState.yaw) * d * Math.cos(camState.pitch);
+      const sz = player.pos.z - Math.cos(camState.yaw) * d * Math.cos(camState.pitch);
+      const sy = player.pos.y + eyeHeight + d * Math.sin(camState.pitch);
+      if (getGroundHeight(sx, sz) > sy - 0.3) return Math.max(MIN_DIST * 0.5, d - desiredDist / samples);
+    }
+    return desiredDist;
+  }
+
   function updateCamera(dt) {
     const eyeHeight = 1.5;
     camDist = clamp(camDist, MIN_DIST, MAX_DIST);
-    let cx = player.pos.x - Math.sin(camState.yaw) * camDist * Math.cos(camState.pitch);
-    let cz = player.pos.z - Math.cos(camState.yaw) * camDist * Math.cos(camState.pitch);
-    let cy = player.pos.y + eyeHeight + camDist * Math.sin(camState.pitch);
+    const effDist = cameraOcclusionDist(camDist);
+    let cx = player.pos.x - Math.sin(camState.yaw) * effDist * Math.cos(camState.pitch);
+    let cz = player.pos.z - Math.cos(camState.yaw) * effDist * Math.cos(camState.pitch);
+    let cy = player.pos.y + eyeHeight + effDist * Math.sin(camState.pitch);
     const groundClamp = getGroundHeight(cx, cz) + 0.4;
     if (cy < groundClamp) cy = groundClamp;
     if (cameraShake > 0) {
