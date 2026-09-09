@@ -24,6 +24,15 @@
   const PATH_WIDTH = 3.2;
   const GRAVITY = 18;
   const JUMP_SPEED = 6.4;
+  const WATER_LEVEL = 0;
+  const SWIM_GRAVITY = GRAVITY * 0.18;
+  const SWIM_UP_SPEED = 3.4;
+  const SWIM_BUOYANCY = 1.1;
+  const SUBMERGE_DEPTH = 0.35; // wie tief die Wasseroberflaeche ueber der Spielerposition sein muss, um als "untergetaucht" zu gelten
+  const OXYGEN_DRAIN = 9;
+  const OXYGEN_REGEN = 34;
+  const DROWN_TICK_DAMAGE = 6;
+  const DROWN_TICK_INTERVAL = 0.6;
   const PLAYER_RADIUS = 0.35;
   const TREE_COLLIDE_R = 0.55;
   const ROCK_COLLIDE_R = 0.85;
@@ -170,6 +179,7 @@
     hurt() { this._tone(180, 0.2, 'sawtooth', 0.2, { slideTo: 80 }); },
     jump() { this._tone(300, 0.12, 'sine', 0.14, { slideTo: 520 }); },
     land() { this._tone(150, 0.08, 'sine', 0.1, { slideTo: 80 }); },
+    splash() { this._noise(0.22, 0.22, 1400); this._tone(220, 0.15, 'sine', 0.1, { slideTo: 90 }); },
     levelup() { [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => this._tone(f, 0.25, 'triangle', 0.18), i * 90)); },
     build() { this._tone(200, 0.1, 'square', 0.14); this._noise(0.1, 0.15, 500); },
     chest() { [440, 554, 659, 880].forEach((f, i) => setTimeout(() => this._tone(f, 0.2, 'sine', 0.15), i * 70)); },
@@ -222,17 +232,20 @@
     grounded: false,
     health: 100, maxHealth: 100,
     stamina: 100, maxStamina: 100,
+    oxygen: 100, maxOxygen: 100,
     level: 1, xp: 0,
     attackDamage: 12,
     attackCooldownTimer: 0,
     isAttacking: false,
     isDead: false,
+    inWater: false,
+    submerged: false,
     speed: 4.3, sprintMult: 1.8,
     rig: null,
   };
 
   const keys = Object.create(null);
-  const input = { move: { x: 0, y: 0 }, jumpPressed: false, sprint: false };
+  const input = { move: { x: 0, y: 0 }, jumpPressed: false, jumpHeld: false, sprint: false };
   const joystick = { active: false, x: 0, y: 0, pointerId: null };
   let touchSprintActive = false;
   let isTouchDevice = false;
@@ -246,8 +259,8 @@
   function cacheDom() {
     const ids = [
       'start-screen', 'game-screen', 'new-game-btn', 'continue-btn', 'wipe-save-btn',
-      'stage', 'damage-flash', 'loading-overlay', 'loading-text', 'hud',
-      'bar-health', 'bar-stamina', 'bar-xp', 'level-badge',
+      'stage', 'damage-flash', 'water-overlay', 'loading-overlay', 'loading-text', 'hud',
+      'bar-health', 'bar-stamina', 'bar-oxygen', 'oxygen-row', 'bar-xp', 'level-badge',
       'res-wood', 'res-stone', 'res-berry', 'res-coin',
       'daytime-icon', 'daytime-text', 'minimap', 'pause-btn',
       'quest-tracker', 'quest-title', 'quest-desc', 'quest-progress-fill',
@@ -347,7 +360,7 @@
   function buildWater() {
     const geo = new THREE.PlaneGeometry(700, 700, 1, 1);
     geo.rotateX(-Math.PI / 2);
-    waterMat = new THREE.MeshStandardMaterial({ color: 0x1b6f96, transparent: true, opacity: 0.85, roughness: 0.35, metalness: 0.1 });
+    waterMat = new THREE.MeshStandardMaterial({ color: 0x1b6f96, transparent: true, opacity: 0.8, roughness: 0.35, metalness: 0.1, side: THREE.DoubleSide });
     waterMesh = new THREE.Mesh(geo, waterMat);
     waterMesh.position.y = 0;
     scene.add(waterMesh);
@@ -894,11 +907,13 @@
      Spieler-Update
      ------------------------------------------------------------------------ */
   let animTime = 0;
+  let wasInWater = false;
   function updatePlayer(dt) {
     if (player.isDead) return;
     const moveLen = Math.hypot(input.move.x, input.move.y);
-    const sprinting = input.sprint && moveLen > 0.1 && player.stamina > 1;
-    const moveSpeed = player.speed * (sprinting ? player.sprintMult : 1);
+    const sprinting = input.sprint && moveLen > 0.1 && player.stamina > 1 && !player.inWater;
+    const swimSpeedMult = player.inWater ? 0.72 : 1;
+    const moveSpeed = player.speed * (sprinting ? player.sprintMult : 1) * swimSpeedMult;
     const yaw = camState.yaw;
     const forward = { x: Math.sin(yaw), z: Math.cos(yaw) };
     const right = { x: Math.sin(yaw + Math.PI / 2), z: Math.cos(yaw + Math.PI / 2) };
@@ -915,12 +930,6 @@
       player.yaw = lerpAngle(player.yaw, targetYaw, 1 - Math.pow(0.0001, dt));
     }
 
-    player.vel.y -= GRAVITY * dt;
-    if (input.jumpPressed) {
-      if (player.grounded) { player.vel.y = JUMP_SPEED; player.grounded = false; SFX.jump(); }
-      input.jumpPressed = false;
-    }
-
     player.pos.x += player.vel.x * dt;
     player.pos.z += player.vel.z * dt;
 
@@ -929,14 +938,41 @@
     const distC = Math.hypot(player.pos.x, player.pos.z);
     if (distC > WORLD_RADIUS - 2) { const k = (WORLD_RADIUS - 2) / distC; player.pos.x *= k; player.pos.z *= k; }
 
-    player.pos.y += player.vel.y * dt;
+    // Wasser/Schwimmen: eine Stelle zaehlt als "im Wasser", wenn der rohe
+    // Meeresgrund dort unter dem Wasserspiegel liegt und keine Bruecke/
+    // Plattform eine trockene Oberflaeche darueber bereitstellt.
+    const seabed = heightAt(player.pos.x, player.pos.z);
     const groundY = getGroundHeight(player.pos.x, player.pos.z);
-    if (player.pos.y <= groundY) {
-      if (player.vel.y < -6) SFX.land();
-      player.pos.y = groundY;
-      player.vel.y = 0;
-      player.grounded = true;
+    const onSolidSurface = groundY > seabed + 0.05;
+    const overWater = seabed < WATER_LEVEL - 0.05 && !onSolidSurface;
+    player.inWater = overWater && player.pos.y < WATER_LEVEL + 0.3;
+    player.submerged = player.inWater && (WATER_LEVEL - player.pos.y) > SUBMERGE_DEPTH;
+
+    if (player.inWater !== wasInWater) {
+      wasInWater = player.inWater;
+      SFX.splash();
+      spawnParticles(new THREE.Vector3(player.pos.x, WATER_LEVEL + 0.05, player.pos.z), 0xbdf3ff, 10);
+    }
+
+    if (player.inWater) {
+      let targetVy;
+      if (input.jumpHeld) targetVy = SWIM_UP_SPEED;
+      else if (player.pos.y < WATER_LEVEL - 0.1) targetVy = SWIM_BUOYANCY;
+      else targetVy = -0.6;
+      player.vel.y = lerp(player.vel.y, targetVy, clamp(dt * 3, 0, 1));
     } else {
+      player.vel.y -= GRAVITY * dt;
+      if (input.jumpPressed && player.grounded) { player.vel.y = JUMP_SPEED; player.grounded = false; SFX.jump(); }
+    }
+    input.jumpPressed = false;
+
+    player.pos.y += player.vel.y * dt;
+    if (player.pos.y <= groundY) {
+      if (!player.inWater && player.vel.y < -6) SFX.land();
+      player.pos.y = groundY;
+      player.vel.y = player.inWater ? Math.max(player.vel.y, 0) : 0;
+      player.grounded = !player.inWater;
+    } else if (!player.inWater) {
       player.grounded = false;
     }
 
@@ -947,17 +983,47 @@
 
     if (player.attackCooldownTimer > 0) player.attackCooldownTimer -= dt;
 
+    updateBreath(dt);
+
     player.rig.group.position.copy(player.pos);
     player.rig.group.rotation.y = player.yaw;
 
     const walkFactor = moveLen * (sprinting ? 1.6 : 1);
-    animTime += dt * (2 + walkFactor * 6);
     if (!player.isAttacking) {
-      const swing = Math.sin(animTime) * Math.min(0.6, 0.12 + walkFactor * 0.5);
-      player.rig.leftArm.rotation.x = swing;
-      player.rig.rightArm.rotation.x = -swing;
-      player.rig.leftLeg.rotation.x = -swing;
-      player.rig.rightLeg.rotation.x = swing;
+      if (moveLen > 0.12) {
+        animTime += dt * (player.inWater ? 6 : 3 + walkFactor * 7);
+        const amp = player.inWater ? 0.5 : Math.min(0.65, 0.3 + walkFactor * 0.5);
+        const swing = Math.sin(animTime) * amp;
+        player.rig.leftArm.rotation.x = swing;
+        player.rig.rightArm.rotation.x = -swing;
+        player.rig.leftLeg.rotation.x = -swing;
+        player.rig.rightLeg.rotation.x = swing;
+      } else {
+        const relax = 1 - Math.pow(0.0001, dt);
+        player.rig.leftArm.rotation.x = lerp(player.rig.leftArm.rotation.x, 0, relax);
+        player.rig.rightArm.rotation.x = lerp(player.rig.rightArm.rotation.x, 0, relax);
+        player.rig.leftLeg.rotation.x = lerp(player.rig.leftLeg.rotation.x, 0, relax);
+        player.rig.rightLeg.rotation.x = lerp(player.rig.rightLeg.rotation.x, 0, relax);
+      }
+    }
+  }
+
+  let drownTickTimer = 0;
+  function updateBreath(dt) {
+    if (player.submerged) {
+      player.oxygen = Math.max(0, player.oxygen - OXYGEN_DRAIN * dt);
+      if (player.oxygen <= 0) {
+        drownTickTimer -= dt;
+        if (drownTickTimer <= 0) { drownTickTimer = DROWN_TICK_INTERVAL; damagePlayer(DROWN_TICK_DAMAGE); }
+      } else {
+        drownTickTimer = 0;
+      }
+    } else {
+      player.oxygen = Math.min(player.maxOxygen, player.oxygen + OXYGEN_REGEN * dt);
+      drownTickTimer = 0;
+    }
+    if (dom['water-overlay']) {
+      dom['water-overlay'].style.opacity = player.submerged ? '1' : '0';
     }
   }
 
@@ -1217,6 +1283,7 @@
     player.pos.set(SPAWN.x, heightAt(SPAWN.x, SPAWN.z), SPAWN.z);
     player.vel.set(0, 0, 0);
     player.health = Math.max(30, Math.floor(player.maxHealth * 0.6));
+    player.oxygen = player.maxOxygen;
     player.isDead = false;
     resources.coin = Math.floor(resources.coin * 0.7);
     dom['death-menu'].classList.add('hidden');
@@ -1460,6 +1527,8 @@
     if (!worldReady) return;
     dom['bar-health'].style.width = `${clamp01(player.health / player.maxHealth) * 100}%`;
     dom['bar-stamina'].style.width = `${clamp01(player.stamina / player.maxStamina) * 100}%`;
+    dom['bar-oxygen'].style.width = `${clamp01(player.oxygen / player.maxOxygen) * 100}%`;
+    dom['oxygen-row'].classList.toggle('hidden', !player.inWater && player.oxygen >= player.maxOxygen);
     dom['bar-xp'].style.width = `${clamp01(player.xp / xpToNext(player.level)) * 100}%`;
     dom['level-badge'].textContent = player.level;
     dom['res-wood'].textContent = resources.wood;
@@ -1584,14 +1653,14 @@
     window.addEventListener('keydown', (e) => {
       if (e.repeat) return;
       keys[e.code] = true;
-      if (e.code === 'Space') { input.jumpPressed = true; e.preventDefault(); }
+      if (e.code === 'Space') { input.jumpPressed = true; input.jumpHeld = true; e.preventDefault(); }
       if (e.code === 'KeyF') tryAttack();
       if (e.code === 'KeyE') tryInteract();
       if (e.code === 'KeyB') toggleBuildMenu();
       if (e.code === 'Escape') handleEscape();
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
     });
-    window.addEventListener('keyup', (e) => { keys[e.code] = false; });
+    window.addEventListener('keyup', (e) => { keys[e.code] = false; if (e.code === 'Space') input.jumpHeld = false; });
   }
 
   function updateInputDerived() {
@@ -1659,7 +1728,8 @@
     zone.addEventListener('pointerup', endJoystick);
     zone.addEventListener('pointercancel', endJoystick);
 
-    dom['btn-jump'].addEventListener('pointerdown', (e) => { e.preventDefault(); input.jumpPressed = true; });
+    dom['btn-jump'].addEventListener('pointerdown', (e) => { e.preventDefault(); input.jumpPressed = true; input.jumpHeld = true; });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach((ev) => dom['btn-jump'].addEventListener(ev, () => { input.jumpHeld = false; }));
     dom['btn-attack'].addEventListener('pointerdown', (e) => { e.preventDefault(); tryAttack(); });
     dom['btn-interact'].addEventListener('pointerdown', (e) => { e.preventDefault(); tryInteract(); });
     dom['btn-build'].addEventListener('pointerdown', (e) => { e.preventDefault(); toggleBuildMenu(); });
@@ -1771,8 +1841,9 @@
     player.yaw = Math.PI;
     player.level = 1; player.xp = 0;
     applyLevelStats();
-    player.health = player.maxHealth; player.stamina = player.maxStamina;
+    player.health = player.maxHealth; player.stamina = player.maxStamina; player.oxygen = player.maxOxygen;
     player.isDead = false; player.attackCooldownTimer = 0; player.isAttacking = false;
+    player.inWater = false; player.submerged = false;
     resources.wood = 0; resources.stone = 0; resources.berry = 0; resources.coin = 0;
     counters.woodTotal = 0; counters.stoneTotal = 0; counters.campfiresBuilt = 0; counters.enemiesDefeated = 0; counters.chestsOpened = 0; counters.peakReached = false;
     questIndex = 0; announcedAllDone = false;

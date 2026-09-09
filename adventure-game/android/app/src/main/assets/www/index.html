@@ -59,6 +59,7 @@
   <section id="game-screen" class="screen hidden">
     <canvas id="stage"></canvas>
     <div id="damage-flash"></div>
+    <div id="water-overlay"></div>
 
     <div id="loading-overlay" class="overlay">
       <div class="loading-box">
@@ -79,17 +80,21 @@
           <span class="bar-icon">⚡</span>
           <div class="bar-track"><div id="bar-stamina" class="bar-fill stamina"></div></div>
         </div>
+        <div class="bar-row hidden" id="oxygen-row">
+          <span class="bar-icon">🫧</span>
+          <div class="bar-track"><div id="bar-oxygen" class="bar-fill oxygen"></div></div>
+        </div>
         <div class="bar-row">
           <span class="bar-icon lvl-badge" id="level-badge">1</span>
           <div class="bar-track"><div id="bar-xp" class="bar-fill xp"></div></div>
         </div>
-      </div>
 
-      <div class="hud-resources">
-        <span class="res"><span class="res-icon">🪵</span><span id="res-wood">0</span></span>
-        <span class="res"><span class="res-icon">🪨</span><span id="res-stone">0</span></span>
-        <span class="res"><span class="res-icon">🍓</span><span id="res-berry">0</span></span>
-        <span class="res"><span class="res-icon">🪙</span><span id="res-coin">0</span></span>
+        <div class="hud-resources">
+          <span class="res"><span class="res-icon">🪵</span><span id="res-wood">0</span></span>
+          <span class="res"><span class="res-icon">🪨</span><span id="res-stone">0</span></span>
+          <span class="res"><span class="res-icon">🍓</span><span id="res-berry">0</span></span>
+          <span class="res"><span class="res-icon">🪙</span><span id="res-coin">0</span></span>
+        </div>
       </div>
 
       <div class="hud-top-right">

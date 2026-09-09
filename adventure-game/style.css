@@ -209,6 +209,18 @@ canvas#stage {
   touch-action: none;
 }
 
+#water-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 36;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  background:
+    linear-gradient(rgba(20, 90, 130, 0.32), rgba(8, 45, 75, 0.58)),
+    radial-gradient(ellipse at center, transparent 40%, rgba(10, 60, 90, 0.35) 100%);
+}
+
 #damage-flash {
   position: absolute;
   inset: 0;
@@ -369,6 +381,7 @@ canvas#stage {
 .hud {
   position: absolute;
   inset: 0;
+  z-index: 38;
   pointer-events: none;
   padding: env(safe-area-inset-top, 10px) env(safe-area-inset-right, 10px) env(safe-area-inset-bottom, 10px) env(safe-area-inset-left, 10px);
   font-size: 13px;
@@ -428,12 +441,12 @@ canvas#stage {
 
 .bar-fill.health { background: linear-gradient(90deg, #e6544c, #ff8a7a); }
 .bar-fill.stamina { background: linear-gradient(90deg, #4c9fe6, #7fd1f2); }
+.bar-fill.oxygen { background: linear-gradient(90deg, #2fa9c9, #bdf3ff); }
 .bar-fill.xp { background: linear-gradient(90deg, var(--gold), #ffe27a); }
 
 .hud-resources {
-  position: absolute;
-  top: 62px;
-  left: 12px;
+  align-self: flex-start;
+  margin-top: 4px;
   display: flex;
   gap: 10px;
   background: rgba(10, 15, 22, 0.55);
