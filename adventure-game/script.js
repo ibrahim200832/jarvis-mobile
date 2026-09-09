@@ -217,6 +217,7 @@
   const structures = [], walls = [], structureColliders = [], campfires = [];
   const bridgeColliders = []; // dauerhafte begehbare Brücken, unabhängig vom Bau-System
   const landmarkColliders = [], minimapLandmarks = [];
+  let castleFootprint = null;
   const particlePool = [];
   const tweens = [];
 
@@ -411,6 +412,7 @@
     const minHeight = opts.minHeight != null ? opts.minHeight : 0.4;
     const maxHeight = opts.maxHeight != null ? opts.maxHeight : 999;
     const existing = opts.existing || [];
+    const excludeZones = opts.excludeZones || [];
     const results = [];
     let attempts = 0;
     const maxAttempts = count * 150 + 200;
@@ -425,6 +427,7 @@
       let ok = true;
       for (let i = 0; i < results.length; i++) { if (flatDistXZ(x, z, results[i].x, results[i].z) < minSpacing) { ok = false; break; } }
       if (ok) for (let i = 0; i < existing.length; i++) { if (flatDistXZ(x, z, existing[i].x, existing[i].z) < minSpacing) { ok = false; break; } }
+      if (ok) for (let i = 0; i < excludeZones.length; i++) { if (flatDistXZ(x, z, excludeZones[i].x, excludeZones[i].z) < excludeZones[i].radius) { ok = false; break; } }
       if (ok) results.push({ x, z });
     }
     return results;
@@ -663,6 +666,46 @@
     return group;
   }
 
+  /* Echtes 3D-Scan-Modell (Castle of Loarre) als Herzstück des Burg-Eilands. */
+  function makeCastleModel(pos) {
+    const scale = 0.1548;
+    const localCenter = { x: -6.72, z: -9.39 };
+    const localMinY = -13.70;
+    const px = pos.x - localCenter.x * scale;
+    const pz = pos.z - localCenter.z * scale;
+    const footprint = { x: px, z: pz, radius: 20 };
+
+    if (typeof THREE.GLTFLoader === 'function') {
+      const loader = new THREE.GLTFLoader();
+      loader.load('assets/castle-loarre.glb', (gltf) => {
+        const model = gltf.scene;
+        model.name = 'castle-model';
+        model.scale.setScalar(scale);
+        // Modell hat einen flachen Boden (Foto-Scan mit Sockel) — auf den tiefsten Punkt
+        // des Terrains rund um den Fußabdruck absenken, sonst schwebt es an den Rändern.
+        let minTerrainY = heightAt(px, pz);
+        for (let i = 0; i < 10; i++) {
+          const a = (i / 10) * Math.PI * 2;
+          const sx = px + Math.cos(a) * footprint.radius * 0.9;
+          const sz = pz + Math.sin(a) * footprint.radius * 0.9;
+          minTerrainY = Math.min(minTerrainY, heightAt(sx, sz));
+        }
+        const py = minTerrainY - 1.5 + Math.abs(localMinY) * scale;
+        model.position.set(px, py, pz);
+        model.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+        scene.add(model);
+        landmarkColliders.push({ x: px, z: pz, radius: footprint.radius });
+        minimapLandmarks.push({ pos: model.position, color: '#c94c4c' });
+      }, undefined, (err) => {
+        console.warn('Burg-Modell konnte nicht geladen werden, nutze Platzhalter:', err);
+        makeCastle(pos);
+      });
+    } else {
+      makeCastle(pos);
+    }
+    return footprint;
+  }
+
   function makeWatchtower(pos) {
     const group = new THREE.Group();
     const mat = new THREE.MeshStandardMaterial({ color: 0x8a8f97, flatShading: true, roughness: 1 });
@@ -767,8 +810,8 @@
     hutSpots.forEach((p) => makeHut(p, worldRand() * Math.PI * 2));
 
     const castleIsle = getIsland('castle');
-    makeCastle({ x: castleIsle.cx, z: castleIsle.cz });
-    const towerSpot = { x: castleIsle.cx + castleIsle.r * 0.55, z: castleIsle.cz - castleIsle.r * 0.4 };
+    castleFootprint = makeCastleModel({ x: castleIsle.cx, z: castleIsle.cz });
+    const towerSpot = { x: castleIsle.cx + castleIsle.r * 0.67, z: castleIsle.cz - castleIsle.r * 0.49 };
     makeWatchtower(towerSpot);
 
     const home = getIsland('home');
@@ -790,7 +833,10 @@
     let chestIdCounter = 0;
     ISLANDS.forEach((isle) => {
       const c = counts[isle.id];
-      const base = { centerX: isle.cx, centerZ: isle.cz, minR: 4, maxR: isle.r - 5, existing: occupied };
+      const excludeZones = (isle.id === 'castle' && castleFootprint)
+        ? [{ x: castleFootprint.x, z: castleFootprint.z, radius: castleFootprint.radius + 2 }]
+        : [];
+      const base = { centerX: isle.cx, centerZ: isle.cz, minR: 4, maxR: isle.r - 5, existing: occupied, excludeZones };
 
       const treePos = scatterPositions(c.trees, Object.assign({}, base, { minSpacing: 4.2, minHeight: 0.6, maxHeight: 17 }));
       treePos.forEach((p) => occupied.push(p));
