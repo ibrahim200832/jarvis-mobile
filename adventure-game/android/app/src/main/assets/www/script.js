@@ -692,7 +692,15 @@
         }
         const py = minTerrainY - 1.5 + Math.abs(localMinY) * scale;
         model.position.set(px, py, pz);
-        model.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+        model.traverse((o) => {
+          if (o.isMesh) {
+            o.castShadow = true; o.receiveShadow = true;
+            o.material.flatShading = true;
+            o.material.roughness = 1;
+            o.material.metalness = 0;
+            o.material.needsUpdate = true;
+          }
+        });
         scene.add(model);
         landmarkColliders.push({ x: px, z: pz, radius: footprint.radius });
         minimapLandmarks.push({ pos: model.position, color: '#c94c4c' });
