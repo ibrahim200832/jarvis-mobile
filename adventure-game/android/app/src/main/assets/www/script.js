@@ -987,6 +987,10 @@
     if (moveLen > 0.15) {
       const targetYaw = Math.atan2(dirX, dirZ);
       player.yaw = lerpAngle(player.yaw, targetYaw, 1 - Math.pow(0.0001, dt));
+    } else {
+      // Im Stand dreht sich der Charakter mit der Kamera mit, statt stur in eine
+      // alte Richtung zu schauen, während man nur mit dem Finger die Kamera dreht.
+      player.yaw = lerpAngle(player.yaw, camState.yaw, 1 - Math.pow(0.0001, dt * 0.6));
     }
 
     player.pos.x += player.vel.x * dt;
