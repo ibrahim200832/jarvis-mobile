@@ -209,6 +209,7 @@
   let gameTime = 0, dayTime = 0.28, lastTime = 0, frameCount = 0, lastAutosave = 0;
   let sensitivity = 1;
   let camDist = 7;
+  let smoothedCamDist = 7;
   const camState = { yaw: Math.PI, pitch: 0.5 };
   let cameraShake = 0;
   let isNight = false;
@@ -1677,7 +1678,7 @@
       const sx = player.pos.x - Math.sin(camState.yaw) * d * Math.cos(camState.pitch);
       const sz = player.pos.z - Math.cos(camState.yaw) * d * Math.cos(camState.pitch);
       const sy = player.pos.y + eyeHeight + d * Math.sin(camState.pitch);
-      if (getGroundHeight(sx, sz) > sy - 0.3) return Math.max(MIN_DIST * 0.5, d - desiredDist / samples);
+      if (getGroundHeight(sx, sz) > sy + 1.5) return Math.max(MIN_DIST * 0.5, d - desiredDist / samples);
     }
     return desiredDist;
   }
@@ -1685,7 +1686,12 @@
   function updateCamera(dt) {
     const eyeHeight = 1.5;
     camDist = clamp(camDist, MIN_DIST, MAX_DIST);
-    const effDist = cameraOcclusionDist(camDist);
+    const targetDist = cameraOcclusionDist(camDist);
+    // Sanft angleichen statt hart springen: sonst zuckt die Kamera sichtbar,
+    // wenn sie kurz über eine Bodenwelle/Hügelkante hinweg "Sichtblockade" meldet.
+    const followRate = targetDist < smoothedCamDist ? 12 : 6;
+    smoothedCamDist = lerp(smoothedCamDist, targetDist, clamp(dt * followRate, 0, 1));
+    const effDist = smoothedCamDist;
     let cx = player.pos.x - Math.sin(camState.yaw) * effDist * Math.cos(camState.pitch);
     let cz = player.pos.z - Math.cos(camState.yaw) * effDist * Math.cos(camState.pitch);
     let cy = player.pos.y + eyeHeight + effDist * Math.sin(camState.pitch);
@@ -1922,7 +1928,7 @@
     questIndex = 0; announcedAllDone = false;
     openedChestIds.clear();
     dayTime = 0.28;
-    camState.yaw = Math.PI; camState.pitch = 0.5; camDist = 7;
+    camState.yaw = Math.PI; camState.pitch = 0.5; camDist = 7; smoothedCamDist = 7;
     cancelPlacement();
     dom['death-menu'].classList.add('hidden');
     dom['pause-menu'].classList.add('hidden');
