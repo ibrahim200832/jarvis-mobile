@@ -48,6 +48,10 @@
   const MAX_PITCH = 1.25;
   const MIN_DIST = 3.5;
   const MAX_DIST = 12;
+  const FLY_UP_SPEED = 8;
+  const FLY_DOWN_SPEED = 4;
+  const FLY_SPEED_MULT = 1.6;
+  const DOUBLE_TAP_WINDOW = 0.35;
 
   const BUILD_OPTIONS = [
     { id: 'campfire', name: 'Lagerfeuer', icon: '🔥', cost: { wood: 3, stone: 2 }, footprint: 1.3 },
@@ -62,6 +66,10 @@
     { id: 'fight', title: 'Schädlingsbekämpfung', desc: 'Besiege 3 Schleime', target: 3, get: () => counters.enemiesDefeated, reward: { coin: 25, xp: 50 } },
     { id: 'chest', title: 'Schatzsucher', desc: 'Öffne 2 Truhen', target: 2, get: () => counters.chestsOpened, reward: { coin: 30, xp: 60 } },
     { id: 'peak', title: 'Gipfelsturm', desc: 'Erreiche den Gipfel des Berges', target: 1, get: () => (counters.peakReached ? 1 : 0), reward: { coin: 50, xp: 100 } },
+    { id: 'berry', title: 'Wildsammler', desc: 'Sammle 8 Beeren', target: 8, get: () => counters.berryTotal, reward: { coin: 20, xp: 40 } },
+    { id: 'dive', title: 'Tiefseetaucher', desc: 'Tauche unter die Wasseroberfläche', target: 1, get: () => (counters.dived ? 1 : 0), reward: { coin: 20, xp: 35 } },
+    { id: 'explore', title: 'Weltenbummler', desc: 'Besuche alle vier Eilande', target: 4, get: () => Object.keys(counters.visited).length, reward: { coin: 35, xp: 70 } },
+    { id: 'fight2', title: 'Waffenmeister', desc: 'Besiege 10 Schleime insgesamt', target: 10, get: () => counters.enemiesDefeated, reward: { coin: 60, xp: 120 } },
   ];
 
   /* ------------------------------------------------------------------------
@@ -223,7 +231,7 @@
   const tweens = [];
 
   const resources = { wood: 0, stone: 0, berry: 0, coin: 0 };
-  const counters = { woodTotal: 0, stoneTotal: 0, campfiresBuilt: 0, enemiesDefeated: 0, chestsOpened: 0, peakReached: false };
+  const counters = { woodTotal: 0, stoneTotal: 0, berryTotal: 0, campfiresBuilt: 0, enemiesDefeated: 0, chestsOpened: 0, peakReached: false, dived: false, visited: {} };
   const openedChestIds = new Set();
   let questIndex = 0;
 
@@ -242,6 +250,7 @@
     isDead: false,
     inWater: false,
     submerged: false,
+    flying: false,
     speed: 4.3, sprintMult: 1.8,
     rig: null,
   };
@@ -968,7 +977,7 @@
     const moveLen = Math.hypot(input.move.x, input.move.y);
     const sprinting = input.sprint && moveLen > 0.1 && player.stamina > 1 && !player.inWater;
     const swimSpeedMult = player.inWater ? 0.72 : 1;
-    const moveSpeed = player.speed * (sprinting ? player.sprintMult : 1) * swimSpeedMult;
+    const moveSpeed = player.speed * (sprinting ? player.sprintMult : 1) * swimSpeedMult * (player.flying ? FLY_SPEED_MULT : 1);
     const yaw = camState.yaw;
     const forward = { x: Math.sin(yaw), z: Math.cos(yaw) };
     const right = { x: Math.sin(yaw + Math.PI / 2), z: Math.cos(yaw + Math.PI / 2) };
@@ -1001,6 +1010,11 @@
     const distC = Math.hypot(player.pos.x, player.pos.z);
     if (distC > WORLD_RADIUS - 2) { const k = (WORLD_RADIUS - 2) / distC; player.pos.x *= k; player.pos.z *= k; }
 
+    for (let i = 0; i < ISLANDS.length; i++) {
+      const isle = ISLANDS[i];
+      if (flatDistXZ(player.pos.x, player.pos.z, isle.cx, isle.cz) <= isle.r) counters.visited[isle.id] = true;
+    }
+
     // Wasser/Schwimmen: eine Stelle zaehlt als "im Wasser", wenn der rohe
     // Meeresgrund dort unter dem Wasserspiegel liegt und keine Bruecke/
     // Plattform eine trockene Oberflaeche darueber bereitstellt.
@@ -1008,8 +1022,9 @@
     const groundY = getGroundHeight(player.pos.x, player.pos.z);
     const onSolidSurface = groundY > seabed + 0.05;
     const overWater = seabed < WATER_LEVEL - 0.05 && !onSolidSurface;
-    player.inWater = overWater && player.pos.y < WATER_LEVEL + 0.3;
+    player.inWater = overWater && player.pos.y < WATER_LEVEL + 0.3 && !player.flying;
     player.submerged = player.inWater && (WATER_LEVEL - player.pos.y) > SUBMERGE_DEPTH;
+    if (player.submerged) counters.dived = true;
 
     if (player.inWater !== wasInWater) {
       wasInWater = player.inWater;
@@ -1017,7 +1032,11 @@
       spawnParticles(new THREE.Vector3(player.pos.x, WATER_LEVEL + 0.05, player.pos.z), 0xbdf3ff, 10);
     }
 
-    if (player.inWater) {
+    if (player.flying) {
+      const targetVy = input.jumpHeld ? FLY_UP_SPEED : -FLY_DOWN_SPEED;
+      player.vel.y = lerp(player.vel.y, targetVy, clamp(dt * 5, 0, 1));
+      player.grounded = false;
+    } else if (player.inWater) {
       let targetVy;
       if (input.jumpHeld) targetVy = SWIM_UP_SPEED;
       else if (player.pos.y < WATER_LEVEL - 0.1) targetVy = SWIM_BUOYANCY;
@@ -1144,7 +1163,7 @@
       toast(`+${amt} 🪨 Stein`);
     } else {
       const amt = 2 + Math.floor(Math.random() * 2);
-      resources.berry += amt;
+      resources.berry += amt; counters.berryTotal += amt;
       toast(`+${amt} 🍓 Beeren`);
     }
     if (node.hp <= 0) depleteNode(node, type);
@@ -1348,6 +1367,7 @@
     player.health = Math.max(30, Math.floor(player.maxHealth * 0.6));
     player.oxygen = player.maxOxygen;
     player.isDead = false;
+    player.flying = false;
     resources.coin = Math.floor(resources.coin * 0.7);
     dom['death-menu'].classList.add('hidden');
     saveGame();
@@ -1732,11 +1752,26 @@
     SFX.resume();
   }
 
+  let lastJumpTapTime = -999;
+  function tryToggleFlight() {
+    if (paused || player.isDead || !worldReady) return;
+    const now = performance.now() / 1000;
+    if (now - lastJumpTapTime < DOUBLE_TAP_WINDOW) {
+      player.flying = !player.flying;
+      player.inWater = false;
+      toast(player.flying ? '🕊️ Flugmodus an' : '🕊️ Flugmodus aus');
+      SFX.pickup();
+      lastJumpTapTime = -999;
+    } else {
+      lastJumpTapTime = now;
+    }
+  }
+
   function wireKeyboard() {
     window.addEventListener('keydown', (e) => {
       if (e.repeat) return;
       keys[e.code] = true;
-      if (e.code === 'Space') { input.jumpPressed = true; input.jumpHeld = true; e.preventDefault(); }
+      if (e.code === 'Space') { input.jumpPressed = true; input.jumpHeld = true; tryToggleFlight(); e.preventDefault(); }
       if (e.code === 'KeyF') tryAttack();
       if (e.code === 'KeyE') tryInteract();
       if (e.code === 'KeyB') toggleBuildMenu();
@@ -1811,7 +1846,7 @@
     zone.addEventListener('pointerup', endJoystick);
     zone.addEventListener('pointercancel', endJoystick);
 
-    dom['btn-jump'].addEventListener('pointerdown', (e) => { e.preventDefault(); input.jumpPressed = true; input.jumpHeld = true; });
+    dom['btn-jump'].addEventListener('pointerdown', (e) => { e.preventDefault(); input.jumpPressed = true; input.jumpHeld = true; tryToggleFlight(); });
     ['pointerup', 'pointercancel', 'pointerleave'].forEach((ev) => dom['btn-jump'].addEventListener(ev, () => { input.jumpHeld = false; }));
     dom['btn-attack'].addEventListener('pointerdown', (e) => { e.preventDefault(); tryAttack(); });
     dom['btn-interact'].addEventListener('pointerdown', (e) => { e.preventDefault(); tryInteract(); });
@@ -1928,7 +1963,9 @@
     player.isDead = false; player.attackCooldownTimer = 0; player.isAttacking = false;
     player.inWater = false; player.submerged = false;
     resources.wood = 0; resources.stone = 0; resources.berry = 0; resources.coin = 0;
-    counters.woodTotal = 0; counters.stoneTotal = 0; counters.campfiresBuilt = 0; counters.enemiesDefeated = 0; counters.chestsOpened = 0; counters.peakReached = false;
+    counters.woodTotal = 0; counters.stoneTotal = 0; counters.berryTotal = 0; counters.campfiresBuilt = 0; counters.enemiesDefeated = 0; counters.chestsOpened = 0; counters.peakReached = false;
+    counters.dived = false; counters.visited = {};
+    player.flying = false;
     questIndex = 0; announcedAllDone = false;
     openedChestIds.clear();
     dayTime = 0.28;
