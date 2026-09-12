@@ -94,6 +94,13 @@
   const COIN_COUNT = 36;
   const COIN_PICKUP_RADIUS = 1.0;
   const COIN_SCORE = 20;
+  const ALL_COINS_BONUS = 200;
+
+  /* ------------------------------------------------------------------------
+     Konstanten: Ampeln an Kreuzungen (rein dekorativ)
+     ------------------------------------------------------------------------ */
+  const TRAFFIC_LIGHT_CYCLE = 8;
+  const TRAFFIC_LIGHT_GREEN = 5;
 
   /* ------------------------------------------------------------------------
      Konstanten: Beinahe-Unfall-Bonus (knapp an Fußgängern vorbeigefahren)
@@ -278,7 +285,7 @@
   function cacheDom() {
     const ids = [
       'lobby', 'game', 'start-btn', 'lobby-highscore',
-      'stage', 'hud', 'wanted-row', 'bar-health', 'minimap',
+      'stage', 'hud', 'wanted-row', 'bar-health', 'minimap', 'damage-flash',
       'speed', 'score', 'toast-stack',
       'daytime-icon', 'daytime-text', 'coins', 'coins-total',
       'steer-left', 'steer-right', 'pedal-gas', 'pedal-brake',
@@ -497,6 +504,26 @@
       coins.push({ pos: { x: p.x, z: p.z }, mesh, collected: false });
     }
 
+    // Ampeln an jeder Straßenkreuzung — rein dekorativ (kein Kollisionskörper,
+    // der Verkehr hält sich nicht an sie, siehe updateTrafficLights()).
+    const poleMat = new THREE.MeshLambertMaterial({ color: 0x2a2f36 });
+    for (let k = 0; k <= GRID_N; k++) {
+      for (let j = 0; j <= GRID_N; j++) {
+        const ix = -GRID_HALF + k * GRID_PERIOD, iz = -GRID_HALF + j * GRID_PERIOD;
+        const offset = STREET_WIDTH / 2 + 0.6;
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 3.4, 6), poleMat);
+        pole.position.set(ix + offset, 1.7, iz + offset);
+        group.add(pole);
+        const lamp = new THREE.Mesh(
+          new THREE.BoxGeometry(0.22, 0.22, 0.22),
+          new THREE.MeshBasicMaterial({ color: 0x3ecb6a })
+        );
+        lamp.position.set(ix + offset, 3.5, iz + offset);
+        group.add(lamp);
+        trafficLights.push({ lamp, phase: worldRand() * TRAFFIC_LIGHT_CYCLE });
+      }
+    }
+
     // Weltgrenze: Reihe aus Betonpollern.
     const barrierMat = new THREE.MeshLambertMaterial({ color: 0x8a8f96 });
     const barrierCount = 90;
@@ -615,6 +642,7 @@
   let tweens = [];
   let coins = [];
   let windowMeshes = [];
+  let trafficLights = [];
 
   let wantedHeat = 0;
   let maxWantedReached = 0;
@@ -624,6 +652,9 @@
   let wantedSecondsAccum = 0;
   let bonusScore = 0;
   let coinsCollected = 0;
+  let allCoinsBonusGiven = false;
+  let firstWantedShown = false;
+  let nextDistanceMilestone = 1000;
   let dayTime = DAY_LENGTH * 0.05; // Start am helllichten Vormittag
   let gameTime = 0;
   let density = DENSITY_PRESETS.normal;
@@ -892,7 +923,15 @@
   function addHeat(amount) {
     const before = wantedHeat;
     wantedHeat = clamp(wantedHeat + amount, 0, 5);
-    if (wantedHeat > before) { SFX.heatUp(); toast('Fahndungsstufe erhöht!', 'bad'); }
+    if (wantedHeat > before) {
+      SFX.heatUp();
+      if (before < 1 && wantedHeat >= 1 && !firstWantedShown) {
+        firstWantedShown = true;
+        toast('Erste Fahndungsstufe! Die Polizei ist alarmiert.', 'bad');
+      } else {
+        toast('Fahndungsstufe erhöht!', 'bad');
+      }
+    }
     maxWantedReached = Math.max(maxWantedReached, wantedHeat);
   }
   function registerVehicleHit() {
@@ -1005,7 +1044,30 @@
         bonusScore += COIN_SCORE;
         SFX.coin();
         spawnParticles(c.pos, 0xffd75e, 6);
+        if (!allCoinsBonusGiven && coinsCollected === coins.length) {
+          allCoinsBonusGiven = true;
+          bonusScore += ALL_COINS_BONUS;
+          toast('Alle Münzen eingesammelt! Bonus: +' + ALL_COINS_BONUS, 'gold');
+        }
       }
+    }
+  }
+
+  // Sanfter roter Vignette-Flash bei kritischer Gesundheit — reine
+  // Rückmeldung, kein zusätzlicher Schaden.
+  function updateDamageFlash() {
+    const low = clamp01((30 - player.health) / 30);
+    dom['damage-flash'].style.opacity = String(low * (0.35 + 0.25 * Math.abs(Math.sin(gameTime * 5))));
+  }
+
+  // Ampeln an Straßenkreuzungen — rein dekorativ, der Verkehr hält sich
+  // (wie beim ganzen Ambient-Verkehr) nicht an sie.
+  function updateTrafficLights() {
+    for (let i = 0; i < trafficLights.length; i++) {
+      const tl = trafficLights[i];
+      const cycle = (gameTime + tl.phase) % TRAFFIC_LIGHT_CYCLE;
+      const green = cycle < TRAFFIC_LIGHT_GREEN;
+      tl.lamp.material.color.setHex(green ? 0x3ecb6a : 0xe6544c);
     }
   }
 
@@ -1204,9 +1266,13 @@
     wantedSecondsAccum = 0;
     bonusScore = 0;
     coinsCollected = 0;
+    allCoinsBonusGiven = false;
+    firstWantedShown = false;
+    nextDistanceMilestone = 1000;
     dayTime = DAY_LENGTH * 0.05;
     gameTime = 0;
     ended = false;
+    dom['damage-flash'].style.opacity = '0';
   }
 
   /* ------------------------------------------------------------------------
@@ -1320,12 +1386,18 @@
 
       distanceDriven += Math.abs(player.speed) * dt;
       if (wantedHeat >= 1) wantedSecondsAccum += dt;
+      if (distanceDriven >= nextDistanceMilestone) {
+        toast(nextDistanceMilestone + ' m gefahren!', 'good');
+        nextDistanceMilestone += 1000;
+      }
 
       player.mesh.position.set(player.pos.x, 0, player.pos.z);
       player.mesh.rotation.y = player.heading;
 
       updateCoins(dt);
       updateDayNight(dt);
+      updateTrafficLights();
+      updateDamageFlash();
       updateParticles(dt);
       updateTweens(dt);
       updateCamera();
