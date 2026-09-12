@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="background">#0a0f16</color>
+    <color name="surface">#141c28</color>
+    <color name="surface2">#1b2534</color>
+    <color name="accent">#f2a93a</color>
+    <color name="accent_glow">#ffcf7a</color>
+    <color name="on_accent">#2b1900</color>
+    <color name="foreground">#f2f6f8</color>
+    <color name="muted">#8ea0b3</color>
+    <color name="error">#e6544c</color>
+    <color name="border">#33ffffff</color>
+    <color name="chip_bg">#8c0a0f16</color>
+</resources>
