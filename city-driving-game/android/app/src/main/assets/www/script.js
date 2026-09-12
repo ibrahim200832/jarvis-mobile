@@ -51,12 +51,32 @@
      ------------------------------------------------------------------------ */
   const PED_RADIUS = 0.4;
   const PED_WALK_SPEED = 1.3;
+  const PED_WALK_SPEED_MIN_MUL = 0.7;
+  const PED_WALK_SPEED_MAX_MUL = 1.3;
   const PED_FLEE_SPEED = 2.8;
   const FLEE_RADIUS = 6;
   const FLEE_DURATION = 2.5;
   const MIN_HIT_SPEED = 2.5;
   const PED_RESPAWN_DELAY = 20;
   const PED_DEATH_ANIM_TIME = 0.4;
+  // Straßen überqueren & kurz stehenbleiben statt endlos im selben Block zu
+  // kreisen — vereinfacht vom knotenbasierten Bewegungsmodell aus FCNPC
+  // (SA-MP-NPC-Plugin, FCNPC_GoTo/OnReachDestination) auf unser Straßenraster
+  // übertragen: an jeder Blockecke kann die Route in einen Nachbarblock
+  // wechseln, und an Wegpunkten wird gelegentlich kurz gewartet.
+  const PED_CROSSING_CHANCE = 0.35;
+  const PED_IDLE_CHANCE = 0.25;
+  const PED_IDLE_MIN = 0.6;
+  const PED_IDLE_MAX = 2.4;
+  // Pro Eckknoten (Reihenfolge wie rectPerimeterPoints: 0=minX/minZ,
+  // 1=maxX/minZ, 2=maxX/maxZ, 3=minX/maxZ) die möglichen Nachbarblöcke
+  // jenseits der Straße und der jeweils gegenüberliegende Eckknoten dort.
+  const PED_NODE_CROSSINGS = [
+    [{ di: -1, dj: 0, mirror: 1 }, { di: 0, dj: -1, mirror: 3 }],
+    [{ di: 1, dj: 0, mirror: 0 }, { di: 0, dj: -1, mirror: 2 }],
+    [{ di: 1, dj: 0, mirror: 3 }, { di: 0, dj: 1, mirror: 1 }],
+    [{ di: -1, dj: 0, mirror: 2 }, { di: 0, dj: 1, mirror: 0 }],
+  ];
 
   /* ------------------------------------------------------------------------
      Konstanten: Verkehr (Ambient-KI, feste Rechteck-Umläufe je Block)
@@ -642,6 +662,8 @@
       pos: { x: start.x, z: start.z },
       heading: 0,
       hue: Math.floor(worldRand() * 360),
+      walkSpeed: PED_WALK_SPEED * lerp(PED_WALK_SPEED_MIN_MUL, PED_WALK_SPEED_MAX_MUL, worldRand()),
+      idleTimer: 0,
       state: 'wander', fleeTimer: 0, fleeDir: { x: 0, z: 1 },
       alive: true, respawnAt: 0, deathT: 0,
       lastNearMissAt: -99,
@@ -659,6 +681,8 @@
         const start = loop[nodeIndex];
         ped.loopIndex = loopIndex; ped.nodeIndex = nodeIndex;
         ped.pos.x = start.x; ped.pos.z = start.z;
+        ped.walkSpeed = PED_WALK_SPEED * lerp(PED_WALK_SPEED_MIN_MUL, PED_WALK_SPEED_MAX_MUL, worldRand());
+        ped.idleTimer = 0;
         ped.state = 'wander'; ped.alive = true; ped.deathT = 0;
       }
       return;
@@ -677,6 +701,8 @@
       ped.pos.z += ped.fleeDir.z * PED_FLEE_SPEED * dt;
       ped.heading = Math.atan2(ped.fleeDir.x, ped.fleeDir.z);
       if (ped.fleeTimer <= 0) ped.state = 'wander';
+    } else if (ped.idleTimer > 0) {
+      ped.idleTimer = Math.max(0, ped.idleTimer - dt);
     } else {
       const loop = world.pedWaypointLoops[ped.loopIndex];
       const target = loop[((ped.nodeIndex + ped.dir) % loop.length + loop.length) % loop.length];
@@ -685,9 +711,25 @@
       if (d < 0.4) {
         ped.nodeIndex = ((ped.nodeIndex + ped.dir) % loop.length + loop.length) % loop.length;
         if (worldRand() < 0.15) ped.dir *= -1;
+
+        // Gelegenheit, die Straße zu überqueren und im Nachbarblock
+        // weiterzulaufen, statt für immer im selben Block zu kreisen —
+        // vereinfacht vom knotenbasierten Bewegungsmodell aus FCNPC.
+        if (worldRand() < PED_CROSSING_CHANCE) {
+          const bi = Math.floor(ped.loopIndex / GRID_N), bj = ped.loopIndex % GRID_N;
+          const options = PED_NODE_CROSSINGS[ped.nodeIndex];
+          const choice = options[Math.floor(worldRand() * options.length)];
+          const ni = bi + choice.di, nj = bj + choice.dj;
+          if (ni >= 0 && ni < GRID_N && nj >= 0 && nj < GRID_N) {
+            ped.loopIndex = ni * GRID_N + nj;
+            ped.nodeIndex = choice.mirror;
+          }
+        } else if (worldRand() < PED_IDLE_CHANCE) {
+          ped.idleTimer = lerp(PED_IDLE_MIN, PED_IDLE_MAX, worldRand());
+        }
       } else {
-        ped.pos.x += (dx / d) * PED_WALK_SPEED * dt;
-        ped.pos.z += (dz / d) * PED_WALK_SPEED * dt;
+        ped.pos.x += (dx / d) * ped.walkSpeed * dt;
+        ped.pos.z += (dz / d) * ped.walkSpeed * dt;
         ped.heading = Math.atan2(dx / d, dz / d);
       }
     }
