@@ -115,10 +115,18 @@
      Konstanten: Tag/Nacht-Zyklus (Himmel-/Bodenfarbe, Straßenlaternen nachts)
      ------------------------------------------------------------------------ */
   const DAY_LENGTH = 220; // Sekunden pro vollem Tag/Nacht-Zyklus
-  const SKY_DAY = [0x8a, 0xb7, 0xd6];
-  const SKY_NIGHT = [0x07, 0x0a, 0x14];
   const GROUND_DAY = [0xc9, 0xc2, 0xae];
   const GROUND_NIGHT = [0x22, 0x24, 0x2a];
+  // Wasser umgibt die Stadt wie eine Küste (Satellitenfoto-Optik statt Himmel,
+  // da die Kamera senkrecht von oben schaut).
+  const WATER_SHALLOW_DAY = [0x2e, 0x74, 0x8f];
+  const WATER_SHALLOW_NIGHT = [0x04, 0x0c, 0x16];
+  const WATER_DEEP_DAY = [0x11, 0x39, 0x52];
+  const WATER_DEEP_NIGHT = [0x01, 0x04, 0x09];
+  const SHORE_DAY = [0xe8, 0xda, 0xb8];
+  const SHORE_NIGHT = [0x2c, 0x2a, 0x24];
+  const PAVEMENT_DAY = [0xb9, 0xb2, 0x9e];
+  const PAVEMENT_NIGHT = [0x24, 0x25, 0x28];
 
   // Auto-Farbwahl in der Lobby.
   const CAR_COLORS = [
@@ -163,6 +171,11 @@
     };
   }
   const worldRand = mulberry32(4242);
+  // Eigener PRNG-Strom nur für rein kosmetische Details (Dachaufbauten,
+  // Textur-Rauschen) — bewusst getrennt von worldRand(), damit zusätzliche
+  // Deko-Zufallsaufrufe niemals die Anzahl der worldRand()-Aufrufe verändern
+  // und damit nie das ganze nachfolgende Stadtlayout verschieben.
+  const decoRand = mulberry32(31337);
 
   // Kollisionshilfen (Auto = Kreis, Gebäude/Grenze = achsenparalleles Rechteck).
   function pushOutRect(pos, rect, r) {
@@ -307,6 +320,56 @@
     dom.stage.height = Math.round(viewH * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     SCALE = clamp(viewW / 46, 11, 22);
+    generateWaterSheen();
+  }
+
+  // Weiche Fleckentextur (viele überlappende Radial-Verläufe) — Grundlage für
+  // sowohl die Boden-/Geländemaserung als auch das Wasser-Schimmern. Nutzt
+  // decoRand(), nie worldRand() (siehe oben), und wird nur einmal (bzw. bei
+  // Resize für die Wasseroberfläche) vorberechnet statt pro Frame.
+  function makeBlotchTexture(w, h, tones, blotchCount, minR, maxR) {
+    w = Math.max(1, Math.round(w)); h = Math.max(1, Math.round(h));
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const tctx = c.getContext('2d');
+    for (let i = 0; i < blotchCount; i++) {
+      const x = decoRand() * w, y = decoRand() * h;
+      const r = lerp(minR, maxR, decoRand());
+      const tone = tones[Math.floor(decoRand() * tones.length) % tones.length];
+      const grad = tctx.createRadialGradient(x, y, 0, x, y, r);
+      grad.addColorStop(0, tone);
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      tctx.fillStyle = grad;
+      tctx.beginPath(); tctx.arc(x, y, r, 0, Math.PI * 2); tctx.fill();
+    }
+    return c;
+  }
+
+  // Ein Bild für die gesamte Weltfläche (Gelände-„Satellitenfoto“), einmalig
+  // beim Start erzeugt und dann per drawImage in den Sichtbereich skaliert —
+  // dadurch bleibt die Textur exakt an der Welt ausgerichtet, egal wie
+  // gezoomt/verschoben wird, ohne teure Canvas-Pattern-Transformationen.
+  let terrainTextureCanvas = null;
+  function generateTerrainTexture() {
+    terrainTextureCanvas = makeBlotchTexture(
+      1400, 1400,
+      ['rgba(70,90,55,0.35)', 'rgba(95,100,60,0.28)', 'rgba(45,62,42,0.32)', 'rgba(125,113,82,0.22)'],
+      260, 12, 60
+    );
+  }
+
+  // Wasseroberfläche: an die aktuelle Bildschirmgröße angepasst (bei Resize
+  // neu erzeugt) — reine Ambient-Textur, muss nicht an der Welt ausgerichtet
+  // sein, da offenes Wasser keine erkennbaren Landmarken hat.
+  let waterSheenCanvas = null;
+  function generateWaterSheen() {
+    if (!viewW || !viewH) return;
+    const count = Math.max(20, Math.round((viewW * viewH) / 9000));
+    waterSheenCanvas = makeBlotchTexture(
+      viewW, viewH,
+      ['rgba(255,255,255,0.10)', 'rgba(255,255,255,0.05)', 'rgba(0,20,40,0.18)'],
+      count, 20, 90
+    );
   }
 
   // Zeichenpfad für ein abgerundetes Rechteck (kein ctx.roundRect() genutzt,
@@ -352,6 +415,22 @@
     ];
   }
 
+  // Rein dekorative Dachaufbauten (Lüfter/Technik) — Position/Anzahl kommt
+  // aus decoRand(), nicht aus worldRand(), siehe Kommentar dort.
+  function makeRoofDetails(rect) {
+    const w = rect.maxX - rect.minX, h = rect.maxZ - rect.minZ;
+    const count = Math.floor(decoRand() * 3);
+    const items = [];
+    for (let i = 0; i < count; i++) {
+      items.push({
+        x: lerp(w * 0.2, w * 0.8, decoRand()),
+        z: lerp(h * 0.2, h * 0.8, decoRand()),
+        r: lerp(0.6, 1.3, decoRand()),
+      });
+    }
+    return items;
+  }
+
   function buildWorld() {
     for (let i = 0; i < GRID_N; i++) {
       const bx = blockRange(i);
@@ -384,8 +463,9 @@
           };
           const height = lerp(BUILDING_MIN_H, BUILDING_MAX_H, worldRand());
           const color = pick(BUILDING_COLORS, worldRand);
+          const blockRect = { minX: bx.min, maxX: bx.max, minZ: bz.min, maxZ: bz.max };
           world.buildingRects.push(rect);
-          world.buildings.push({ rect, color, height });
+          world.buildings.push({ rect, color, height, blockRect, roofDetails: makeRoofDetails(rect) });
         }
 
         // Gehweg-Wegpunktschleife: Ring knapp innerhalb der Blockkante.
@@ -861,15 +941,21 @@
      Tag/Nacht-Zyklus: reine Zahlenwerte (Himmel-/Boden-Farbmischung,
      Laternen-Helligkeit), die renderScene() beim Zeichnen liest.
      ------------------------------------------------------------------------ */
-  let skyColorCss = '#8ab7d6';
   let groundColorCss = '#c9c2ae';
+  let waterShallowCss = '#2e748f';
+  let waterDeepCss = '#113952';
+  let shoreColorCss = '#e8dab8';
+  let pavementColorCss = '#b9b29e';
   let lampGlowAlpha = 0;
   function updateDayNight(dt) {
     dayTime = (dayTime + dt) % DAY_LENGTH;
     const t = dayTime / DAY_LENGTH;
     dayFactor = (Math.cos(t * Math.PI * 2) + 1) / 2; // 1 = Mittag, 0 = Mitternacht
-    skyColorCss = lerpRgb(SKY_NIGHT, SKY_DAY, dayFactor);
     groundColorCss = lerpRgb(GROUND_NIGHT, GROUND_DAY, dayFactor);
+    waterShallowCss = lerpRgb(WATER_SHALLOW_NIGHT, WATER_SHALLOW_DAY, dayFactor);
+    waterDeepCss = lerpRgb(WATER_DEEP_NIGHT, WATER_DEEP_DAY, dayFactor);
+    shoreColorCss = lerpRgb(SHORE_NIGHT, SHORE_DAY, dayFactor);
+    pavementColorCss = lerpRgb(PAVEMENT_NIGHT, PAVEMENT_DAY, dayFactor);
     lampGlowAlpha = clamp01((0.55 - dayFactor) / 0.55);
   }
 
@@ -886,6 +972,37 @@
   }
   function nearPlayer(x, z, margin) {
     return dist2D(x, z, player.pos.x, player.pos.z) < viewRadiusWorld() + (margin || 0);
+  }
+
+  // Zeichnet den Ausschnitt des vorberechneten Gelände-„Satellitenfotos“, der
+  // zu einem Weltrechteck gehört, exakt an dessen Bildschirmposition — so
+  // bleibt die Maserung immer an der Karte "festgeklebt", ganz ohne
+  // Canvas-Pattern-Transformationen.
+  function drawTerrainPatch(rect) {
+    if (!terrainTextureCanvas) return;
+    const worldSize = WORLD_HALF_EXTENT * 2;
+    const texW = terrainTextureCanvas.width, texH = terrainTextureCanvas.height;
+    const sx = (rect.minX + WORLD_HALF_EXTENT) / worldSize * texW;
+    const sy = (rect.minZ + WORLD_HALF_EXTENT) / worldSize * texH;
+    const sw = (rect.maxX - rect.minX) / worldSize * texW;
+    const sh = (rect.maxZ - rect.minZ) / worldSize * texH;
+    const tl = toScreen(rect.minX, rect.minZ), br = toScreen(rect.maxX, rect.maxZ);
+    ctx.drawImage(terrainTextureCanvas, sx, sy, sw, sh, tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+  }
+
+  // Wasser, das die Stadt umgibt (Verlauf + Schimmer-Textur) — ersetzt die
+  // frühere reine "Himmel"-Füllung, da die Kamera senkrecht von oben schaut.
+  function drawWater() {
+    const grad = ctx.createLinearGradient(0, 0, 0, viewH);
+    grad.addColorStop(0, waterDeepCss);
+    grad.addColorStop(1, waterShallowCss);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, viewW, viewH);
+    if (waterSheenCanvas) {
+      ctx.globalAlpha = 0.85;
+      ctx.drawImage(waterSheenCanvas, 0, 0, viewW, viewH);
+      ctx.globalAlpha = 1;
+    }
   }
 
   function drawStreetGrid() {
@@ -924,22 +1041,48 @@
       ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(viewW, sy); ctx.stroke();
     }
     ctx.restore();
+
+    // Helle Fahrbahnrand-Linien (Bankett), wie auf echten Luftbildern.
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+    ctx.lineWidth = Math.max(1, 0.1 * SCALE);
+    for (let k = kMin; k <= kMax; k++) {
+      const lineX = -GRID_HALF + k * GRID_PERIOD;
+      const sx = toScreen(lineX, 0).x;
+      ctx.beginPath(); ctx.moveTo(sx - halfPx, 0); ctx.lineTo(sx - halfPx, viewH); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(sx + halfPx, 0); ctx.lineTo(sx + halfPx, viewH); ctx.stroke();
+    }
+    for (let k = jMin; k <= jMax; k++) {
+      const lineZ = -GRID_HALF + k * GRID_PERIOD;
+      const sy = toScreen(0, lineZ).y;
+      ctx.beginPath(); ctx.moveTo(0, sy - halfPx); ctx.lineTo(viewW, sy - halfPx); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, sy + halfPx); ctx.lineTo(viewW, sy + halfPx); ctx.stroke();
+    }
+    ctx.restore();
   }
 
   function drawParks() {
-    ctx.fillStyle = '#4f7a45';
     for (let i = 0; i < world.parks.length; i++) {
       const p = world.parks[i];
       const c = { x: (p.rect.minX + p.rect.maxX) / 2, z: (p.rect.minZ + p.rect.maxZ) / 2 };
       if (!nearPlayer(c.x, c.z, BLOCK_SIZE)) continue;
       const tl = toScreen(p.rect.minX, p.rect.minZ), br = toScreen(p.rect.maxX, p.rect.maxZ);
+      ctx.fillStyle = '#4f7a45';
       ctx.fillRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
-      ctx.fillStyle = '#385c31';
+      ctx.globalAlpha = 0.5;
+      drawTerrainPatch(p.rect);
+      ctx.globalAlpha = 1;
+
       for (let t = 0; t < p.trees.length; t++) {
         const s = toScreen(p.trees[t].x, p.trees[t].z);
-        ctx.beginPath(); ctx.arc(s.x, s.y, Math.max(2, 0.9 * SCALE), 0, Math.PI * 2); ctx.fill();
+        const r = Math.max(2, 0.9 * SCALE);
+        ctx.fillStyle = 'rgba(0,0,0,0.2)';
+        ctx.beginPath(); ctx.arc(s.x + r * 0.15, s.y + r * 0.15, r, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#385c31';
+        ctx.beginPath(); ctx.arc(s.x, s.y, r, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#527d47';
+        ctx.beginPath(); ctx.arc(s.x - r * 0.25, s.y - r * 0.25, r * 0.6, 0, Math.PI * 2); ctx.fill();
       }
-      ctx.fillStyle = '#4f7a45';
     }
   }
 
@@ -948,6 +1091,13 @@
       const b = world.buildings[i];
       const c = { x: (b.rect.minX + b.rect.maxX) / 2, z: (b.rect.minZ + b.rect.maxZ) / 2 };
       if (!nearPlayer(c.x, c.z, BLOCK_SIZE)) continue;
+
+      // Gepflasterte Grundstücksfläche (ganzer Block) unter dem Gebäude —
+      // grenzt es sichtbar vom umgebenden Gelände ab, wie auf Luftbildern.
+      const btl = toScreen(b.blockRect.minX, b.blockRect.minZ), bbr = toScreen(b.blockRect.maxX, b.blockRect.maxZ);
+      ctx.fillStyle = pavementColorCss;
+      ctx.fillRect(btl.x, btl.y, bbr.x - btl.x, bbr.y - btl.y);
+
       const tl = toScreen(b.rect.minX, b.rect.minZ), br = toScreen(b.rect.maxX, b.rect.maxZ);
       const w = br.x - tl.x, h = br.y - tl.y;
       const shadowPx = clamp(b.height / 6, 2, 9);
@@ -966,6 +1116,16 @@
       if (w - inset * 2 > 3 && h - inset * 2 > 3) {
         ctx.fillStyle = 'rgba(255,255,255,0.08)';
         ctx.fillRect(tl.x + inset, tl.y + inset, w - inset * 2, h - inset * 2);
+      }
+
+      // Kleine Dachaufbauten (Lüfter/Technik) für mehr Detail aus der Nähe.
+      for (let d = 0; d < b.roofDetails.length; d++) {
+        const rd = b.roofDetails[d];
+        const rr = rd.r * SCALE * 0.3;
+        if (rr < 1) continue;
+        const rx = tl.x + rd.x * SCALE, rz = tl.y + rd.z * SCALE;
+        ctx.fillStyle = 'rgba(0,0,0,0.28)';
+        ctx.fillRect(rx - rr, rz - rr, rr * 2, rr * 2);
       }
     }
   }
@@ -1074,24 +1234,37 @@
   }
 
   function renderScene() {
-    ctx.fillStyle = skyColorCss;
-    ctx.fillRect(0, 0, viewW, viewH);
+    drawWater();
 
     const groundTL = toScreen(-WORLD_HALF_EXTENT, -WORLD_HALF_EXTENT);
     const groundBR = toScreen(WORLD_HALF_EXTENT, WORLD_HALF_EXTENT);
-    ctx.fillStyle = groundColorCss;
-    ctx.fillRect(groundTL.x, groundTL.y, groundBR.x - groundTL.x, groundBR.y - groundTL.y);
+    const gw = groundBR.x - groundTL.x, gh = groundBR.y - groundTL.y;
+    const coastR = Math.max(0, Math.min(16 * SCALE, gw / 2, gh / 2));
+    const shoreWidth = Math.max(4, 3 * SCALE);
+
+    // Sandiger Küstensaum: die Landfläche wird ringsum etwas kleiner als die
+    // Strandfläche gezeichnet, sodass überall ein gleichmäßiger "Strand"-
+    // Streifen am Rand stehen bleibt (nicht nur an den runden Ecken).
+    roundRectPath(groundTL.x, groundTL.y, gw, gh, coastR);
+    ctx.fillStyle = shoreColorCss;
+    ctx.fill();
 
     ctx.save();
-    ctx.beginPath();
-    ctx.rect(groundTL.x, groundTL.y, groundBR.x - groundTL.x, groundBR.y - groundTL.y);
+    roundRectPath(
+      groundTL.x + shoreWidth, groundTL.y + shoreWidth,
+      Math.max(0, gw - shoreWidth * 2), Math.max(0, gh - shoreWidth * 2),
+      Math.max(0, coastR - shoreWidth)
+    );
     ctx.clip();
+    ctx.fillStyle = groundColorCss;
+    ctx.fillRect(groundTL.x, groundTL.y, gw, gh);
+    drawTerrainPatch({ minX: -WORLD_HALF_EXTENT, maxX: WORLD_HALF_EXTENT, minZ: -WORLD_HALF_EXTENT, maxZ: WORLD_HALF_EXTENT });
     drawParks();
     drawStreetGrid();
     drawBuildings();
     if (1 - dayFactor > 0.02) {
       ctx.fillStyle = 'rgba(6,8,16,' + (0.55 * (1 - dayFactor)) + ')';
-      ctx.fillRect(groundTL.x, groundTL.y, groundBR.x - groundTL.x, groundBR.y - groundTL.y);
+      ctx.fillRect(groundTL.x, groundTL.y, gw, gh);
     }
     drawLamps();
     drawTrafficLights();
@@ -1380,6 +1553,7 @@
     cacheDom();
     dom['lobby-highscore'].textContent = String(loadHighscore());
     initCanvas();
+    generateTerrainTexture();
     buildWorld();
     wireLobby();
     wireInput();
