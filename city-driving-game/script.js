@@ -1,7 +1,8 @@
 /* ============================================================================
    HEAT STREETS — offene Stadt zum Fahren, mit NPCs & Fahndungsstufe
-   Reines Vanilla-JS + Three.js (r15x UMD-Build), keine externen Assets außer
-   dem vendored three.min.js. Läuft als Web-Seite und im Android-WebView-Wrapper.
+   Reines Vanilla-JS, 2D-Top-Down-Rendering direkt auf einem <canvas> (wie
+   die ersten beiden GTA-Teile) — bewusst KEINE 3D-Engine, keine externen
+   Assets. Läuft als Web-Seite und im Android-WebView-Wrapper.
 
    Vereinfachungen (bewusst, damit das Spiel in einem Zug baubar bleibt):
    - Kein Aussteigen aus dem Auto, kein Zufußgehen.
@@ -10,8 +11,9 @@
      sondern regeln nur Tempo über eine 1D-Abstandsregel entlang der Route.
    - Polizei verfolgt den Spieler direkt (kein Vorhalten/Interception).
    - Autos sind als Kollisionskreis modelliert, Gebäude/Weltgrenze als
-     achsenparallele Rechtecke — keine rotierten Boxen nötig, da das
-     komplette Stadtraster achsenparallel ist.
+     achsenparallele Rechtecke — die Kollisions-/Bewegungs-Mathematik läuft
+     nach wie vor in Weltkoordinaten (x,z); die Kamera ist einfach eine
+     feste Nordausrichtung, die dem Spieler folgt (kein Rotieren der Karte).
    ========================================================================== */
 (function () {
   'use strict';
@@ -20,7 +22,7 @@
      Konstanten: Stadtraster
      ------------------------------------------------------------------------ */
   const GRID_N = 7;                          // 7x7 Blocks
-  const LANE_WIDTH = 3.2;                    // wie racing-game
+  const LANE_WIDTH = 3.2;
   const STREET_WIDTH = LANE_WIDTH * 2;       // 2-spurig, beide Richtungen
   const BLOCK_SIZE = 34;                     // Block-Innenfläche (Gebäude + Gehweg)
   const GRID_PERIOD = BLOCK_SIZE + STREET_WIDTH;
@@ -31,7 +33,7 @@
   const BUILDING_MIN_H = 6;
   const BUILDING_MAX_H = 32;
   const PARK_BLOCK_CHANCE = 0.15;
-  const BUILDING_COLORS = [0x3a4550, 0x46525e, 0x39424c, 0x515c68, 0x2f3841, 0x445062];
+  const BUILDING_COLORS = [0x8a7d6b, 0x9c8f7a, 0x7d8a94, 0xa3907a, 0x6f7d89, 0x8f8574, 0x7a8a7d];
 
   /* ------------------------------------------------------------------------
      Konstanten: Auto-Physik (Spieler, Verkehr, Polizei teilen sich das Modell)
@@ -43,9 +45,6 @@
   const BRAKE_DECEL = 16;
   const DRAG = 3.5;
   const STEER_MAX_RATE = 2.0;
-  const CAMERA_HEIGHT = 4.2;
-  const CAMERA_BACK = 7.5;
-  const LOOKAHEAD = 14;
 
   /* ------------------------------------------------------------------------
      Konstanten: Fußgänger
@@ -57,6 +56,7 @@
   const FLEE_DURATION = 2.5;
   const MIN_HIT_SPEED = 2.5;
   const PED_RESPAWN_DELAY = 20;
+  const PED_DEATH_ANIM_TIME = 0.4;
 
   /* ------------------------------------------------------------------------
      Konstanten: Verkehr (Ambient-KI, feste Rechteck-Umläufe je Block)
@@ -112,15 +112,15 @@
   const NEAR_MISS_COOLDOWN = 3;
 
   /* ------------------------------------------------------------------------
-     Konstanten: Tag/Nacht-Zyklus
+     Konstanten: Tag/Nacht-Zyklus (Himmel-/Bodenfarbe, Straßenlaternen nachts)
      ------------------------------------------------------------------------ */
   const DAY_LENGTH = 220; // Sekunden pro vollem Tag/Nacht-Zyklus
-  const SKY_DAY = { r: 0x8f / 255, g: 0xc7 / 255, b: 0xe8 / 255 };
-  const SKY_NIGHT = { r: 0x06 / 255, g: 0x08 / 255, b: 0x12 / 255 };
-  const WINDOW_LIT = { r: 1, g: 0.85, b: 0.42 };
-  const WINDOW_DARK = { r: 0.14, g: 0.16, b: 0.2 };
+  const SKY_DAY = [0x8a, 0xb7, 0xd6];
+  const SKY_NIGHT = [0x07, 0x0a, 0x14];
+  const GROUND_DAY = [0xc9, 0xc2, 0xae];
+  const GROUND_NIGHT = [0x22, 0x24, 0x2a];
 
-  // Auto-Farbwahl in der Lobby — body/cabin für buildCarMesh().
+  // Auto-Farbwahl in der Lobby.
   const CAR_COLORS = [
     { body: 0xf2a93a, cabin: 0x2b1900 },
     { body: 0xe6544c, cabin: 0x2b0906 },
@@ -140,11 +140,6 @@
     if (d < -maxDelta) return v - maxDelta;
     return target;
   }
-  function lerpAngle(a, b, t) {
-    let diff = ((b - a + Math.PI) % (Math.PI * 2)) - Math.PI;
-    if (diff < -Math.PI) diff += Math.PI * 2;
-    return a + diff * t;
-  }
   function angleDiff(a, b) {
     let d = ((b - a + Math.PI) % (Math.PI * 2)) - Math.PI;
     if (d < -Math.PI) d += Math.PI * 2;
@@ -152,9 +147,13 @@
   }
   function dist2D(ax, az, bx, bz) { return Math.hypot(ax - bx, az - bz); }
   function pick(arr, rand) { return arr[Math.floor(rand() * arr.length) % arr.length]; }
+  function css(hex) { return '#' + hex.toString(16).padStart(6, '0'); }
+  function lerpRgb(a, b, t) {
+    return 'rgb(' + Math.round(lerp(a[0], b[0], t)) + ',' + Math.round(lerp(a[1], b[1], t)) + ',' + Math.round(lerp(a[2], b[2], t)) + ')';
+  }
 
-  // Deterministischer PRNG (mulberry32) — 1:1 aus adventure-game übernommen,
-  // damit die Stadt bei jedem Start identisch generiert wird.
+  // Deterministischer PRNG (mulberry32) — sorgt dafür, dass die Stadt bei
+  // jedem Start identisch generiert wird.
   function mulberry32(seed) {
     return function () {
       seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
@@ -166,11 +165,6 @@
   const worldRand = mulberry32(4242);
 
   // Kollisionshilfen (Auto = Kreis, Gebäude/Grenze = achsenparalleles Rechteck).
-  // pushOutRect drückt eine Kreis-Position aus einem Rechteck heraus, falls sie
-  // näher als r am Rechteck liegt — Closest-Point-Clamp-Idee, analog zu
-  // adventure-games distToSegment/pointInLocalBox, nur für Rechtecke statt
-  // Liniensegmente/rotierte Boxen (hier reicht achsenparallel, da das ganze
-  // Stadtraster nicht rotiert ist).
   function pushOutRect(pos, rect, r) {
     const insideX = pos.x > rect.minX && pos.x < rect.maxX;
     const insideZ = pos.z > rect.minZ && pos.z < rect.maxZ;
@@ -194,7 +188,6 @@
     pos.z += dz * push;
     return true;
   }
-  // Kreis-Kreis-Trennung — 1:1 die Idee von adventure-games pushOutCircle.
   function pushOutCircle(pos, center, minD) {
     const dx = pos.x - center.x, dz = pos.z - center.z;
     const d = Math.hypot(dx, dz) || 0.0001;
@@ -213,7 +206,7 @@
   }
 
   /* ------------------------------------------------------------------------
-     Highscore (localStorage) — gleiches Muster wie racing-game
+     Highscore (localStorage)
      ------------------------------------------------------------------------ */
   function loadHighscore() { return Number(localStorage.getItem(HIGHSCORE_KEY) || 0); }
   function saveHighscoreIfBetter(value) {
@@ -223,8 +216,7 @@
   }
 
   /* ------------------------------------------------------------------------
-     Prozedurales WebAudio (keine Audio-Dateien) — Primitive nach adventure-
-     games SFX-Objekt-Muster
+     Prozedurales WebAudio (keine Audio-Dateien)
      ------------------------------------------------------------------------ */
   const SFX = {
     ctx: null, masterGain: null, volume: 0.6,
@@ -270,7 +262,6 @@
     },
     crash() { this._noise(0.35, 0.5); this._tone(120, 0.25, 'sawtooth', 0.25, 60); },
     hit() { this._noise(0.15, 0.35); this._tone(300, 0.12, 'square', 0.2, 140); },
-    siren() { this._tone(700, 0.18, 'sine', 0.08, 1000); },
     heatUp() { this._tone(220, 0.18, 'sawtooth', 0.22, 440); },
     heatDown() { this._tone(440, 0.18, 'sine', 0.15, 220); },
     busted() { this._tone(300, 0.5, 'sawtooth', 0.25, 60); },
@@ -297,68 +288,54 @@
   }
 
   /* ------------------------------------------------------------------------
-     Three.js Grundgerüst
+     2D-Canvas-Grundgerüst (kein WebGL, reines CanvasRenderingContext2D)
      ------------------------------------------------------------------------ */
-  let renderer, scene, camera;
-  let hemiLight, sunLight;
+  let ctx = null;
+  let viewW = 0, viewH = 0;
+  let SCALE = 16; // Pixel pro Meter, an die Bildschirmbreite angepasst
 
-  function initThree() {
-    renderer = new THREE.WebGLRenderer({ canvas: dom.stage, antialias: true, powerPreference: 'high-performance' });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    if ('outputColorSpace' in renderer) renderer.outputColorSpace = THREE.SRGBColorSpace;
-    scene = new THREE.Scene();
-    scene.fog = new THREE.Fog(0x0d1119, 70, 240);
-    scene.background = new THREE.Color(0x0d1119);
-    camera = new THREE.PerspectiveCamera(64, window.innerWidth / window.innerHeight, 0.1, 400);
-
-    hemiLight = new THREE.HemisphereLight(0x8fa8c9, 0x1a1f26, 1.0);
-    scene.add(hemiLight);
-    sunLight = new THREE.DirectionalLight(0xfff3d8, 0.9);
-    sunLight.position.set(60, 90, 40);
-    scene.add(sunLight);
-
+  function initCanvas() {
+    ctx = dom.stage.getContext('2d');
     window.addEventListener('resize', onResize);
     onResize();
   }
   function onResize() {
-    const w = window.innerWidth, h = window.innerHeight;
-    renderer.setSize(w, h);
-    camera.aspect = w / h;
-    camera.updateProjectionMatrix();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    viewW = window.innerWidth;
+    viewH = window.innerHeight;
+    dom.stage.width = Math.round(viewW * dpr);
+    dom.stage.height = Math.round(viewH * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    SCALE = clamp(viewW / 46, 11, 22);
+  }
+
+  // Zeichenpfad für ein abgerundetes Rechteck (kein ctx.roundRect() genutzt,
+  // damit es auch auf älteren Android-WebViews sicher funktioniert).
+  function roundRectPath(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
   }
 
   /* ------------------------------------------------------------------------
-     Fahrbahntextur — Idee aus racing-games buildRoadTexture(), als
-     wiederholbare Textur für die Straßen-Streifen des Stadtrasters statt für
-     eine einzelne Endlos-Spur.
-     ------------------------------------------------------------------------ */
-  function buildRoadTexture() {
-    const canvas = document.createElement('canvas');
-    canvas.width = 64; canvas.height = 64;
-    const g = canvas.getContext('2d');
-    g.fillStyle = '#2a2f36';
-    g.fillRect(0, 0, 64, 64);
-    g.fillStyle = '#e7c25a';
-    g.fillRect(28, 4, 8, 24);
-    g.fillRect(28, 36, 8, 24);
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.wrapS = THREE.RepeatWrapping;
-    tex.wrapT = THREE.RepeatWrapping;
-    return tex;
-  }
-
-  /* ------------------------------------------------------------------------
-     Stadt-Welt: deterministisch aus worldRand() aufgebaut.
-     Straßen sind einfach die Rasterlinien alle GRID_PERIOD Einheiten; jeder
-     Block zwischen ihnen ist entweder Park (begehbar, keine Kollision) oder
-     Gebäude (Box-Mesh, um SIDEWALK_WIDTH von den Blockkanten eingerückt).
-     Der verbleibende Ring dazwischen ist der Gehweg (Fußgänger-Wegpunkte).
+     Stadt-Welt: deterministisch aus worldRand() aufgebaut. Straßen sind die
+     Rasterlinien alle GRID_PERIOD Einheiten; jeder Block dazwischen ist
+     entweder Park (begehbar, keine Kollision) oder Gebäude (Rechteck, um
+     SIDEWALK_WIDTH von den Blockkanten eingerückt). Der verbleibende Ring
+     ist der Gehweg (Fußgänger-Wegpunkte). Es entstehen nur reine Daten,
+     keine Meshes — das 2D-Rendering zeichnet daraus jeden Frame neu.
      ------------------------------------------------------------------------ */
   const world = {
-    buildingRects: [],
-    blockLoops: [],      // { rect, dir } — ein Rechteck-Umlauf pro Block, für Verkehr
-    pedWaypointLoops: [], // Array von Punktlisten (im Uhrzeigersinn) je Block
+    buildingRects: [],   // flache Liste für Kollisionschecks
+    buildings: [],       // { rect, color, height } fürs Zeichnen
+    parks: [],           // { rect, trees: [{x,z}] }
+    lamps: [],           // { x, z } Straßenlaternen, leuchten nachts
+    blockLoops: [],      // ein Rechteck-Umlauf pro Block, für Verkehr
+    pedWaypointLoops: [], // Punktlisten (im Uhrzeigersinn) je Block
   };
 
   function blockRange(i) {
@@ -376,64 +353,23 @@
   }
 
   function buildWorld() {
-    const group = new THREE.Group();
-
-    // Basis-Boden (Gehweg/Erde-Farbton), deckt die ganze Welt ab.
-    const groundGeo = new THREE.PlaneGeometry((WORLD_HALF_EXTENT + 10) * 2, (WORLD_HALF_EXTENT + 10) * 2);
-    const groundMat = new THREE.MeshLambertMaterial({ color: 0x333c47 });
-    const ground = new THREE.Mesh(groundGeo, groundMat);
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.y = 0;
-    group.add(ground);
-
-    const roadTex = buildRoadTexture();
-
-    // Straßen-Streifen: GRID_N+1 Linien in jede Richtung.
-    const streetLen = GRID_N * GRID_PERIOD + WORLD_MARGIN;
-    for (let k = 0; k <= GRID_N; k++) {
-      const centerX = -GRID_HALF + k * GRID_PERIOD;
-      const texV = roadTex.clone();
-      texV.wrapS = THREE.RepeatWrapping; texV.wrapT = THREE.RepeatWrapping;
-      texV.repeat.set(1, streetLen / 8);
-      const stripV = new THREE.Mesh(
-        new THREE.PlaneGeometry(STREET_WIDTH, streetLen),
-        new THREE.MeshLambertMaterial({ map: texV })
-      );
-      stripV.rotation.x = -Math.PI / 2;
-      stripV.position.set(centerX, 0.01, 0);
-      group.add(stripV);
-
-      const centerZ = centerX;
-      const texH = roadTex.clone();
-      texH.wrapS = THREE.RepeatWrapping; texH.wrapT = THREE.RepeatWrapping;
-      texH.repeat.set(1, streetLen / 8);
-      const stripH = new THREE.Mesh(
-        new THREE.PlaneGeometry(STREET_WIDTH, streetLen),
-        new THREE.MeshLambertMaterial({ map: texH })
-      );
-      stripH.rotation.x = -Math.PI / 2;
-      stripH.rotation.z = Math.PI / 2;
-      stripH.position.set(0, 0.012, centerZ);
-      group.add(stripH);
-    }
-
-    // Blocks: Park oder Gebäude, plus Gehweg-Wegpunktschleife und
-    // Verkehrs-Umlauf (Straßenmitte rund um den Block).
     for (let i = 0; i < GRID_N; i++) {
       const bx = blockRange(i);
       for (let j = 0; j < GRID_N; j++) {
         const bz = blockRange(j);
-        const blockRect = { minX: bx.min, maxX: bx.max, minZ: bz.min, maxZ: bz.max };
 
         const isPark = worldRand() < PARK_BLOCK_CHANCE;
         if (isPark) {
-          const parkPlane = new THREE.Mesh(
-            new THREE.PlaneGeometry(BLOCK_SIZE, BLOCK_SIZE),
-            new THREE.MeshLambertMaterial({ color: 0x3f6b3a })
-          );
-          parkPlane.rotation.x = -Math.PI / 2;
-          parkPlane.position.set(bx.center, 0.008, bz.center);
-          group.add(parkPlane);
+          const rect = { minX: bx.min, maxX: bx.max, minZ: bz.min, maxZ: bz.max };
+          const trees = [];
+          const treeCount = 3 + Math.floor(worldRand() * 4);
+          for (let t = 0; t < treeCount; t++) {
+            trees.push({
+              x: lerp(rect.minX + 2, rect.maxX - 2, worldRand()),
+              z: lerp(rect.minZ + 2, rect.maxZ - 2, worldRand()),
+            });
+          }
+          world.parks.push({ rect, trees });
         } else {
           const insetMin = { x: bx.min + SIDEWALK_WIDTH, z: bz.min + SIDEWALK_WIDTH };
           const insetMax = { x: bx.max - SIDEWALK_WIDTH, z: bz.max - SIDEWALK_WIDTH };
@@ -448,38 +384,21 @@
           };
           const height = lerp(BUILDING_MIN_H, BUILDING_MAX_H, worldRand());
           const color = pick(BUILDING_COLORS, worldRand);
-          const mesh = new THREE.Mesh(
-            new THREE.BoxGeometry(rect.maxX - rect.minX, height, rect.maxZ - rect.minZ),
-            new THREE.MeshLambertMaterial({ color })
-          );
-          mesh.position.set((rect.minX + rect.maxX) / 2, height / 2, (rect.minZ + rect.maxZ) / 2);
-          group.add(mesh);
           world.buildingRects.push(rect);
-
-          // Ein paar Fenster auf der Straßenseite, die nachts hell werden
-          // (einfache MeshBasicMaterial-Planes, deren Farbe updateDayNight()
-          // jeden Frame zwischen dunkel und warmgelb überblendet).
-          const winCount = 2 + Math.floor(worldRand() * 3);
-          for (let w = 0; w < winCount; w++) {
-            const winY = 2 + worldRand() * Math.max(1, height - 4);
-            const winX = lerp(rect.minX + 0.6, rect.maxX - 0.6, worldRand());
-            const win = new THREE.Mesh(
-              new THREE.PlaneGeometry(0.7, 0.9),
-              new THREE.MeshBasicMaterial({ color: 0x24272e })
-            );
-            win.position.set(winX, winY, rect.minZ + 0.01);
-            group.add(win);
-            windowMeshes.push(win);
-          }
+          world.buildings.push({ rect, color, height });
         }
 
-        // Gehweg-Wegpunktschleife: Ring knapp innerhalb der Blockkante, in der
-        // Mitte des Gehweg-Streifens (unabhängig davon ob Park oder Gebäude).
+        // Gehweg-Wegpunktschleife: Ring knapp innerhalb der Blockkante.
         const wpRect = {
           minX: bx.min + SIDEWALK_WIDTH / 2, maxX: bx.max - SIDEWALK_WIDTH / 2,
           minZ: bz.min + SIDEWALK_WIDTH / 2, maxZ: bz.max - SIDEWALK_WIDTH / 2,
         };
-        world.pedWaypointLoops.push(rectPerimeterPoints(wpRect));
+        const loopPoints = rectPerimeterPoints(wpRect);
+        world.pedWaypointLoops.push(loopPoints);
+        // Zwei Straßenlaternen pro Block (gegenüberliegende Ecken), leuchten
+        // nachts — ersetzt in der 2D-Draufsicht die früheren "Fenster", weil
+        // man von oben ohnehin nur Dächer sieht, keine Fassaden.
+        world.lamps.push(loopPoints[0], loopPoints[2]);
 
         // Verkehrs-Umlauf: Straßenmitte rund um diesen Block.
         const loopRect = {
@@ -492,102 +411,26 @@
 
     // Münzen: entlang der Straßen-Umläufe verstreut, damit jede beim
     // normalen Fahren erreichbar ist (kein Abstecher von der Fahrbahn nötig).
-    const coinMat = new THREE.MeshBasicMaterial({ color: 0xffd75e });
     for (let i = 0; i < COIN_COUNT; i++) {
       const loopRect = world.blockLoops[Math.floor(worldRand() * world.blockLoops.length)];
       const per = 2 * ((loopRect.maxX - loopRect.minX) + (loopRect.maxZ - loopRect.minZ));
       const p = pointOnLoop(loopRect, worldRand() * per);
-      const mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.12, 16), coinMat);
-      mesh.rotation.z = Math.PI / 2;
-      mesh.position.set(p.x, 0.6, p.z);
-      group.add(mesh);
-      coins.push({ pos: { x: p.x, z: p.z }, mesh, collected: false });
+      coins.push({ pos: { x: p.x, z: p.z }, collected: false });
     }
 
-    // Ampeln an jeder Straßenkreuzung — rein dekorativ (kein Kollisionskörper,
-    // der Verkehr hält sich nicht an sie, siehe updateTrafficLights()).
-    const poleMat = new THREE.MeshLambertMaterial({ color: 0x2a2f36 });
+    // Ampeln an jeder Straßenkreuzung — rein dekorativ, der Verkehr hält
+    // sich (wie beim ganzen Ambient-Verkehr) nicht an sie.
     for (let k = 0; k <= GRID_N; k++) {
       for (let j = 0; j <= GRID_N; j++) {
         const ix = -GRID_HALF + k * GRID_PERIOD, iz = -GRID_HALF + j * GRID_PERIOD;
         const offset = STREET_WIDTH / 2 + 0.6;
-        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 3.4, 6), poleMat);
-        pole.position.set(ix + offset, 1.7, iz + offset);
-        group.add(pole);
-        const lamp = new THREE.Mesh(
-          new THREE.BoxGeometry(0.22, 0.22, 0.22),
-          new THREE.MeshBasicMaterial({ color: 0x3ecb6a })
-        );
-        lamp.position.set(ix + offset, 3.5, iz + offset);
-        group.add(lamp);
-        trafficLights.push({ lamp, phase: worldRand() * TRAFFIC_LIGHT_CYCLE });
+        trafficLights.push({ x: ix + offset, z: iz + offset, phase: worldRand() * TRAFFIC_LIGHT_CYCLE });
       }
     }
-
-    // Weltgrenze: Reihe aus Betonpollern.
-    const barrierMat = new THREE.MeshLambertMaterial({ color: 0x8a8f96 });
-    const barrierCount = 90;
-    for (let i = 0; i < barrierCount; i++) {
-      const t = (i / barrierCount) * Math.PI * 2;
-      // Auf ein Rechteck statt Kreis projizieren, damit die Poller entlang
-      // der quadratischen Weltgrenze liegen statt auf einem Kreisbogen.
-      const cosT = Math.cos(t), sinT = Math.sin(t);
-      const scale = WORLD_HALF_EXTENT / Math.max(Math.abs(cosT), Math.abs(sinT) || 0.0001);
-      const px = cosT * scale, pz = sinT * scale;
-      const barrier = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.4, 1.6), barrierMat);
-      barrier.position.set(px, 0.7, pz);
-      group.add(barrier);
-    }
-
-    scene.add(group);
   }
 
   /* ------------------------------------------------------------------------
-     Auto-Mesh — 1:1 aus racing-games buildCarMesh() übernommen (Body-Box +
-     Kabine-Box + 4 Zylinder-Räder); Polizeiautos bekommen zusätzlich einen
-     Dachbalken, der abwechselnd rot/blau blinkt.
-     ------------------------------------------------------------------------ */
-  function buildCarMesh(bodyColor, cabinColor, withLightBar) {
-    const group = new THREE.Group();
-    const wheelRadius = 0.34;
-
-    const body = new THREE.Mesh(
-      new THREE.BoxGeometry(1.7, 0.5, 3.3),
-      new THREE.MeshLambertMaterial({ color: bodyColor })
-    );
-    body.position.y = wheelRadius + 0.25;
-    group.add(body);
-
-    const cabin = new THREE.Mesh(
-      new THREE.BoxGeometry(1.2, 0.45, 1.6),
-      new THREE.MeshLambertMaterial({ color: cabinColor })
-    );
-    cabin.position.set(0, wheelRadius + 0.725, -0.2);
-    group.add(cabin);
-
-    const wheelGeo = new THREE.CylinderGeometry(wheelRadius, wheelRadius, 0.32, 14);
-    const wheelMat = new THREE.MeshLambertMaterial({ color: 0x101214 });
-    [[-0.85, 1.15], [0.85, 1.15], [-0.85, -1.15], [0.85, -1.15]].forEach(([x, z]) => {
-      const wheel = new THREE.Mesh(wheelGeo, wheelMat);
-      wheel.rotation.z = Math.PI / 2;
-      wheel.position.set(x, wheelRadius, z);
-      group.add(wheel);
-    });
-
-    let lightBar = null;
-    if (withLightBar) {
-      const barMat = new THREE.MeshBasicMaterial({ color: 0xff3b3b });
-      lightBar = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.16, 0.3), barMat);
-      lightBar.position.set(0, wheelRadius + 1.02, -0.2);
-      group.add(lightBar);
-    }
-
-    return { group, lightBar };
-  }
-
-  /* ------------------------------------------------------------------------
-     Auto-Physik — gemeinsamer Integrator für Spieler & Polizei (freie
-     Position/Heading/Speed statt racing-games Spur-Snap).
+     Auto-Physik — gemeinsamer Integrator für Spieler & Polizei.
      ------------------------------------------------------------------------ */
   function integrateCarPhysics(car, throttle, brake, steerInput, dt) {
     if (brake) {
@@ -609,9 +452,6 @@
     car.pos.z += fz * car.speed * dt;
   }
 
-  // Gebäude- und Weltgrenzen-Kollision für ein frei bewegliches Auto
-  // (Spieler oder Polizei). Gibt true zurück, falls ein Aufprall passiert ist,
-  // damit der Aufrufer Schaden/Tempo-Dämpfung anwenden kann.
   function resolveWorldCollisions(car) {
     let hit = false;
     for (let i = 0; i < world.buildingRects.length; i++) {
@@ -625,6 +465,19 @@
     return { pos: { x, z }, heading, speed: 0, maxSpeed: MAX_SPEED_FORWARD };
   }
 
+  function pointOnLoop(rect, p) {
+    const w = rect.maxX - rect.minX, h = rect.maxZ - rect.minZ;
+    const per = 2 * (w + h);
+    p = ((p % per) + per) % per;
+    if (p < w) return { x: rect.minX + p, z: rect.minZ };
+    p -= w;
+    if (p < h) return { x: rect.maxX, z: rect.minZ + p };
+    p -= h;
+    if (p < w) return { x: rect.maxX - p, z: rect.maxZ };
+    p -= w;
+    return { x: rect.minX, z: rect.maxZ - p };
+  }
+
   /* ------------------------------------------------------------------------
      Globaler Spielzustand
      ------------------------------------------------------------------------ */
@@ -634,14 +487,12 @@
   ];
   const POLICE_BODY = 0x1c2b44, POLICE_CABIN = 0x0d1420;
 
-  let player = null;       // { pos, heading, speed, maxSpeed, health, mesh, lastDamageSource, hitCooldown }
+  let player = null;       // { pos, heading, speed, maxSpeed, health, colorIndex, hitCooldown, lastDamageSource }
   let pedestrians = [];
   let trafficCars = [];
   let policeCars = [];
   let particles = [];
-  let tweens = [];
   let coins = [];
-  let windowMeshes = [];
   let trafficLights = [];
 
   let wantedHeat = 0;
@@ -656,9 +507,11 @@
   let firstWantedShown = false;
   let nextDistanceMilestone = 1000;
   let dayTime = DAY_LENGTH * 0.05; // Start am helllichten Vormittag
+  let dayFactor = 1;
   let gameTime = 0;
   let density = DENSITY_PRESETS.normal;
   let selectedCarColorIndex = 0;
+  let selectedDensity = 'normal';
   let running = false;
   let ended = false;
 
@@ -672,56 +525,26 @@
     });
   }
 
-  // Kleiner Partikel-Burst (einfache Boxen mit Schwerkraft/Fade) für
-  // Treffer/Crashes — bewusst minimal gehalten, kein Pooling nötig bei den
-  // hier vorkommenden Stückzahlen.
-  function spawnParticles(pos, color, count) {
+  // Kleiner 2D-Partikel-Burst (Punkte, die auseinanderfliegen und
+  // ausblenden) für Treffer/Crashes — bewusst minimal gehalten.
+  function spawnParticles(x, z, color, count) {
     for (let i = 0; i < count; i++) {
-      const mesh = new THREE.Mesh(
-        new THREE.BoxGeometry(0.12, 0.12, 0.12),
-        new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 1 })
-      );
       const ang = Math.random() * Math.PI * 2;
-      const spd = 2 + Math.random() * 3;
-      mesh.position.set(pos.x, 0.6, pos.z);
-      scene.add(mesh);
+      const spd = 2.5 + Math.random() * 4;
       particles.push({
-        mesh,
-        vel: { x: Math.cos(ang) * spd, y: 2 + Math.random() * 2.5, z: Math.sin(ang) * spd },
-        life: 0.6 + Math.random() * 0.4,
-        maxLife: 1,
+        x, z, color,
+        vx: Math.cos(ang) * spd, vz: Math.sin(ang) * spd,
+        life: 0.5 + Math.random() * 0.35, maxLife: 0.85,
       });
     }
   }
   function updateParticles(dt) {
     for (let i = particles.length - 1; i >= 0; i--) {
       const p = particles[i];
-      p.vel.y -= 9 * dt;
-      p.mesh.position.x += p.vel.x * dt;
-      p.mesh.position.y += p.vel.y * dt;
-      p.mesh.position.z += p.vel.z * dt;
+      p.x += p.vx * dt; p.z += p.vz * dt;
+      p.vx *= (1 - 2.5 * dt); p.vz *= (1 - 2.5 * dt);
       p.life -= dt;
-      p.mesh.material.opacity = clamp01(p.life / p.maxLife);
-      if (p.life <= 0 || p.mesh.position.y < 0) {
-        scene.remove(p.mesh);
-        p.mesh.geometry.dispose(); p.mesh.material.dispose();
-        particles.splice(i, 1);
-      }
-    }
-  }
-  function addTween(target, duration, onUpdate, onComplete) {
-    tweens.push({ target, t: 0, duration, onUpdate, onComplete });
-  }
-  function updateTweens(dt) {
-    for (let i = tweens.length - 1; i >= 0; i--) {
-      const tw = tweens[i];
-      tw.t += dt;
-      const p = clamp01(tw.t / tw.duration);
-      tw.onUpdate(p);
-      if (p >= 1) {
-        if (tw.onComplete) tw.onComplete();
-        tweens.splice(i, 1);
-      }
+      if (p.life <= 0) particles.splice(i, 1);
     }
   }
 
@@ -733,29 +556,22 @@
     const loop = world.pedWaypointLoops[loopIndex];
     const nodeIndex = Math.floor(worldRand() * loop.length);
     const start = loop[nodeIndex];
-    const hue = Math.floor(worldRand() * 360);
-    const color = new THREE.Color('hsl(' + hue + ', 45%, 55%)');
-    const group = new THREE.Group();
-    const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.26, 0.9, 8), new THREE.MeshLambertMaterial({ color }));
-    torso.position.y = 0.65;
-    group.add(torso);
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), new THREE.MeshLambertMaterial({ color: 0xe8c39e }));
-    head.position.y = 1.22;
-    group.add(head);
-    group.position.set(start.x, 0, start.z);
-    scene.add(group);
     const ped = {
-      mesh: group, loopIndex, nodeIndex,
+      loopIndex, nodeIndex,
       dir: worldRand() < 0.5 ? 1 : -1,
       pos: { x: start.x, z: start.z },
+      heading: 0,
+      hue: Math.floor(worldRand() * 360),
       state: 'wander', fleeTimer: 0, fleeDir: { x: 0, z: 1 },
-      alive: true, respawnAt: 0,
+      alive: true, respawnAt: 0, deathT: 0,
+      lastNearMissAt: -99,
     };
     pedestrians.push(ped);
     return ped;
   }
   function updatePedestrian(ped, dt) {
     if (!ped.alive) {
+      ped.deathT = Math.min(1, ped.deathT + dt / PED_DEATH_ANIM_TIME);
       if (gameTime >= ped.respawnAt) {
         const loopIndex = Math.floor(worldRand() * world.pedWaypointLoops.length);
         const loop = world.pedWaypointLoops[loopIndex];
@@ -763,11 +579,7 @@
         const start = loop[nodeIndex];
         ped.loopIndex = loopIndex; ped.nodeIndex = nodeIndex;
         ped.pos.x = start.x; ped.pos.z = start.z;
-        ped.mesh.position.set(start.x, 0, start.z);
-        ped.mesh.rotation.set(0, 0, 0);
-        ped.mesh.scale.set(1, 1, 1);
-        ped.mesh.visible = true;
-        ped.state = 'wander'; ped.alive = true;
+        ped.state = 'wander'; ped.alive = true; ped.deathT = 0;
       }
       return;
     }
@@ -783,6 +595,7 @@
       ped.fleeTimer -= dt;
       ped.pos.x += ped.fleeDir.x * PED_FLEE_SPEED * dt;
       ped.pos.z += ped.fleeDir.z * PED_FLEE_SPEED * dt;
+      ped.heading = Math.atan2(ped.fleeDir.x, ped.fleeDir.z);
       if (ped.fleeTimer <= 0) ped.state = 'wander';
     } else {
       const loop = world.pedWaypointLoops[ped.loopIndex];
@@ -795,55 +608,33 @@
       } else {
         ped.pos.x += (dx / d) * PED_WALK_SPEED * dt;
         ped.pos.z += (dz / d) * PED_WALK_SPEED * dt;
+        ped.heading = Math.atan2(dx / d, dz / d);
       }
-    }
-    ped.mesh.position.set(ped.pos.x, Math.sin(gameTime * 6 + ped.pos.x) * 0.03, ped.pos.z);
-    if (distToPlayer < MIN_HIT_SPEED + 4) {
-      ped.mesh.lookAt(player.pos.x, 0, player.pos.z);
     }
   }
   function killPedestrian(ped) {
     ped.alive = false;
+    ped.deathT = 0;
     ped.respawnAt = gameTime + PED_RESPAWN_DELAY;
-    spawnParticles(ped.pos, 0xe6544c, 8);
+    spawnParticles(ped.pos.x, ped.pos.z, '#e6544c', 8);
     SFX.hit();
-    const startY = ped.mesh.position.y;
-    addTween(ped, 0.4, (p) => {
-      ped.mesh.rotation.x = p * Math.PI * 0.5;
-      ped.mesh.position.y = startY - p * 0.6;
-      ped.mesh.scale.setScalar(1 - p * 0.7);
-    }, () => { ped.mesh.visible = false; });
   }
 
   /* ------------------------------------------------------------------------
      Verkehr (Ambient-KI: fester Rechteck-Umlauf je Block)
      ------------------------------------------------------------------------ */
-  function pointOnLoop(rect, p) {
-    const w = rect.maxX - rect.minX, h = rect.maxZ - rect.minZ;
-    const per = 2 * (w + h);
-    p = ((p % per) + per) % per;
-    if (p < w) return { x: rect.minX + p, z: rect.minZ };
-    p -= w;
-    if (p < h) return { x: rect.maxX, z: rect.minZ + p };
-    p -= h;
-    if (p < w) return { x: rect.maxX - p, z: rect.maxZ };
-    p -= w;
-    return { x: rect.minX, z: rect.maxZ - p };
-  }
   function spawnTrafficCar() {
     const loopIndex = Math.floor(worldRand() * world.blockLoops.length);
     const rect = world.blockLoops[loopIndex];
     const per = 2 * ((rect.maxX - rect.minX) + (rect.maxZ - rect.minZ));
-    const [bodyColor, cabinColor] = pick(TRAFFIC_COLORS, worldRand);
-    const { group } = buildCarMesh(bodyColor, cabinColor, false);
-    scene.add(group);
+    const colors = pick(TRAFFIC_COLORS, worldRand);
     const car = {
       loopIndex, dir: worldRand() < 0.5 ? 1 : -1,
       progress: worldRand() * per,
       cruiseSpeed: lerp(TRAFFIC_SPEED_MIN, TRAFFIC_SPEED_MAX, worldRand()),
       speed: 0,
       pos: { x: 0, z: 0 }, heading: 0,
-      mesh: group,
+      bodyColor: colors[0], cabinColor: colors[1],
     };
     const p0 = pointOnLoop(rect, car.progress);
     car.pos.x = p0.x; car.pos.z = p0.z;
@@ -870,8 +661,6 @@
     const ahead = pointOnLoop(rect, car.progress + car.dir * 0.6);
     car.pos.x = pos.x; car.pos.z = pos.z;
     car.heading = Math.atan2(ahead.x - pos.x, ahead.z - pos.z);
-    car.mesh.position.set(car.pos.x, 0, car.pos.z);
-    car.mesh.rotation.y = car.heading;
   }
 
   /* ------------------------------------------------------------------------
@@ -884,13 +673,9 @@
     const z = clamp(player.pos.z + Math.cos(ang) * d, -WORLD_HALF_EXTENT + 5, WORLD_HALF_EXTENT - 5);
     const state = createCarState(x, z, ang);
     state.maxSpeed = POLICE_MAX_SPEED;
-    const { group, lightBar } = buildCarMesh(POLICE_BODY, POLICE_CABIN, true);
-    group.position.set(x, 0, z);
-    scene.add(group);
-    policeCars.push(Object.assign(state, { mesh: group, lightBar, stuckTimer: 0, lastCheckPos: { x, z } }));
+    policeCars.push(Object.assign(state, { stuckTimer: 0, lastCheckPos: { x, z } }));
   }
   function despawnPoliceCar(p) {
-    scene.remove(p.mesh);
     const idx = policeCars.indexOf(p);
     if (idx !== -1) policeCars.splice(idx, 1);
   }
@@ -900,11 +685,6 @@
     integrateCarPhysics(p, true, false, steer, dt);
     const hit = resolveWorldCollisions(p);
     if (hit) p.speed *= 0.5;
-    p.mesh.position.set(p.pos.x, 0, p.pos.z);
-    p.mesh.rotation.y = p.heading;
-    if (p.lightBar) {
-      p.lightBar.material.color.setHex(Math.floor(gameTime / 0.3) % 2 === 0 ? 0xff3b3b : 0x3b6bff);
-    }
     p.stuckTimer += dt;
     if (p.stuckTimer > POLICE_STUCK_TIME) {
       const moved = dist2D(p.pos.x, p.pos.z, p.lastCheckPos.x, p.lastCheckPos.z);
@@ -991,17 +771,17 @@
       }
     }
   }
-  function checkPlayerVsTraffic(dt) {
+  function checkPlayerVsTraffic() {
     for (let i = 0; i < trafficCars.length; i++) {
       const car = trafficCars[i];
       const minD = CAR_RADIUS * 2;
       if (dist2D(player.pos.x, player.pos.z, car.pos.x, car.pos.z) < minD) {
         if (player.hitCooldown <= 0) {
           const impact = Math.abs(player.speed - car.speed);
-          applyDamage(impact * 1.5, 'traffic');
+          applyDamage(Math.max(2, impact * 1.5), 'traffic');
           registerVehicleHit();
           SFX.crash();
-          spawnParticles(player.pos, 0xffcf7a, 10);
+          spawnParticles(player.pos.x, player.pos.z, '#ffcf7a', 10);
           player.speed *= 0.35;
           player.hitCooldown = 0.5;
         }
@@ -1020,7 +800,7 @@
           registerVehicleHit();
           if (wantedHeat >= 1) addHeat(POLICE_HIT_HEAT);
           SFX.crash();
-          spawnParticles(player.pos, 0x4c9fe6, 10);
+          spawnParticles(player.pos.x, player.pos.z, '#4c9fe6', 10);
           player.speed *= 0.35;
           player.hitCooldown = 0.5;
         }
@@ -1032,18 +812,16 @@
   /* ------------------------------------------------------------------------
      Münzen einsammeln
      ------------------------------------------------------------------------ */
-  function updateCoins(dt) {
+  function updateCoins() {
     for (let i = 0; i < coins.length; i++) {
       const c = coins[i];
       if (c.collected) continue;
-      c.mesh.rotation.y += dt * 3;
       if (dist2D(player.pos.x, player.pos.z, c.pos.x, c.pos.z) < CAR_RADIUS + COIN_PICKUP_RADIUS) {
         c.collected = true;
-        c.mesh.visible = false;
         coinsCollected++;
         bonusScore += COIN_SCORE;
         SFX.coin();
-        spawnParticles(c.pos, 0xffd75e, 6);
+        spawnParticles(c.pos.x, c.pos.z, '#ffd75e', 6);
         if (!allCoinsBonusGiven && coinsCollected === coins.length) {
           allCoinsBonusGiven = true;
           bonusScore += ALL_COINS_BONUS;
@@ -1060,21 +838,9 @@
     dom['damage-flash'].style.opacity = String(low * (0.35 + 0.25 * Math.abs(Math.sin(gameTime * 5))));
   }
 
-  // Ampeln an Straßenkreuzungen — rein dekorativ, der Verkehr hält sich
-  // (wie beim ganzen Ambient-Verkehr) nicht an sie.
-  function updateTrafficLights() {
-    for (let i = 0; i < trafficLights.length; i++) {
-      const tl = trafficLights[i];
-      const cycle = (gameTime + tl.phase) % TRAFFIC_LIGHT_CYCLE;
-      const green = cycle < TRAFFIC_LIGHT_GREEN;
-      tl.lamp.material.color.setHex(green ? 0x3ecb6a : 0xe6544c);
-    }
-  }
-
   /* ------------------------------------------------------------------------
      Beinahe-Unfall-Bonus: knapp und schnell an einem Fußgänger vorbei, ohne
-     ihn zu treffen — pro Fußgänger mit Cooldown, damit ein längeres
-     Nebeneinanderherfahren nicht mehrfach zählt.
+     ihn zu treffen — pro Fußgänger mit Cooldown.
      ------------------------------------------------------------------------ */
   function checkNearMisses() {
     if (Math.abs(player.speed) < NEAR_MISS_MIN_SPEED) return;
@@ -1082,7 +848,7 @@
       const ped = pedestrians[i];
       if (!ped.alive) continue;
       const d = dist2D(player.pos.x, player.pos.z, ped.pos.x, ped.pos.z);
-      if (d >= NEAR_MISS_MIN_GAP && d < NEAR_MISS_MAX_GAP && (gameTime - (ped.lastNearMissAt || -99)) > NEAR_MISS_COOLDOWN) {
+      if (d >= NEAR_MISS_MIN_GAP && d < NEAR_MISS_MAX_GAP && (gameTime - ped.lastNearMissAt) > NEAR_MISS_COOLDOWN) {
         ped.lastNearMissAt = gameTime;
         bonusScore += NEAR_MISS_SCORE;
         toast('Knapp vorbei! +' + NEAR_MISS_SCORE, 'good');
@@ -1092,51 +858,285 @@
   }
 
   /* ------------------------------------------------------------------------
-     Tag/Nacht-Zyklus: Himmel-/Nebelfarbe und Lichtintensität überblenden,
-     Gebäudefenster nachts hell einfärben.
+     Tag/Nacht-Zyklus: reine Zahlenwerte (Himmel-/Boden-Farbmischung,
+     Laternen-Helligkeit), die renderScene() beim Zeichnen liest.
      ------------------------------------------------------------------------ */
-  let dayFactor = 1;
+  let skyColorCss = '#8ab7d6';
+  let groundColorCss = '#c9c2ae';
+  let lampGlowAlpha = 0;
   function updateDayNight(dt) {
     dayTime = (dayTime + dt) % DAY_LENGTH;
     const t = dayTime / DAY_LENGTH;
     dayFactor = (Math.cos(t * Math.PI * 2) + 1) / 2; // 1 = Mittag, 0 = Mitternacht
-    hemiLight.intensity = lerp(0.12, 1.0, dayFactor);
-    sunLight.intensity = lerp(0.03, 0.9, dayFactor);
-    const skyR = lerp(SKY_NIGHT.r, SKY_DAY.r, dayFactor);
-    const skyG = lerp(SKY_NIGHT.g, SKY_DAY.g, dayFactor);
-    const skyB = lerp(SKY_NIGHT.b, SKY_DAY.b, dayFactor);
-    scene.background.setRGB(skyR, skyG, skyB);
-    scene.fog.color.setRGB(skyR, skyG, skyB);
-    const winR = lerp(WINDOW_LIT.r, WINDOW_DARK.r, dayFactor);
-    const winG = lerp(WINDOW_LIT.g, WINDOW_DARK.g, dayFactor);
-    const winB = lerp(WINDOW_LIT.b, WINDOW_DARK.b, dayFactor);
-    for (let i = 0; i < windowMeshes.length; i++) windowMeshes[i].material.color.setRGB(winR, winG, winB);
+    skyColorCss = lerpRgb(SKY_NIGHT, SKY_DAY, dayFactor);
+    groundColorCss = lerpRgb(GROUND_NIGHT, GROUND_DAY, dayFactor);
+    lampGlowAlpha = clamp01((0.55 - dayFactor) / 0.55);
+  }
+
+  /* ------------------------------------------------------------------------
+     2D-Top-Down-Rendering: feste Nordausrichtung, die Kamera folgt nur der
+     Spielerposition (keine Rotation) — wie eine echte Straßenkarte, die
+     unter dem Auto mitwandert.
+     ------------------------------------------------------------------------ */
+  function toScreen(wx, wz) {
+    return { x: viewW / 2 + (wx - player.pos.x) * SCALE, y: viewH / 2 + (wz - player.pos.z) * SCALE };
+  }
+  function viewRadiusWorld() {
+    return Math.hypot(viewW, viewH) / 2 / SCALE + 25;
+  }
+  function nearPlayer(x, z, margin) {
+    return dist2D(x, z, player.pos.x, player.pos.z) < viewRadiusWorld() + (margin || 0);
+  }
+
+  function drawStreetGrid() {
+    const vr = viewRadiusWorld();
+    const kMin = Math.floor((player.pos.x - vr + GRID_HALF) / GRID_PERIOD) - 1;
+    const kMax = Math.ceil((player.pos.x + vr + GRID_HALF) / GRID_PERIOD) + 1;
+    const jMin = Math.floor((player.pos.z - vr + GRID_HALF) / GRID_PERIOD) - 1;
+    const jMax = Math.ceil((player.pos.z + vr + GRID_HALF) / GRID_PERIOD) + 1;
+    const halfPx = (STREET_WIDTH / 2) * SCALE;
+
+    ctx.fillStyle = '#33383f';
+    for (let k = kMin; k <= kMax; k++) {
+      const lineX = -GRID_HALF + k * GRID_PERIOD;
+      const sx = toScreen(lineX, 0).x;
+      ctx.fillRect(sx - halfPx, 0, halfPx * 2, viewH);
+    }
+    for (let k = jMin; k <= jMax; k++) {
+      const lineZ = -GRID_HALF + k * GRID_PERIOD;
+      const sy = toScreen(0, lineZ).y;
+      ctx.fillRect(0, sy - halfPx, viewW, halfPx * 2);
+    }
+
+    // Gestrichelte Mittellinien.
+    ctx.save();
+    ctx.strokeStyle = '#e7c25a';
+    ctx.lineWidth = Math.max(1, 0.3 * SCALE);
+    ctx.setLineDash([0.9 * SCALE, 0.9 * SCALE]);
+    for (let k = kMin; k <= kMax; k++) {
+      const lineX = -GRID_HALF + k * GRID_PERIOD;
+      const sx = toScreen(lineX, 0).x;
+      ctx.beginPath(); ctx.moveTo(sx, 0); ctx.lineTo(sx, viewH); ctx.stroke();
+    }
+    for (let k = jMin; k <= jMax; k++) {
+      const lineZ = -GRID_HALF + k * GRID_PERIOD;
+      const sy = toScreen(0, lineZ).y;
+      ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(viewW, sy); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawParks() {
+    ctx.fillStyle = '#4f7a45';
+    for (let i = 0; i < world.parks.length; i++) {
+      const p = world.parks[i];
+      const c = { x: (p.rect.minX + p.rect.maxX) / 2, z: (p.rect.minZ + p.rect.maxZ) / 2 };
+      if (!nearPlayer(c.x, c.z, BLOCK_SIZE)) continue;
+      const tl = toScreen(p.rect.minX, p.rect.minZ), br = toScreen(p.rect.maxX, p.rect.maxZ);
+      ctx.fillRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+      ctx.fillStyle = '#385c31';
+      for (let t = 0; t < p.trees.length; t++) {
+        const s = toScreen(p.trees[t].x, p.trees[t].z);
+        ctx.beginPath(); ctx.arc(s.x, s.y, Math.max(2, 0.9 * SCALE), 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.fillStyle = '#4f7a45';
+    }
+  }
+
+  function drawBuildings() {
+    for (let i = 0; i < world.buildings.length; i++) {
+      const b = world.buildings[i];
+      const c = { x: (b.rect.minX + b.rect.maxX) / 2, z: (b.rect.minZ + b.rect.maxZ) / 2 };
+      if (!nearPlayer(c.x, c.z, BLOCK_SIZE)) continue;
+      const tl = toScreen(b.rect.minX, b.rect.minZ), br = toScreen(b.rect.maxX, b.rect.maxZ);
+      const w = br.x - tl.x, h = br.y - tl.y;
+      const shadowPx = clamp(b.height / 6, 2, 9);
+
+      ctx.fillStyle = 'rgba(0,0,0,0.28)';
+      ctx.fillRect(tl.x + shadowPx, tl.y + shadowPx, w, h);
+
+      ctx.fillStyle = css(b.color);
+      ctx.fillRect(tl.x, tl.y, w, h);
+      ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(tl.x + 0.5, tl.y + 0.5, w - 1, h - 1);
+
+      // Helleres "Dach"-Inset für etwas Tiefe.
+      const inset = Math.min(w, h) * 0.14;
+      if (w - inset * 2 > 3 && h - inset * 2 > 3) {
+        ctx.fillStyle = 'rgba(255,255,255,0.08)';
+        ctx.fillRect(tl.x + inset, tl.y + inset, w - inset * 2, h - inset * 2);
+      }
+    }
+  }
+
+  function drawLamps() {
+    if (lampGlowAlpha <= 0.02) return;
+    for (let i = 0; i < world.lamps.length; i++) {
+      const l = world.lamps[i];
+      if (!nearPlayer(l.x, l.z, 6)) continue;
+      const s = toScreen(l.x, l.z);
+      const r = 3.2 * SCALE * 0.12;
+      const grad = ctx.createRadialGradient(s.x, s.y, 0, s.x, s.y, r * 3.5);
+      grad.addColorStop(0, 'rgba(255,214,140,' + (0.55 * lampGlowAlpha) + ')');
+      grad.addColorStop(1, 'rgba(255,214,140,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.arc(s.x, s.y, r * 3.5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(255,224,160,' + lampGlowAlpha + ')';
+      ctx.beginPath(); ctx.arc(s.x, s.y, r, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  function drawTrafficLights() {
+    for (let i = 0; i < trafficLights.length; i++) {
+      const tl = trafficLights[i];
+      if (!nearPlayer(tl.x, tl.z, 4)) continue;
+      const s = toScreen(tl.x, tl.z);
+      const cycle = (gameTime + tl.phase) % TRAFFIC_LIGHT_CYCLE;
+      const green = cycle < TRAFFIC_LIGHT_GREEN;
+      ctx.fillStyle = '#20242a';
+      ctx.fillRect(s.x - 2, s.y - 2, 4, 4);
+      ctx.fillStyle = green ? '#3ecb6a' : '#e6544c';
+      ctx.beginPath(); ctx.arc(s.x, s.y - 4, 2.6, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  function drawCoins() {
+    for (let i = 0; i < coins.length; i++) {
+      const c = coins[i];
+      if (c.collected || !nearPlayer(c.pos.x, c.pos.z, 3)) continue;
+      const s = toScreen(c.pos.x, c.pos.z);
+      const r = (0.45 + 0.06 * Math.sin(gameTime * 4 + i)) * SCALE * 0.55;
+      ctx.fillStyle = '#ffd75e';
+      ctx.beginPath(); ctx.arc(s.x, s.y, r, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#a3781f';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      ctx.beginPath(); ctx.arc(s.x - r * 0.3, s.y - r * 0.3, r * 0.35, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  function drawCar2D(wx, wz, heading, bodyHex, cabinHex, isPolice) {
+    const s = toScreen(wx, wz);
+    const w = CAR_RADIUS * 1.5 * SCALE, len = CAR_RADIUS * 2.6 * SCALE;
+    ctx.save();
+    ctx.translate(s.x, s.y);
+    ctx.rotate(heading);
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    roundRectPath(-w / 2 + 1.5, -len / 2 + 2, w, len, w * 0.3);
+    ctx.fill();
+    ctx.fillStyle = css(bodyHex);
+    roundRectPath(-w / 2, -len / 2, w, len, w * 0.3);
+    ctx.fill();
+    ctx.fillStyle = css(cabinHex);
+    roundRectPath(-w * 0.35, -len * 0.12, w * 0.7, len * 0.5, w * 0.2);
+    ctx.fill();
+    if (isPolice) {
+      const on = Math.floor(gameTime / 0.3) % 2 === 0;
+      ctx.fillStyle = on ? '#ff3b3b' : '#3b6bff';
+      ctx.fillRect(-w * 0.22, -len / 2 - 3, w * 0.44, 3);
+    }
+    ctx.restore();
+  }
+
+  function drawPedestrians() {
+    for (let i = 0; i < pedestrians.length; i++) {
+      const ped = pedestrians[i];
+      if (!ped.alive && ped.deathT >= 1) continue;
+      if (!nearPlayer(ped.pos.x, ped.pos.z, 4)) continue;
+      const s = toScreen(ped.pos.x, ped.pos.z);
+      const shrink = ped.alive ? 1 : (1 - ped.deathT);
+      const r = PED_RADIUS * SCALE * shrink;
+      if (r <= 0.2) continue;
+      ctx.globalAlpha = ped.alive ? 1 : shrink;
+      ctx.fillStyle = 'hsl(' + ped.hue + ',45%,55%)';
+      ctx.beginPath(); ctx.arc(s.x, s.y, r, 0, Math.PI * 2); ctx.fill();
+      if (ped.alive) {
+        const hx = s.x + Math.sin(ped.heading) * r * 0.5, hy = s.y + Math.cos(ped.heading) * r * 0.5;
+        ctx.fillStyle = '#e8c39e';
+        ctx.beginPath(); ctx.arc(hx, hy, r * 0.45, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function drawParticles() {
+    for (let i = 0; i < particles.length; i++) {
+      const p = particles[i];
+      const s = toScreen(p.x, p.z);
+      const a = clamp01(p.life / p.maxLife);
+      ctx.globalAlpha = a;
+      ctx.fillStyle = p.color;
+      ctx.beginPath(); ctx.arc(s.x, s.y, Math.max(1, 2.5 * a), 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function renderScene() {
+    ctx.fillStyle = skyColorCss;
+    ctx.fillRect(0, 0, viewW, viewH);
+
+    const groundTL = toScreen(-WORLD_HALF_EXTENT, -WORLD_HALF_EXTENT);
+    const groundBR = toScreen(WORLD_HALF_EXTENT, WORLD_HALF_EXTENT);
+    ctx.fillStyle = groundColorCss;
+    ctx.fillRect(groundTL.x, groundTL.y, groundBR.x - groundTL.x, groundBR.y - groundTL.y);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(groundTL.x, groundTL.y, groundBR.x - groundTL.x, groundBR.y - groundTL.y);
+    ctx.clip();
+    drawParks();
+    drawStreetGrid();
+    drawBuildings();
+    if (1 - dayFactor > 0.02) {
+      ctx.fillStyle = 'rgba(6,8,16,' + (0.55 * (1 - dayFactor)) + ')';
+      ctx.fillRect(groundTL.x, groundTL.y, groundBR.x - groundTL.x, groundBR.y - groundTL.y);
+    }
+    drawLamps();
+    drawTrafficLights();
+    drawCoins();
+    ctx.restore();
+
+    drawPedestrians();
+    for (let i = 0; i < trafficCars.length; i++) {
+      const c = trafficCars[i];
+      if (nearPlayer(c.pos.x, c.pos.z, 4)) drawCar2D(c.pos.x, c.pos.z, c.heading, c.bodyColor, c.cabinColor, false);
+    }
+    for (let i = 0; i < policeCars.length; i++) {
+      const p = policeCars[i];
+      if (nearPlayer(p.pos.x, p.pos.z, 4)) drawCar2D(p.pos.x, p.pos.z, p.heading, POLICE_BODY, POLICE_CABIN, true);
+    }
+    const carColor = CAR_COLORS[selectedCarColorIndex] || CAR_COLORS[0];
+    drawCar2D(player.pos.x, player.pos.z, player.heading, carColor.body, carColor.cabin, false);
+    drawParticles();
   }
 
   /* ------------------------------------------------------------------------
      Minimap (nordorientiert, Rasterlinien + Punkte + rotierendes
-     Spieler-Dreieck) — adaptiert von adventure-games drawMinimap()-Idee.
+     Spieler-Dreieck) — eigener, weiter herausgezoomter Überblick zusätzlich
+     zur großen Hauptansicht.
      ------------------------------------------------------------------------ */
   function drawMinimap() {
     const canvas = dom.minimap;
-    const ctx = canvas.getContext('2d');
+    const mctx = canvas.getContext('2d');
     const W = canvas.width, H = canvas.height;
-    ctx.clearRect(0, 0, W, H);
+    mctx.clearRect(0, 0, W, H);
     const viewRadius = 55;
     const scale = (Math.min(W, H) / 2 - 4) / viewRadius;
     const cx = W / 2, cz = H / 2;
     function toMap(wx, wz) {
       return { x: cx + (wx - player.pos.x) * scale, y: cz + (wz - player.pos.z) * scale };
     }
-    ctx.strokeStyle = 'rgba(255,255,255,0.14)';
-    ctx.lineWidth = 1;
+    mctx.strokeStyle = 'rgba(255,255,255,0.14)';
+    mctx.lineWidth = 1;
     const kMin = Math.floor((player.pos.x - viewRadius + GRID_HALF) / GRID_PERIOD) - 1;
     const kMax = Math.ceil((player.pos.x + viewRadius + GRID_HALF) / GRID_PERIOD) + 1;
     for (let k = kMin; k <= kMax; k++) {
       const lineX = -GRID_HALF + k * GRID_PERIOD;
       const p1 = toMap(lineX, player.pos.z - viewRadius);
       const p2 = toMap(lineX, player.pos.z + viewRadius);
-      ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+      mctx.beginPath(); mctx.moveTo(p1.x, p1.y); mctx.lineTo(p2.x, p2.y); mctx.stroke();
     }
     const jMin = Math.floor((player.pos.z - viewRadius + GRID_HALF) / GRID_PERIOD) - 1;
     const jMax = Math.ceil((player.pos.z + viewRadius + GRID_HALF) / GRID_PERIOD) + 1;
@@ -1144,14 +1144,14 @@
       const lineZ = -GRID_HALF + k * GRID_PERIOD;
       const p1 = toMap(player.pos.x - viewRadius, lineZ);
       const p2 = toMap(player.pos.x + viewRadius, lineZ);
-      ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+      mctx.beginPath(); mctx.moveTo(p1.x, p1.y); mctx.lineTo(p2.x, p2.y); mctx.stroke();
     }
     function dot(wx, wz, color, r) {
       const d = dist2D(wx, wz, player.pos.x, player.pos.z);
       if (d > viewRadius) return;
       const p = toMap(wx, wz);
-      ctx.fillStyle = color;
-      ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill();
+      mctx.fillStyle = color;
+      mctx.beginPath(); mctx.arc(p.x, p.y, r, 0, Math.PI * 2); mctx.fill();
     }
     for (let i = 0; i < pedestrians.length; i++) {
       if (pedestrians[i].alive) dot(pedestrians[i].pos.x, pedestrians[i].pos.z, 'rgba(232,232,232,0.85)', 2);
@@ -1160,14 +1160,14 @@
     const policeColor = Math.floor(gameTime / 0.3) % 2 === 0 ? '#ff3b3b' : '#3b6bff';
     for (let i = 0; i < policeCars.length; i++) dot(policeCars[i].pos.x, policeCars[i].pos.z, policeColor, 3);
 
-    ctx.save();
-    ctx.translate(cx, cz);
-    ctx.rotate(player.heading);
-    ctx.fillStyle = '#f2a93a';
-    ctx.beginPath();
-    ctx.moveTo(0, -6); ctx.lineTo(4, 5); ctx.lineTo(-4, 5); ctx.closePath();
-    ctx.fill();
-    ctx.restore();
+    mctx.save();
+    mctx.translate(cx, cz);
+    mctx.rotate(player.heading);
+    mctx.fillStyle = '#f2a93a';
+    mctx.beginPath();
+    mctx.moveTo(0, -6); mctx.lineTo(4, 5); mctx.lineTo(-4, 5); mctx.closePath();
+    mctx.fill();
+    mctx.restore();
   }
 
   function updateHud() {
@@ -1183,12 +1183,6 @@
   }
   function currentScore() {
     return Math.floor(distanceDriven) + 50 * Math.floor(wantedSecondsAccum) + bonusScore;
-  }
-
-  function updateCamera() {
-    const fx = Math.sin(player.heading), fz = Math.cos(player.heading);
-    camera.position.set(player.pos.x - fx * CAMERA_BACK, CAMERA_HEIGHT, player.pos.z - fz * CAMERA_BACK);
-    camera.lookAt(player.pos.x + fx * LOOKAHEAD, 1, player.pos.z + fz * LOOKAHEAD);
   }
 
   function endRun(source) {
@@ -1216,46 +1210,25 @@
   const SPAWN = { x: -GRID_HALF + Math.floor(GRID_N / 2) * GRID_PERIOD, z: 0 };
 
   function createPlayer() {
-    const carColor = CAR_COLORS[selectedCarColorIndex] || CAR_COLORS[0];
-    const { group } = buildCarMesh(carColor.body, carColor.cabin, false);
-    scene.add(group);
     const state = createCarState(SPAWN.x, SPAWN.z, 0);
     state.maxSpeed = MAX_SPEED_FORWARD;
-    return Object.assign(state, { mesh: group, health: 100, hitCooldown: 0, lastDamageSource: null });
-  }
-
-  // Räumt Geometrie/Material eines entfernten Meshes (bzw. einer ganzen
-  // Gruppe wie beim Auto-/Fußgänger-Mesh) auf, damit wiederholte Neustarts
-  // in derselben Session keinen GPU-Speicher anhäufen.
-  function disposeObject(obj) {
-    scene.remove(obj);
-    obj.traverse((child) => {
-      if (child.geometry) child.geometry.dispose();
-      if (child.material) child.material.dispose();
-    });
+    return Object.assign(state, { health: 100, hitCooldown: 0, lastDamageSource: null });
   }
 
   function resetRunState() {
-    pedestrians.forEach((p) => disposeObject(p.mesh));
     pedestrians = [];
-    trafficCars.forEach((c) => disposeObject(c.mesh));
     trafficCars = [];
-    policeCars.forEach((c) => disposeObject(c.mesh));
     policeCars = [];
-    particles.forEach((p) => scene.remove(p.mesh));
     particles = [];
-    tweens = [];
 
-    if (player) disposeObject(player.mesh);
     player = createPlayer();
 
     for (let i = 0; i < density.pedCount; i++) spawnPedestrian();
     for (let i = 0; i < density.trafficCount; i++) spawnTrafficCar();
 
-    // Münzen sind Teil der einmalig gebauten Welt (statische Meshes) -
-    // bei einem neuen Lauf werden nur ihr Zustand und ihre Sichtbarkeit
-    // zurückgesetzt, nicht die Meshes selbst neu erzeugt.
-    coins.forEach((c) => { c.collected = false; c.mesh.visible = true; });
+    // Münzen bleiben Teil der einmalig gebauten Welt — bei einem neuen Lauf
+    // wird nur ihr "eingesammelt"-Status zurückgesetzt.
+    coins.forEach((c) => { c.collected = false; });
     dom['coins-total'].textContent = String(coins.length);
 
     wantedHeat = 0;
@@ -1335,7 +1308,6 @@
       dom['lobby-highscore'].textContent = String(loadHighscore());
     });
   }
-  let selectedDensity = 'normal';
 
   /* ------------------------------------------------------------------------
      Game-Loop
@@ -1361,9 +1333,9 @@
       const hitWorld = resolveWorldCollisions(player);
       if (hitWorld) {
         if (player.hitCooldown <= 0) {
-          applyDamage(Math.abs(player.speed) * 1.2, 'crash');
+          applyDamage(Math.max(2, Math.abs(player.speed) * 1.2), 'crash');
           SFX.crash();
-          spawnParticles(player.pos, 0xaaaaaa, 6);
+          spawnParticles(player.pos.x, player.pos.z, '#aaaaaa', 6);
           player.hitCooldown = 0.4;
         }
         player.speed *= 0.3;
@@ -1375,7 +1347,7 @@
       for (let i = policeCars.length - 1; i >= 0; i--) updatePoliceCar(policeCars[i], dt);
 
       if (!ended) checkPlayerVsPedestrians();
-      if (!ended) checkPlayerVsTraffic(dt);
+      if (!ended) checkPlayerVsTraffic();
       if (!ended) checkPlayerVsPolice();
       if (!ended) checkNearMisses();
       if (!ended) maintainPolice(dt);
@@ -1391,20 +1363,14 @@
         nextDistanceMilestone += 1000;
       }
 
-      player.mesh.position.set(player.pos.x, 0, player.pos.z);
-      player.mesh.rotation.y = player.heading;
-
-      updateCoins(dt);
+      updateCoins();
       updateDayNight(dt);
-      updateTrafficLights();
       updateDamageFlash();
       updateParticles(dt);
-      updateTweens(dt);
-      updateCamera();
       updateHud();
     }
 
-    if (renderer) renderer.render(scene, camera);
+    if (player && ctx) renderScene();
   }
 
   /* ------------------------------------------------------------------------
@@ -1413,7 +1379,7 @@
   function init() {
     cacheDom();
     dom['lobby-highscore'].textContent = String(loadHighscore());
-    initThree();
+    initCanvas();
     buildWorld();
     wireLobby();
     wireInput();
