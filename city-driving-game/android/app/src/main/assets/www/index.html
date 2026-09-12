@@ -22,9 +22,10 @@
     </div>
 
     <p class="blurb">
-      Fahr frei durch ein offenes Stra&szlig;enraster, weich Fu&szlig;g&auml;ngern und Verkehr aus
-      und bleib den Fahndungssternen einen Schritt voraus &mdash; f&auml;hrst du jemanden an
-      oder rammst zu oft andere Autos, r&uuml;ckt die Polizei an.
+      Fahr frei durch ein offenes Stra&szlig;enraster, sammle M&uuml;nzen, weich Fu&szlig;g&auml;ngern
+      und Verkehr knapp aus (bringt Bonuspunkte) und bleib den Fahndungssternen einen Schritt
+      voraus &mdash; f&auml;hrst du jemanden an oder rammst zu oft andere Autos, r&uuml;ckt die
+      Polizei an. Die Stadt wechselt dabei zwischen Tag und Nacht.
     </p>
 
     <p class="lobby-highscore">Highscore: <strong id="lobby-highscore">0</strong> Punkte</p>
@@ -35,6 +36,16 @@
         <button class="option-btn" data-value="ruhig">Ruhig</button>
         <button class="option-btn selected" data-value="normal">Normal</button>
         <button class="option-btn" data-value="voll">Voll</button>
+      </div>
+    </div>
+
+    <div class="option-group">
+      <span class="option-label">Autofarbe</span>
+      <div class="option-buttons" data-option="carcolor">
+        <button class="option-btn selected" data-value="0">Amber</button>
+        <button class="option-btn" data-value="1">Rot</button>
+        <button class="option-btn" data-value="2">Blau</button>
+        <button class="option-btn" data-value="3">Gr&uuml;n</button>
       </div>
     </div>
 
@@ -73,7 +84,9 @@
       </div>
 
       <div class="hud-top-right">
+        <div class="daytime-chip" id="daytime-chip"><span id="daytime-icon">&#9728;&#65039;</span><span id="daytime-text">Tag</span></div>
         <canvas id="minimap" width="128" height="128"></canvas>
+        <div class="coin-chip"><span>&#129689;</span><strong id="coins">0</strong>/<span id="coins-total">0</span></div>
       </div>
 
       <div class="hud-bottom-left">

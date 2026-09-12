@@ -331,6 +331,33 @@ canvas#stage {
   background: rgba(10, 15, 22, 0.55);
 }
 
+.daytime-chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(10, 15, 22, 0.55);
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.coin-chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(10, 15, 22, 0.55);
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.coin-chip strong {
+  color: var(--accent);
+}
+
 .hud-bottom-left {
   position: absolute;
   bottom: 14px;

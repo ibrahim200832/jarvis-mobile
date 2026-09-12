@@ -89,6 +89,39 @@
   const HIGHSCORE_KEY = 'city-driving-game-highscore';
 
   /* ------------------------------------------------------------------------
+     Konstanten: Münzen (Sammel-Bonus, liegen direkt auf den Straßen)
+     ------------------------------------------------------------------------ */
+  const COIN_COUNT = 36;
+  const COIN_PICKUP_RADIUS = 1.0;
+  const COIN_SCORE = 20;
+
+  /* ------------------------------------------------------------------------
+     Konstanten: Beinahe-Unfall-Bonus (knapp an Fußgängern vorbeigefahren)
+     ------------------------------------------------------------------------ */
+  const NEAR_MISS_MIN_GAP = CAR_RADIUS + PED_RADIUS + 0.15;
+  const NEAR_MISS_MAX_GAP = NEAR_MISS_MIN_GAP + 1.2;
+  const NEAR_MISS_MIN_SPEED = 6;
+  const NEAR_MISS_SCORE = 5;
+  const NEAR_MISS_COOLDOWN = 3;
+
+  /* ------------------------------------------------------------------------
+     Konstanten: Tag/Nacht-Zyklus
+     ------------------------------------------------------------------------ */
+  const DAY_LENGTH = 220; // Sekunden pro vollem Tag/Nacht-Zyklus
+  const SKY_DAY = { r: 0x8f / 255, g: 0xc7 / 255, b: 0xe8 / 255 };
+  const SKY_NIGHT = { r: 0x06 / 255, g: 0x08 / 255, b: 0x12 / 255 };
+  const WINDOW_LIT = { r: 1, g: 0.85, b: 0.42 };
+  const WINDOW_DARK = { r: 0.14, g: 0.16, b: 0.2 };
+
+  // Auto-Farbwahl in der Lobby — body/cabin für buildCarMesh().
+  const CAR_COLORS = [
+    { body: 0xf2a93a, cabin: 0x2b1900 },
+    { body: 0xe6544c, cabin: 0x2b0906 },
+    { body: 0x4c9fe6, cabin: 0x0d1f2b },
+    { body: 0x5fb87a, cabin: 0x0d2b17 },
+  ];
+
+  /* ------------------------------------------------------------------------
      Utility
      ------------------------------------------------------------------------ */
   function clamp(v, min, max) { return v < min ? min : v > max ? max : v; }
@@ -234,6 +267,8 @@
     heatUp() { this._tone(220, 0.18, 'sawtooth', 0.22, 440); },
     heatDown() { this._tone(440, 0.18, 'sine', 0.15, 220); },
     busted() { this._tone(300, 0.5, 'sawtooth', 0.25, 60); },
+    coin() { this._tone(660, 0.08, 'square', 0.15, 990); this._tone(990, 0.1, 'square', 0.12, 1320); },
+    nearMiss() { this._tone(500, 0.1, 'triangle', 0.12, 300); },
   };
 
   /* ------------------------------------------------------------------------
@@ -245,6 +280,7 @@
       'lobby', 'game', 'start-btn', 'lobby-highscore',
       'stage', 'hud', 'wanted-row', 'bar-health', 'minimap',
       'speed', 'score', 'toast-stack',
+      'daytime-icon', 'daytime-text', 'coins', 'coins-total',
       'steer-left', 'steer-right', 'pedal-gas', 'pedal-brake',
       'overlay', 'overlay-title', 'overlay-stats', 'restart-btn', 'lobby-btn',
     ];
@@ -257,6 +293,7 @@
      Three.js Grundgerüst
      ------------------------------------------------------------------------ */
   let renderer, scene, camera;
+  let hemiLight, sunLight;
 
   function initThree() {
     renderer = new THREE.WebGLRenderer({ canvas: dom.stage, antialias: true, powerPreference: 'high-performance' });
@@ -268,11 +305,11 @@
     scene.background = new THREE.Color(0x0d1119);
     camera = new THREE.PerspectiveCamera(64, window.innerWidth / window.innerHeight, 0.1, 400);
 
-    const hemi = new THREE.HemisphereLight(0x8fa8c9, 0x1a1f26, 1.0);
-    scene.add(hemi);
-    const sun = new THREE.DirectionalLight(0xfff3d8, 0.9);
-    sun.position.set(60, 90, 40);
-    scene.add(sun);
+    hemiLight = new THREE.HemisphereLight(0x8fa8c9, 0x1a1f26, 1.0);
+    scene.add(hemiLight);
+    sunLight = new THREE.DirectionalLight(0xfff3d8, 0.9);
+    sunLight.position.set(60, 90, 40);
+    scene.add(sunLight);
 
     window.addEventListener('resize', onResize);
     onResize();
@@ -411,6 +448,22 @@
           mesh.position.set((rect.minX + rect.maxX) / 2, height / 2, (rect.minZ + rect.maxZ) / 2);
           group.add(mesh);
           world.buildingRects.push(rect);
+
+          // Ein paar Fenster auf der Straßenseite, die nachts hell werden
+          // (einfache MeshBasicMaterial-Planes, deren Farbe updateDayNight()
+          // jeden Frame zwischen dunkel und warmgelb überblendet).
+          const winCount = 2 + Math.floor(worldRand() * 3);
+          for (let w = 0; w < winCount; w++) {
+            const winY = 2 + worldRand() * Math.max(1, height - 4);
+            const winX = lerp(rect.minX + 0.6, rect.maxX - 0.6, worldRand());
+            const win = new THREE.Mesh(
+              new THREE.PlaneGeometry(0.7, 0.9),
+              new THREE.MeshBasicMaterial({ color: 0x24272e })
+            );
+            win.position.set(winX, winY, rect.minZ + 0.01);
+            group.add(win);
+            windowMeshes.push(win);
+          }
         }
 
         // Gehweg-Wegpunktschleife: Ring knapp innerhalb der Blockkante, in der
@@ -428,6 +481,20 @@
         };
         world.blockLoops.push(loopRect);
       }
+    }
+
+    // Münzen: entlang der Straßen-Umläufe verstreut, damit jede beim
+    // normalen Fahren erreichbar ist (kein Abstecher von der Fahrbahn nötig).
+    const coinMat = new THREE.MeshBasicMaterial({ color: 0xffd75e });
+    for (let i = 0; i < COIN_COUNT; i++) {
+      const loopRect = world.blockLoops[Math.floor(worldRand() * world.blockLoops.length)];
+      const per = 2 * ((loopRect.maxX - loopRect.minX) + (loopRect.maxZ - loopRect.minZ));
+      const p = pointOnLoop(loopRect, worldRand() * per);
+      const mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.12, 16), coinMat);
+      mesh.rotation.z = Math.PI / 2;
+      mesh.position.set(p.x, 0.6, p.z);
+      group.add(mesh);
+      coins.push({ pos: { x: p.x, z: p.z }, mesh, collected: false });
     }
 
     // Weltgrenze: Reihe aus Betonpollern.
@@ -539,7 +606,6 @@
     [0x7a8a99, 0x1c2229], [0x8a5fc9, 0x241833], [0x5fb87a, 0x172a1c],
   ];
   const POLICE_BODY = 0x1c2b44, POLICE_CABIN = 0x0d1420;
-  const PLAYER_BODY = 0xf2a93a, PLAYER_CABIN = 0x2b1900;
 
   let player = null;       // { pos, heading, speed, maxSpeed, health, mesh, lastDamageSource, hitCooldown }
   let pedestrians = [];
@@ -547,6 +613,8 @@
   let policeCars = [];
   let particles = [];
   let tweens = [];
+  let coins = [];
+  let windowMeshes = [];
 
   let wantedHeat = 0;
   let maxWantedReached = 0;
@@ -554,8 +622,12 @@
   let timeSinceLastPoliceContact = 0;
   let distanceDriven = 0;
   let wantedSecondsAccum = 0;
+  let bonusScore = 0;
+  let coinsCollected = 0;
+  let dayTime = DAY_LENGTH * 0.05; // Start am helllichten Vormittag
   let gameTime = 0;
   let density = DENSITY_PRESETS.normal;
+  let selectedCarColorIndex = 0;
   let running = false;
   let ended = false;
 
@@ -919,6 +991,67 @@
   }
 
   /* ------------------------------------------------------------------------
+     Münzen einsammeln
+     ------------------------------------------------------------------------ */
+  function updateCoins(dt) {
+    for (let i = 0; i < coins.length; i++) {
+      const c = coins[i];
+      if (c.collected) continue;
+      c.mesh.rotation.y += dt * 3;
+      if (dist2D(player.pos.x, player.pos.z, c.pos.x, c.pos.z) < CAR_RADIUS + COIN_PICKUP_RADIUS) {
+        c.collected = true;
+        c.mesh.visible = false;
+        coinsCollected++;
+        bonusScore += COIN_SCORE;
+        SFX.coin();
+        spawnParticles(c.pos, 0xffd75e, 6);
+      }
+    }
+  }
+
+  /* ------------------------------------------------------------------------
+     Beinahe-Unfall-Bonus: knapp und schnell an einem Fußgänger vorbei, ohne
+     ihn zu treffen — pro Fußgänger mit Cooldown, damit ein längeres
+     Nebeneinanderherfahren nicht mehrfach zählt.
+     ------------------------------------------------------------------------ */
+  function checkNearMisses() {
+    if (Math.abs(player.speed) < NEAR_MISS_MIN_SPEED) return;
+    for (let i = 0; i < pedestrians.length; i++) {
+      const ped = pedestrians[i];
+      if (!ped.alive) continue;
+      const d = dist2D(player.pos.x, player.pos.z, ped.pos.x, ped.pos.z);
+      if (d >= NEAR_MISS_MIN_GAP && d < NEAR_MISS_MAX_GAP && (gameTime - (ped.lastNearMissAt || -99)) > NEAR_MISS_COOLDOWN) {
+        ped.lastNearMissAt = gameTime;
+        bonusScore += NEAR_MISS_SCORE;
+        toast('Knapp vorbei! +' + NEAR_MISS_SCORE, 'good');
+        SFX.nearMiss();
+      }
+    }
+  }
+
+  /* ------------------------------------------------------------------------
+     Tag/Nacht-Zyklus: Himmel-/Nebelfarbe und Lichtintensität überblenden,
+     Gebäudefenster nachts hell einfärben.
+     ------------------------------------------------------------------------ */
+  let dayFactor = 1;
+  function updateDayNight(dt) {
+    dayTime = (dayTime + dt) % DAY_LENGTH;
+    const t = dayTime / DAY_LENGTH;
+    dayFactor = (Math.cos(t * Math.PI * 2) + 1) / 2; // 1 = Mittag, 0 = Mitternacht
+    hemiLight.intensity = lerp(0.12, 1.0, dayFactor);
+    sunLight.intensity = lerp(0.03, 0.9, dayFactor);
+    const skyR = lerp(SKY_NIGHT.r, SKY_DAY.r, dayFactor);
+    const skyG = lerp(SKY_NIGHT.g, SKY_DAY.g, dayFactor);
+    const skyB = lerp(SKY_NIGHT.b, SKY_DAY.b, dayFactor);
+    scene.background.setRGB(skyR, skyG, skyB);
+    scene.fog.color.setRGB(skyR, skyG, skyB);
+    const winR = lerp(WINDOW_LIT.r, WINDOW_DARK.r, dayFactor);
+    const winG = lerp(WINDOW_LIT.g, WINDOW_DARK.g, dayFactor);
+    const winB = lerp(WINDOW_LIT.b, WINDOW_DARK.b, dayFactor);
+    for (let i = 0; i < windowMeshes.length; i++) windowMeshes[i].material.color.setRGB(winR, winG, winB);
+  }
+
+  /* ------------------------------------------------------------------------
      Minimap (nordorientiert, Rasterlinien + Punkte + rotierendes
      Spieler-Dreieck) — adaptiert von adventure-games drawMinimap()-Idee.
      ------------------------------------------------------------------------ */
@@ -981,10 +1114,13 @@
     dom.wantedStars.forEach((el, i) => { el.classList.toggle('active', i < stars); });
     dom['bar-health'].style.width = player.health + '%';
     dom.score.textContent = String(currentScore());
+    dom.coins.textContent = String(coinsCollected);
+    dom['daytime-icon'].textContent = dayFactor > 0.5 ? '☀️' : '🌙';
+    dom['daytime-text'].textContent = dayFactor > 0.5 ? 'Tag' : 'Nacht';
     drawMinimap();
   }
   function currentScore() {
-    return Math.floor(distanceDriven) + 50 * Math.floor(wantedSecondsAccum);
+    return Math.floor(distanceDriven) + 50 * Math.floor(wantedSecondsAccum) + bonusScore;
   }
 
   function updateCamera() {
@@ -1003,6 +1139,7 @@
     const best = saveHighscoreIfBetter(finalScore);
     dom['overlay-stats'].innerHTML =
       'Strecke: ' + Math.floor(distanceDriven) + ' m<br>' +
+      'Münzen: ' + coinsCollected + '/' + coins.length + '<br>' +
       'Zeit gesucht: ' + Math.floor(wantedSecondsAccum) + ' s<br>' +
       'Höchste Fahndungsstufe: ' + Math.round(maxWantedReached) + '<br>' +
       'Punkte: ' + finalScore + ' (Highscore: ' + best + ')';
@@ -1017,7 +1154,8 @@
   const SPAWN = { x: -GRID_HALF + Math.floor(GRID_N / 2) * GRID_PERIOD, z: 0 };
 
   function createPlayer() {
-    const { group } = buildCarMesh(PLAYER_BODY, PLAYER_CABIN, false);
+    const carColor = CAR_COLORS[selectedCarColorIndex] || CAR_COLORS[0];
+    const { group } = buildCarMesh(carColor.body, carColor.cabin, false);
     scene.add(group);
     const state = createCarState(SPAWN.x, SPAWN.z, 0);
     state.maxSpeed = MAX_SPEED_FORWARD;
@@ -1052,12 +1190,21 @@
     for (let i = 0; i < density.pedCount; i++) spawnPedestrian();
     for (let i = 0; i < density.trafficCount; i++) spawnTrafficCar();
 
+    // Münzen sind Teil der einmalig gebauten Welt (statische Meshes) -
+    // bei einem neuen Lauf werden nur ihr Zustand und ihre Sichtbarkeit
+    // zurückgesetzt, nicht die Meshes selbst neu erzeugt.
+    coins.forEach((c) => { c.collected = false; c.mesh.visible = true; });
+    dom['coins-total'].textContent = String(coins.length);
+
     wantedHeat = 0;
     maxWantedReached = 0;
     vehicleHitTimestamps = [];
     timeSinceLastPoliceContact = 0;
     distanceDriven = 0;
     wantedSecondsAccum = 0;
+    bonusScore = 0;
+    coinsCollected = 0;
+    dayTime = DAY_LENGTH * 0.05;
     gameTime = 0;
     ended = false;
   }
@@ -1089,11 +1236,13 @@
   function wireLobby() {
     dom.optionGroups.forEach((group) => {
       const btns = group.querySelectorAll('.option-btn');
+      const option = group.dataset.option;
       btns.forEach((btn) => {
         btn.addEventListener('click', () => {
           btns.forEach((b) => b.classList.remove('selected'));
           btn.classList.add('selected');
-          selectedDensity = btn.dataset.value;
+          if (option === 'carcolor') selectedCarColorIndex = Number(btn.dataset.value);
+          else selectedDensity = btn.dataset.value;
         });
       });
     });
@@ -1162,6 +1311,7 @@
       if (!ended) checkPlayerVsPedestrians();
       if (!ended) checkPlayerVsTraffic(dt);
       if (!ended) checkPlayerVsPolice();
+      if (!ended) checkNearMisses();
       if (!ended) maintainPolice(dt);
 
       if (!ended && wantedHeat <= 0 && player.hitCooldown <= 0) {
@@ -1174,6 +1324,8 @@
       player.mesh.position.set(player.pos.x, 0, player.pos.z);
       player.mesh.rotation.y = player.heading;
 
+      updateCoins(dt);
+      updateDayNight(dt);
       updateParticles(dt);
       updateTweens(dt);
       updateCamera();
