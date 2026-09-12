@@ -52,6 +52,13 @@
   const FLY_DOWN_SPEED = 4;
   const FLY_SPEED_MULT = 1.6;
   const DOUBLE_TAP_WINDOW = 0.35;
+  const CAR_RADIUS = 1.1;
+  const CAR_ENTER_RANGE = 2.6;
+  const CAR_ACCEL = 10;
+  const CAR_MAX_SPEED = 14;
+  const CAR_REVERSE_MAX = 6;
+  const CAR_TURN_RATE = 2.2;
+  const CAR_FRICTION = 4;
 
   const BUILD_OPTIONS = [
     { id: 'campfire', name: 'Lagerfeuer', icon: '🔥', cost: { wood: 3, stone: 2 }, footprint: 1.3 },
@@ -222,7 +229,7 @@
   let cameraShake = 0;
   let isNight = false;
 
-  const trees = [], rocks = [], bushes = [], chests = [], enemies = [];
+  const trees = [], rocks = [], bushes = [], chests = [], enemies = [], cars = [];
   const structures = [], walls = [], structureColliders = [], campfires = [];
   const bridgeColliders = []; // dauerhafte begehbare Brücken, unabhängig vom Bau-System
   const landmarkColliders = [], minimapLandmarks = [];
@@ -251,6 +258,7 @@
     inWater: false,
     submerged: false,
     flying: false,
+    inCar: null,
     speed: 4.3, sprintMult: 1.8,
     rig: null,
   };
@@ -530,6 +538,47 @@
     group.rotation.y = worldRand() * Math.PI * 2;
     scene.add(group);
     return { id, mesh: group, opened: false };
+  }
+
+  function makeCar(pos, rotY) {
+    const group = new THREE.Group();
+    const bodyMat = new THREE.MeshStandardMaterial({ color: 0xd23f3f, flatShading: true, roughness: 0.5 });
+    const cabinMat = new THREE.MeshStandardMaterial({ color: 0xdbe6ee, flatShading: true, roughness: 0.3, transparent: true, opacity: 0.75 });
+    const wheelMat = new THREE.MeshStandardMaterial({ color: 0x22242a, flatShading: true, roughness: 0.9 });
+    const lightMat = new THREE.MeshBasicMaterial({ color: 0xfff2b0 });
+
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.55, 3.2), bodyMat);
+    body.position.y = 0.55; body.castShadow = true; body.receiveShadow = true;
+    group.add(body);
+
+    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.5, 1.6), cabinMat);
+    cabin.position.set(0, 1.05, -0.15);
+    cabin.castShadow = true;
+    group.add(cabin);
+
+    const wheelGeo = new THREE.CylinderGeometry(0.34, 0.34, 0.28, 10);
+    [[-0.85, 1.05], [0.85, 1.05], [-0.85, -1.05], [0.85, -1.05]].forEach(([x, z]) => {
+      const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+      wheel.rotation.z = Math.PI / 2;
+      wheel.position.set(x, 0.34, z);
+      wheel.castShadow = true;
+      group.add(wheel);
+    });
+
+    [[-0.55, 1.62], [0.55, 1.62]].forEach(([x, z]) => {
+      const light = new THREE.Mesh(new THREE.SphereGeometry(0.1, 6, 5), lightMat);
+      light.position.set(x, 0.55, z);
+      group.add(light);
+    });
+
+    const h = heightAt(pos.x, pos.z);
+    group.position.set(pos.x, h, pos.z);
+    group.rotation.y = rotY || 0;
+    scene.add(group);
+    minimapLandmarks.push({ pos: group.position, color: '#d23f3f' });
+    const car = { mesh: group, speed: 0 };
+    cars.push(car);
+    return car;
   }
 
   function makeEnemy(home) {
@@ -836,6 +885,9 @@
     const lighthousePos = isleEdgeAnchor(home, 0, 0, 6);
     makeLighthouse(lighthousePos);
 
+    makeCar({ x: SPAWN.x + 5, z: SPAWN.z + 3 }, Math.PI * 0.15);
+    makeCar({ x: village.cx + 6, z: village.cz - 5 }, -Math.PI * 0.4);
+
     buildRelicMarker();
     peakHeight = heightAt(MOUNTAIN_POS.x, MOUNTAIN_POS.z);
   }
@@ -967,13 +1019,55 @@
     for (let i = 0; i < landmarkColliders.length; i++) { const l = landmarkColliders[i]; pushOutCircle(pos, l, l.radius + PLAYER_RADIUS); }
   }
 
+  function resolveCarCollisions(pos) {
+    for (let i = 0; i < trees.length; i++) { const t = trees[i]; if (!t.hidden) pushOutCircle(pos, t.mesh.position, TREE_COLLIDE_R + CAR_RADIUS); }
+    for (let i = 0; i < rocks.length; i++) { const r = rocks[i]; if (!r.hidden) pushOutCircle(pos, r.mesh.position, ROCK_COLLIDE_R + CAR_RADIUS); }
+    for (let i = 0; i < walls.length; i++) { pushOutCircle(pos, walls[i].pos, WALL_COLLIDE_R + CAR_RADIUS); }
+    for (let i = 0; i < landmarkColliders.length; i++) { const l = landmarkColliders[i]; pushOutCircle(pos, l, l.radius + CAR_RADIUS); }
+  }
+
   /* ------------------------------------------------------------------------
      Spieler-Update
      ------------------------------------------------------------------------ */
   let animTime = 0;
   let wasInWater = false;
+
+  function updateCarDrive(dt) {
+    const car = player.inCar;
+    const throttle = input.move.y;
+    const steer = -input.move.x;
+
+    car.speed = clamp(car.speed + throttle * CAR_ACCEL * dt, -CAR_REVERSE_MAX, CAR_MAX_SPEED);
+    if (Math.abs(throttle) < 0.05) {
+      const decel = CAR_FRICTION * dt;
+      if (car.speed > 0) car.speed = Math.max(0, car.speed - decel);
+      else car.speed = Math.min(0, car.speed + decel);
+    }
+    car.mesh.rotation.y += steer * CAR_TURN_RATE * (car.speed / CAR_MAX_SPEED) * dt;
+
+    const dirX = Math.sin(car.mesh.rotation.y), dirZ = Math.cos(car.mesh.rotation.y);
+    const nx = car.mesh.position.x + dirX * car.speed * dt;
+    const nz = car.mesh.position.z + dirZ * car.speed * dt;
+    const seabed = heightAt(nx, nz);
+    const solidY = getGroundHeight(nx, nz);
+    const overWater = seabed < WATER_LEVEL - 0.05 && !(solidY > seabed + 0.05);
+    if (overWater) {
+      car.speed *= 0.15; // wie an eine Ufer-Kante gebremst - Autos können nicht schwimmen
+    } else {
+      car.mesh.position.x = nx;
+      car.mesh.position.z = nz;
+      resolveCarCollisions(car.mesh.position);
+    }
+    car.mesh.position.y = getGroundHeight(car.mesh.position.x, car.mesh.position.z);
+
+    player.pos.copy(car.mesh.position);
+    player.yaw = car.mesh.rotation.y;
+    player.vel.set(0, 0, 0);
+  }
+
   function updatePlayer(dt) {
     if (player.isDead) return;
+    if (player.inCar) { updateCarDrive(dt); return; }
     const moveLen = Math.hypot(input.move.x, input.move.y);
     const sprinting = input.sprint && moveLen > 0.1 && player.stamina > 1 && !player.inWater;
     const swimSpeedMult = player.inWater ? 0.72 : 1;
@@ -1113,7 +1207,7 @@
      Angriff / Sammeln
      ------------------------------------------------------------------------ */
   function tryAttack() {
-    if (paused || player.isDead || placementMode || !worldReady) return;
+    if (paused || player.isDead || placementMode || !worldReady || player.inCar) return;
     if (player.attackCooldownTimer > 0) return;
     player.attackCooldownTimer = ATTACK_COOLDOWN;
     player.isAttacking = true;
@@ -1206,6 +1300,7 @@
   function tryInteract() {
     if (paused || player.isDead || !worldReady) return;
     if (placementMode) { confirmPlacement(); return; }
+    if (player.inCar) { exitCar(); return; }
     let nearest = null, nd = INTERACT_RANGE;
     for (let i = 0; i < chests.length; i++) {
       const c = chests[i];
@@ -1213,15 +1308,45 @@
       const d = flatDist(player.pos, c.mesh.position);
       if (d < nd) { nd = d; nearest = c; }
     }
-    if (nearest) openChest(nearest);
+    if (nearest) { openChest(nearest); return; }
+    for (let i = 0; i < cars.length; i++) {
+      const c = cars[i];
+      if (flatDist(player.pos, c.mesh.position) < CAR_ENTER_RANGE) { enterCar(c); return; }
+    }
+  }
+
+  function enterCar(car) {
+    player.inCar = car;
+    player.rig.group.visible = false;
+    player.vel.set(0, 0, 0);
+    toast('🚗 Eingestiegen — lenke mit Stick/WASD');
+  }
+
+  function exitCar() {
+    const car = player.inCar;
+    const sideX = Math.sin(car.mesh.rotation.y + Math.PI / 2);
+    const sideZ = Math.cos(car.mesh.rotation.y + Math.PI / 2);
+    const ex = car.mesh.position.x + sideX * 1.6;
+    const ez = car.mesh.position.z + sideZ * 1.6;
+    player.pos.set(ex, getGroundHeight(ex, ez), ez);
+    player.yaw = car.mesh.rotation.y;
+    car.speed = 0;
+    player.inCar = null;
+    player.rig.group.visible = true;
+    toast('🚶 Ausgestiegen');
   }
 
   function updateInteractPrompt() {
     if (!worldReady) return;
     if (placementMode) { showPrompt(placementValid ? 'E / ✋ zum Platzieren' : 'Hier nicht möglich'); return; }
+    if (player.inCar) { showPrompt('E / ✋ Aussteigen'); return; }
     for (let i = 0; i < chests.length; i++) {
       const c = chests[i];
       if (!c.opened && flatDist(player.pos, c.mesh.position) < INTERACT_RANGE) { showPrompt('E / ✋ Truhe öffnen'); return; }
+    }
+    for (let i = 0; i < cars.length; i++) {
+      const c = cars[i];
+      if (flatDist(player.pos, c.mesh.position) < CAR_ENTER_RANGE) { showPrompt('E / ✋ Einsteigen'); return; }
     }
     hidePrompt();
   }
@@ -1368,6 +1493,7 @@
     player.oxygen = player.maxOxygen;
     player.isDead = false;
     player.flying = false;
+    if (player.inCar) { player.inCar.speed = 0; player.inCar = null; player.rig.group.visible = true; }
     resources.coin = Math.floor(resources.coin * 0.7);
     dom['death-menu'].classList.add('hidden');
     saveGame();
@@ -1966,6 +2092,9 @@
     counters.woodTotal = 0; counters.stoneTotal = 0; counters.berryTotal = 0; counters.campfiresBuilt = 0; counters.enemiesDefeated = 0; counters.chestsOpened = 0; counters.peakReached = false;
     counters.dived = false; counters.visited = {};
     player.flying = false;
+    if (player.inCar) player.inCar.speed = 0;
+    player.inCar = null;
+    if (player.rig) player.rig.group.visible = true;
     questIndex = 0; announcedAllDone = false;
     openedChestIds.clear();
     dayTime = 0.28;
