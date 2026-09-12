@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Heat Streets</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0a0f16">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="wrap">
+
+  <!-- ============ LOBBY ============ -->
+  <section id="lobby" class="lobby screen">
+    <div class="title-row">
+      <img class="logo" src="icon.svg" alt="" width="52" height="52">
+      <div>
+        <h1>Heat Streets</h1>
+        <p class="subtitle">Freies Fahren durch die Stadt</p>
+      </div>
+    </div>
+
+    <p class="blurb">
+      Fahr frei durch ein offenes Stra&szlig;enraster, sammle M&uuml;nzen, weich Fu&szlig;g&auml;ngern
+      und Verkehr knapp aus (bringt Bonuspunkte) und bleib den Fahndungssternen einen Schritt
+      voraus &mdash; f&auml;hrst du jemanden an oder rammst zu oft andere Autos, r&uuml;ckt die
+      Polizei an. Die Stadt wechselt dabei zwischen Tag und Nacht.
+    </p>
+
+    <p class="lobby-highscore">Highscore: <strong id="lobby-highscore">0</strong> Punkte</p>
+
+    <div class="option-group">
+      <span class="option-label">Verkehrsdichte</span>
+      <div class="option-buttons" data-option="density">
+        <button class="option-btn" data-value="ruhig">Ruhig</button>
+        <button class="option-btn selected" data-value="normal">Normal</button>
+        <button class="option-btn" data-value="voll">Voll</button>
+      </div>
+    </div>
+
+    <div class="option-group">
+      <span class="option-label">Autofarbe</span>
+      <div class="option-buttons" data-option="carcolor">
+        <button class="option-btn selected" data-value="0">Amber</button>
+        <button class="option-btn" data-value="1">Rot</button>
+        <button class="option-btn" data-value="2">Blau</button>
+        <button class="option-btn" data-value="3">Gr&uuml;n</button>
+      </div>
+    </div>
+
+    <button id="start-btn" class="primary-btn">Losfahren</button>
+
+    <div class="controls-hint" id="controls-hint-desktop">
+      <div class="hint-row"><kbd>W</kbd><span>Gas</span></div>
+      <div class="hint-row"><kbd>S</kbd><span>Bremse / R&uuml;ckw&auml;rts</span></div>
+      <div class="hint-row"><kbd>A</kbd><kbd>D</kbd><span>Lenken</span></div>
+    </div>
+    <div class="controls-hint" id="controls-hint-touch">
+      <div class="hint-row"><span class="hint-icon">&#9664;&#9654;</span><span>Lenkrad unten links</span></div>
+      <div class="hint-row"><span class="hint-icon">&#9650;&#9660;</span><span>Gas / Bremse unten rechts</span></div>
+    </div>
+
+    <p class="orientation-hint">📱 Am besten im Querformat spielen</p>
+  </section>
+
+  <!-- ============ GAME ============ -->
+  <section id="game" class="game screen hidden">
+    <canvas id="stage"></canvas>
+    <div id="damage-flash"></div>
+
+    <div id="hud" class="hud">
+      <div class="hud-top-left">
+        <div class="wanted-row" id="wanted-row">
+          <span class="wanted-star" data-i="0">&#9733;</span>
+          <span class="wanted-star" data-i="1">&#9733;</span>
+          <span class="wanted-star" data-i="2">&#9733;</span>
+          <span class="wanted-star" data-i="3">&#9733;</span>
+          <span class="wanted-star" data-i="4">&#9733;</span>
+        </div>
+        <div class="bar-row">
+          <span class="bar-icon">&#10084;&#65039;</span>
+          <div class="bar-track"><div id="bar-health" class="bar-fill health"></div></div>
+        </div>
+      </div>
+
+      <div class="hud-top-right">
+        <div class="daytime-chip" id="daytime-chip"><span id="daytime-icon">&#9728;&#65039;</span><span id="daytime-text">Tag</span></div>
+        <canvas id="minimap" width="128" height="128"></canvas>
+        <div class="coin-chip"><span>&#129689;</span><strong id="coins">0</strong>/<span id="coins-total">0</span></div>
+      </div>
+
+      <div class="hud-bottom-left">
+        <span class="speed-value"><strong id="speed">0</strong> km/h</span>
+      </div>
+      <div class="hud-bottom-right-info">
+        <span>Punkte: <strong id="score">0</strong></span>
+      </div>
+
+      <div id="toast-stack" class="toast-stack"></div>
+
+      <!-- Touch controls -->
+      <div id="touch-controls" class="touch-controls">
+        <div class="wheel" aria-hidden="true">
+          <button id="steer-left" class="wheel-btn">&#9664;</button>
+          <button id="steer-right" class="wheel-btn">&#9654;</button>
+        </div>
+        <div class="pedals" aria-hidden="true">
+          <button id="pedal-gas" class="pedal-btn gas">&#9650;</button>
+          <button id="pedal-brake" class="pedal-btn brake">&#9660;</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="overlay" class="overlay hidden">
+      <p id="overlay-title">Busted!</p>
+      <p id="overlay-stats"></p>
+      <div class="overlay-actions">
+        <button id="restart-btn">Neu starten</button>
+        <button id="lobby-btn">Zur Lobby</button>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<script src="vendor/three.min.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
