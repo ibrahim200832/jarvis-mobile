@@ -2,6 +2,7 @@ package com.jarvismobile.citydrivinggame
 
 import android.media.AudioAttributes
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioTrack
 import kotlin.math.PI
 import kotlin.math.abs
@@ -35,7 +36,7 @@ object Sfx {
                     .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
                     .build()
                 val track = AudioTrack(
-                    attrs, format, samples.size * 2, AudioTrack.MODE_STATIC, AudioTrack.SESSION_ID_GENERATE
+                    attrs, format, samples.size * 2, AudioTrack.MODE_STATIC, AudioManager.AUDIO_SESSION_ID_GENERATE
                 )
                 track.write(samples, 0, samples.size)
                 track.play()
