@@ -1,6 +1,7 @@
 package com.jarvismobile.citydrivinggame
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Context
 import android.graphics.Color
 import android.os.Bundle
@@ -12,6 +13,8 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
+import java.io.PrintWriter
+import java.io.StringWriter
 import kotlin.math.roundToInt
 
 /**
@@ -51,6 +54,7 @@ class MainActivity : Activity(), GameListener {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        installCrashHandler()
         setContentView(R.layout.activity_main)
 
         highscoreStore = PrefsHighscoreStore(this)
@@ -64,6 +68,41 @@ class MainActivity : Activity(), GameListener {
         minimapView.attach(engine)
 
         lobbyHighscoreLabel.text = "Highscore: ${highscoreStore.load()} Punkte"
+
+        showLastCrashIfAny()
+    }
+
+    // -------------------------------------------------------------------
+    // Absturz-Diagnose: es gibt in dieser Sandbox kein echtes Gerät/Logcat,
+    // um einen Absturz-Stacktrace zu sehen. Daher wird jeder unbehandelte
+    // Fehler persistiert und beim nächsten Start als kopierbarer Dialog
+    // angezeigt, damit er sich weitergeben lässt.
+    // -------------------------------------------------------------------
+    private fun installCrashHandler() {
+        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            try {
+                val sw = StringWriter()
+                throwable.printStackTrace(PrintWriter(sw))
+                getSharedPreferences("crash", Context.MODE_PRIVATE).edit()
+                    .putString("last_crash", sw.toString())
+                    .apply()
+            } catch (e: Exception) {
+                // Konnte den Absturz nicht speichern - Standardverhalten übernimmt.
+            }
+            defaultHandler?.uncaughtException(thread, throwable)
+        }
+    }
+
+    private fun showLastCrashIfAny() {
+        val prefs = getSharedPreferences("crash", Context.MODE_PRIVATE)
+        val trace = prefs.getString("last_crash", null) ?: return
+        prefs.edit().remove("last_crash").apply()
+        AlertDialog.Builder(this)
+            .setTitle("Letzter Absturz")
+            .setMessage(trace)
+            .setPositiveButton("OK", null)
+            .show()
     }
 
     private fun bindViews() {

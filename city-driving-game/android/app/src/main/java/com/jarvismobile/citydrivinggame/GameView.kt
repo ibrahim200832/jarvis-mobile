@@ -66,7 +66,13 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), C
     fun attach(engine: GameEngine, onFrame: () -> Unit) {
         this.engine = engine
         this.onFrame = onFrame
-        if (terrainTexture == null) terrainTexture = generateTerrainTexture()
+        if (terrainTexture == null) {
+            terrainTexture = try {
+                generateTerrainTexture()
+            } catch (e: Exception) {
+                null
+            }
+        }
     }
 
     fun startLoop() {
@@ -91,7 +97,11 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), C
         val density = resources.displayMetrics.density.toDouble()
         val widthDp = if (density > 0) viewW / density else viewW
         scale = clamp(widthDp / 46.0, 11.0, 22.0) * density
-        waterSheen = generateWaterSheen(w, h)
+        waterSheen = try {
+            generateWaterSheen(w, h)
+        } catch (e: Exception) {
+            null
+        }
     }
 
     override fun doFrame(frameTimeNanos: Long) {
@@ -196,6 +206,7 @@ class GameView(context: Context, attrs: AttributeSet?) : View(context, attrs), C
 
     override fun onDraw(canvas: Canvas) {
         if (!::engine.isInitialized) return
+        if (viewW <= 0.0 || viewH <= 0.0) return
         val e = engine
 
         drawWater(canvas, e)
