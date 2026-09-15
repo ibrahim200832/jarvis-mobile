@@ -193,11 +193,21 @@ class MainActivity : Activity(), GameListener {
         wireHold(findViewById<View>(R.id.pedalBrakeBtn)) { down -> gameView.touchBrake = down }
     }
 
+    // Für Halte-Steuerung (Lenkrad/Pedale) statt Klick — reagiert auf
+    // ACTION_DOWN/UP wie auch die POINTER_-Varianten (wenn dieser Finger
+    // nicht der einzige aktive ist, z.B. gleichzeitig Lenken + Gasgeben),
+    // und gibt sichtbares Drück-Feedback über den Hintergrund.
     private fun wireHold(view: View, onChange: (Boolean) -> Unit) {
-        view.setOnTouchListener { _, event ->
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> onChange(true)
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> onChange(false)
+        view.setOnTouchListener { v, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
+                    v.setBackgroundResource(R.drawable.bg_touch_btn_pressed)
+                    onChange(true)
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_CANCEL -> {
+                    v.setBackgroundResource(R.drawable.bg_touch_btn)
+                    onChange(false)
+                }
             }
             true
         }

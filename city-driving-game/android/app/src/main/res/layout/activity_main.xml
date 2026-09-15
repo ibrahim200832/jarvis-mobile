@@ -279,22 +279,22 @@
 
             <Button
                 android:id="@+id/steerLeftBtn"
-                android:layout_width="64dp"
-                android:layout_height="64dp"
+                android:layout_width="76dp"
+                android:layout_height="76dp"
                 android:background="@drawable/bg_touch_btn"
                 android:text="◀"
                 android:textColor="@color/accent"
-                android:textSize="22sp" />
+                android:textSize="26sp" />
 
             <Button
                 android:id="@+id/steerRightBtn"
-                android:layout_width="64dp"
-                android:layout_height="64dp"
+                android:layout_width="76dp"
+                android:layout_height="76dp"
                 android:layout_marginStart="14dp"
                 android:background="@drawable/bg_touch_btn"
                 android:text="▶"
                 android:textColor="@color/accent"
-                android:textSize="22sp" />
+                android:textSize="26sp" />
         </LinearLayout>
 
         <!-- Gas/Bremse -->
@@ -307,22 +307,22 @@
 
             <Button
                 android:id="@+id/pedalGasBtn"
-                android:layout_width="64dp"
-                android:layout_height="56dp"
+                android:layout_width="76dp"
+                android:layout_height="68dp"
                 android:background="@drawable/bg_touch_btn"
                 android:text="▲"
                 android:textColor="@color/accent"
-                android:textSize="20sp" />
+                android:textSize="24sp" />
 
             <Button
                 android:id="@+id/pedalBrakeBtn"
-                android:layout_width="64dp"
-                android:layout_height="56dp"
+                android:layout_width="76dp"
+                android:layout_height="68dp"
                 android:layout_marginTop="10dp"
                 android:background="@drawable/bg_touch_btn"
                 android:text="▼"
                 android:textColor="@color/error"
-                android:textSize="20sp" />
+                android:textSize="24sp" />
         </LinearLayout>
 
         <!-- Busted/Wasted-Overlay -->
