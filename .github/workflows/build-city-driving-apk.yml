@@ -21,6 +21,13 @@ jobs:
           java-version: '17'
 
       - uses: android-actions/setup-android@v3
+        with:
+          # Google removed the legacy "tools" package from the SDK
+          # repository manifest, so the action's default `packages` input
+          # (which includes it) now fails. platform-tools is all this
+          # step needs to provide up front; AGP/Gradle installs whatever
+          # platform and build-tools versions the project requires.
+          packages: 'platform-tools'
 
       - uses: gradle/actions/setup-gradle@v4
         with:
