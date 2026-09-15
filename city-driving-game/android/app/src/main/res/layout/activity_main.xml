@@ -1,0 +1,385 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/background">
+
+    <!-- ============ LOBBY ============ -->
+    <ScrollView
+        android:id="@+id/lobbyScreen"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center_horizontal"
+            android:padding="20dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:orientation="vertical"
+                android:background="@drawable/pill_outline"
+                android:padding="20dp"
+                android:gravity="center_horizontal">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Heat Streets"
+                    android:textColor="@color/accent_glow"
+                    android:textSize="24sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:layout_marginBottom="12dp"
+                    android:text="Freies Fahren durch die Stadt"
+                    android:textColor="@color/muted"
+                    android:textSize="13sp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="12dp"
+                    android:gravity="center"
+                    android:lineSpacingMultiplier="1.3"
+                    android:text="Fahr frei durch ein offenes Straßenraster, sammle Münzen, weich Fußgängern und Verkehr knapp aus (bringt Bonuspunkte) und bleib den Fahndungssternen einen Schritt voraus — fährst du jemanden an oder rammst zu oft andere Autos, rückt die Polizei an. Die Stadt wechselt dabei zwischen Tag und Nacht."
+                    android:textColor="@color/muted"
+                    android:textSize="13sp" />
+
+                <TextView
+                    android:id="@+id/lobbyHighscoreLabel"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="16dp"
+                    android:text="Highscore: 0 Punkte"
+                    android:textColor="@color/foreground"
+                    android:textSize="14sp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="VERKEHRSDICHTE"
+                    android:textColor="@color/muted"
+                    android:textSize="11sp"
+                    android:letterSpacing="0.06"
+                    android:gravity="center" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:layout_marginBottom="14dp"
+                    android:orientation="horizontal">
+
+                    <Button android:id="@+id/densityRuhig" style="@style/OptionButton" android:layout_width="0dp" android:layout_weight="1" android:text="Ruhig" />
+                    <Button android:id="@+id/densityNormal" style="@style/OptionButtonSelected" android:layout_width="0dp" android:layout_weight="1" android:layout_marginStart="6dp" android:text="Normal" />
+                    <Button android:id="@+id/densityVoll" style="@style/OptionButton" android:layout_width="0dp" android:layout_weight="1" android:layout_marginStart="6dp" android:text="Voll" />
+                </LinearLayout>
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="AUTOFARBE"
+                    android:textColor="@color/muted"
+                    android:textSize="11sp"
+                    android:letterSpacing="0.06"
+                    android:gravity="center" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:layout_marginBottom="16dp"
+                    android:orientation="horizontal">
+
+                    <Button android:id="@+id/carColor0" style="@style/OptionButtonSelected" android:layout_width="0dp" android:layout_weight="1" android:text="Amber" />
+                    <Button android:id="@+id/carColor1" style="@style/OptionButton" android:layout_width="0dp" android:layout_weight="1" android:layout_marginStart="6dp" android:text="Rot" />
+                    <Button android:id="@+id/carColor2" style="@style/OptionButton" android:layout_width="0dp" android:layout_weight="1" android:layout_marginStart="6dp" android:text="Blau" />
+                    <Button android:id="@+id/carColor3" style="@style/OptionButton" android:layout_width="0dp" android:layout_weight="1" android:layout_marginStart="6dp" android:text="Grün" />
+                </LinearLayout>
+
+                <Button
+                    android:id="@+id/startBtn"
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:background="@drawable/pill_accent"
+                    android:text="Losfahren"
+                    android:textColor="@color/on_accent"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:gravity="center"
+                    android:text="📱 Lenkrad unten links, Gas/Bremse unten rechts"
+                    android:textColor="@color/muted"
+                    android:textSize="11.5sp" />
+            </LinearLayout>
+        </LinearLayout>
+    </ScrollView>
+
+    <!-- ============ GAME ============ -->
+    <FrameLayout
+        android:id="@+id/gameScreen"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone">
+
+        <com.jarvismobile.citydrivinggame.GameView
+            android:id="@+id/gameView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
+
+        <!-- top-left: Fahndungssterne + Gesundheit -->
+        <LinearLayout
+            android:layout_width="190dp"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|start"
+            android:layout_margin="12dp"
+            android:orientation="vertical">
+
+            <LinearLayout
+                android:id="@+id/wantedRow"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="6dp"
+                android:background="@drawable/pill_chip"
+                android:orientation="horizontal"
+                android:paddingHorizontal="10dp"
+                android:paddingVertical="4dp">
+
+                <TextView android:id="@+id/star0" style="@style/WantedStar" />
+                <TextView android:id="@+id/star1" style="@style/WantedStar" />
+                <TextView android:id="@+id/star2" style="@style/WantedStar" />
+                <TextView android:id="@+id/star3" style="@style/WantedStar" />
+                <TextView android:id="@+id/star4" style="@style/WantedStar" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="18dp"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:text="❤️"
+                    android:textSize="12sp" />
+
+                <ProgressBar
+                    android:id="@+id/healthBar"
+                    style="?android:attr/progressBarStyleHorizontal"
+                    android:layout_width="0dp"
+                    android:layout_height="9dp"
+                    android:layout_weight="1"
+                    android:max="100"
+                    android:progress="100"
+                    android:progressBackgroundTint="#59000000"
+                    android:progressTint="@color/error" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- top-right: Tageszeit, Minimap, Münzen -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|end"
+            android:layout_margin="12dp"
+            android:gravity="end"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/daytimeChip"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/pill_chip"
+                android:paddingHorizontal="10dp"
+                android:paddingVertical="4dp"
+                android:text="☀️ Tag"
+                android:textColor="@color/foreground"
+                android:textSize="12sp" />
+
+            <com.jarvismobile.citydrivinggame.MinimapView
+                android:id="@+id/minimapView"
+                android:layout_width="108dp"
+                android:layout_height="108dp"
+                android:layout_marginTop="6dp"
+                android:background="@drawable/pill_chip" />
+
+            <TextView
+                android:id="@+id/coinChip"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:background="@drawable/pill_chip"
+                android:paddingHorizontal="10dp"
+                android:paddingVertical="4dp"
+                android:text="🪙 0/0"
+                android:textColor="@color/muted"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <!-- bottom-left: Tempo -->
+        <TextView
+            android:id="@+id/speedText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|start"
+            android:layout_margin="14dp"
+            android:background="@drawable/pill_chip"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="6dp"
+            android:text="0 km/h"
+            android:textColor="@color/accent"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <!-- bottom-right: Punkte -->
+        <TextView
+            android:id="@+id/scoreText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|end"
+            android:layout_margin="14dp"
+            android:background="@drawable/pill_chip"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="6dp"
+            android:text="Punkte: 0"
+            android:textColor="@color/muted"
+            android:textSize="13sp" />
+
+        <!-- Toast-Stapel -->
+        <LinearLayout
+            android:id="@+id/toastStack"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|center_horizontal"
+            android:layout_marginTop="64dp"
+            android:gravity="center_horizontal"
+            android:orientation="vertical" />
+
+        <!-- Lenkrad -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|start"
+            android:layout_margin="18dp"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/steerLeftBtn"
+                android:layout_width="76dp"
+                android:layout_height="76dp"
+                android:background="@drawable/bg_touch_btn"
+                android:text="◀"
+                android:textColor="@color/accent"
+                android:textSize="26sp" />
+
+            <Button
+                android:id="@+id/steerRightBtn"
+                android:layout_width="76dp"
+                android:layout_height="76dp"
+                android:layout_marginStart="14dp"
+                android:background="@drawable/bg_touch_btn"
+                android:text="▶"
+                android:textColor="@color/accent"
+                android:textSize="26sp" />
+        </LinearLayout>
+
+        <!-- Gas/Bremse -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|end"
+            android:layout_margin="18dp"
+            android:orientation="vertical">
+
+            <Button
+                android:id="@+id/pedalGasBtn"
+                android:layout_width="76dp"
+                android:layout_height="68dp"
+                android:background="@drawable/bg_touch_btn"
+                android:text="▲"
+                android:textColor="@color/accent"
+                android:textSize="24sp" />
+
+            <Button
+                android:id="@+id/pedalBrakeBtn"
+                android:layout_width="76dp"
+                android:layout_height="68dp"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_touch_btn"
+                android:text="▼"
+                android:textColor="@color/error"
+                android:textSize="24sp" />
+        </LinearLayout>
+
+        <!-- Busted/Wasted-Overlay -->
+        <LinearLayout
+            android:id="@+id/overlay"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="#dc0a0f16"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/overlayTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Busted!"
+                android:textAllCaps="true"
+                android:textColor="@color/error"
+                android:textSize="30sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/overlayStats"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:gravity="center"
+                android:lineSpacingMultiplier="1.4"
+                android:textColor="@color/foreground" />
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/restartBtn"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/pill_accent"
+                    android:paddingHorizontal="20dp"
+                    android:text="Neu starten"
+                    android:textColor="@color/on_accent"
+                    android:textStyle="bold" />
+
+                <Button
+                    android:id="@+id/lobbyBtn"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="12dp"
+                    android:background="@drawable/pill_outline"
+                    android:paddingHorizontal="20dp"
+                    android:text="Zur Lobby"
+                    android:textColor="@color/foreground" />
+            </LinearLayout>
+        </LinearLayout>
+    </FrameLayout>
+</FrameLayout>
