@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import '../services/calendar_service.dart';
 import '../services/contacts_service.dart';
 import '../services/settings_service.dart';
 import '../services/spotify_service.dart';
@@ -14,12 +15,14 @@ class SettingsScreen extends StatefulWidget {
     required this.contacts,
     required this.spotify,
     required this.tiktok,
+    required this.calendar,
   });
 
   final SettingsService settings;
   final ContactsService contacts;
   final SpotifyService spotify;
   final TikTokUploadService tiktok;
+  final CalendarService calendar;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -33,6 +36,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _youtubeClientIdCtrl = TextEditingController();
   final _spotifyClientIdCtrl = TextEditingController();
   final _tiktokClientKeyCtrl = TextEditingController();
+  final _callSecretCtrl = TextEditingController();
+  final _reminderPhoneCtrl = TextEditingController();
   List<Contact> _contacts = [];
   String _appVersion = '';
   String _aiModel = 'openai';
@@ -41,6 +46,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _connectingSpotify = false;
   bool _tiktokConnected = false;
   bool _connectingTiktok = false;
+  bool _calendarConnected = false;
+  bool _connectingCalendar = false;
 
   static const _aiModels = {
     'openai': 'ChatGPT (Standard)',
@@ -63,10 +70,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _youtubeClientIdCtrl.text = await widget.settings.getYoutubeClientId() ?? '';
     _spotifyClientIdCtrl.text = await widget.settings.getSpotifyClientId() ?? '';
     _tiktokClientKeyCtrl.text = await widget.settings.getTiktokClientKey() ?? '';
+    _callSecretCtrl.text = await widget.settings.getCallSharedSecret() ?? '';
+    _reminderPhoneCtrl.text = await widget.settings.getReminderPhone() ?? '';
     _aiModel = await widget.settings.getAiModel();
     _contacts = await widget.contacts.all();
     _spotifyConnected = await widget.spotify.isConnected();
     _tiktokConnected = await widget.tiktok.isConnected();
+    _calendarConnected = await widget.calendar.remindersConnected();
     if (mounted) setState(() {});
   }
 
@@ -83,6 +93,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await widget.settings.setYoutubeClientId(_youtubeClientIdCtrl.text.trim());
     await widget.settings.setSpotifyClientId(_spotifyClientIdCtrl.text.trim());
     await widget.settings.setTiktokClientKey(_tiktokClientKeyCtrl.text.trim());
+    await widget.settings.setCallSharedSecret(_callSecretCtrl.text.trim());
+    await widget.settings.setReminderPhone(_reminderPhoneCtrl.text.trim());
     await widget.settings.setAiModel(_aiModel);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gespeichert.')));
@@ -146,6 +158,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _disconnectTiktok() async {
     await widget.tiktok.disconnect();
     if (mounted) setState(() => _tiktokConnected = false);
+  }
+
+  Future<void> _connectCalendar() async {
+    final backendUrl = await widget.settings.getAiBackendUrl();
+    final secret = _callSecretCtrl.text.trim();
+    final phone = _reminderPhoneCtrl.text.trim();
+    if (secret.isEmpty || phone.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Bitte zuerst Anruf-Geheimnis und Telefonnummer eintragen und speichern.')),
+      );
+      return;
+    }
+    await widget.settings.setCallSharedSecret(secret);
+    await widget.settings.setReminderPhone(phone);
+    setState(() => _connectingCalendar = true);
+    final error = await widget.calendar.connectReminders(backendUrl: backendUrl ?? '', secret: secret, phone: phone);
+    if (!mounted) return;
+    setState(() {
+      _connectingCalendar = false;
+      _calendarConnected = error == null;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(error ?? 'Google Kalender verbunden — Anruf-Erinnerungen sind aktiv.')),
+    );
+  }
+
+  Future<void> _disconnectCalendar() async {
+    final backendUrl = await widget.settings.getAiBackendUrl();
+    final ok = await widget.calendar.disconnectReminders(backendUrl: backendUrl ?? '', secret: _callSecretCtrl.text.trim());
+    if (mounted && ok) setState(() => _calendarConnected = false);
   }
 
   Future<void> _addContact() async {
@@ -242,7 +284,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           TextField(
             controller: _youtubeClientIdCtrl,
             decoration: const InputDecoration(
-              labelText: 'YouTube-Client-ID (für Video-Upload)',
+              labelText: 'Google-Client-ID (für Video-Upload & Kalender)',
               helperText: 'Web-Client-ID aus Google Cloud Console, siehe README',
               border: OutlineInputBorder(),
             ),
@@ -294,6 +336,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                   : const Icon(Icons.link),
               label: Text(_connectingTiktok ? 'Verbinde…' : 'Mit TikTok verbinden'),
+            ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _reminderPhoneCtrl,
+            decoration: const InputDecoration(
+              labelText: 'Telefonnummer für Anrufe (+49...)',
+              helperText: 'Die Nummer, die JARVIS anruft — bei "ruf mich an" und für Termin-Erinnerungen',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _callSecretCtrl,
+            obscureText: true,
+            decoration: const InputDecoration(
+              labelText: 'Anruf-Geheimnis',
+              helperText:
+                  'Beliebiger eigener Text, muss mit CALL_SHARED_SECRET auf deinem Worker übereinstimmen, siehe README',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (_calendarConnected)
+            OutlinedButton.icon(
+              onPressed: _disconnectCalendar,
+              icon: const Icon(Icons.link_off),
+              label: const Text('Google Kalender trennen (Anruf-Erinnerungen aus)'),
+            )
+          else
+            OutlinedButton.icon(
+              onPressed: _connectingCalendar ? null : _connectCalendar,
+              icon: _connectingCalendar
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.calendar_month_outlined),
+              label: Text(_connectingCalendar ? 'Verbinde…' : 'Google Kalender verbinden (für Anruf-Erinnerungen)'),
             ),
           const SizedBox(height: 16),
           FilledButton(onPressed: _save, child: const Text('Speichern')),

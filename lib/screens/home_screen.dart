@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../core/command_router.dart';
 import '../services/ai_chat_service.dart';
 import '../services/app_launcher_service.dart';
+import '../services/calendar_service.dart';
 import '../services/call_service.dart';
 import '../services/contacts_service.dart';
 import '../services/device_info_service.dart';
@@ -20,6 +21,7 @@ import '../services/location_service.dart';
 import '../services/news_service.dart';
 import '../services/notes_service.dart';
 import '../services/notification_service.dart';
+import '../services/phone_call_service.dart';
 import '../services/qr_service.dart';
 import '../services/random_fun_service.dart';
 import '../services/settings_service.dart';
@@ -62,6 +64,8 @@ class _HomeScreenState extends State<HomeScreen> {
   final _timer = TimerService();
   final _spotify = SpotifyService();
   final _tiktok = TikTokUploadService();
+  final _phoneCall = PhoneCallService();
+  late final CalendarService _calendar;
   final _textCtrl = TextEditingController();
   final _scrollCtrl = ScrollController();
 
@@ -84,6 +88,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _calendar = CalendarService(clientIdProvider: _settings.getYoutubeClientId);
     _router = CommandRouter(
       wikipedia: WikipediaService(),
       jokes: JokeService(),
@@ -107,6 +112,8 @@ class _HomeScreenState extends State<HomeScreen> {
       notifications: NotificationService(),
       spotify: _spotify,
       webSearch: WebSearchService(),
+      phoneCall: _phoneCall,
+      calendar: _calendar,
     );
     _timer.onFire = _onTimerFired;
     _speech.init();
@@ -566,6 +573,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       contacts: _contacts,
                       spotify: _spotify,
                       tiktok: _tiktok,
+                      calendar: _calendar,
                     ),
                   ),
                 ),

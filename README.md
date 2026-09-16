@@ -42,6 +42,8 @@ Jeder Push auf `main` baut die App automatisch als Website und veröffentlicht s
 | — | Die KI kann im Gespräch selbst Anrufe/WhatsApp/Apps auslösen (optional, siehe unten) |
 | — | Video vom Handy auf dein eigenes YouTube-Konto hochladen — Sichtbarkeit (privat/nicht gelistet/öffentlich) wählbar, optional zeitgesteuerte Veröffentlichung (optional, siehe unten) |
 | — | Video vom Handy auf dein eigenes TikTok-Konto hochladen — Sichtbarkeit wählbar (optional, siehe unten; Einschränkungen beachten) |
+| — | Echter Telefonanruf: „ruf mich an" lässt JARVIS dich tatsächlich anrufen und etwas ansagen (optional, siehe unten) |
+| — | Google-Kalender: Termine ansagen/anlegen per Sprache, plus automatischer Erinnerungsanruf kurz vor einem Termin (optional, siehe unten) |
 
 ## Sprachbefehle (Beispiele)
 
@@ -194,6 +196,36 @@ Weil TikToks Login sowohl einen Client Key **als auch** ein geheimes Client Secr
 5. **Verbinden**: In den Einstellungen auf „Mit TikTok verbinden" tippen und im sich öffnenden TikTok-Login mit deinem normalen TikTok-Konto bestätigen.
 
 Getestet ist dieser Ablauf bisher auf der APK (Handy); die Web-Version nutzt denselben Code, TikToks API ist aber primär für Server-zu-Server-Aufrufe gedacht, daher ist nicht sichergestellt, dass der eigentliche Video-Upload im Browser funktioniert.
+
+## Telefonanrufe & Kalender-Erinnerungen einrichten (optional)
+
+Sag „ruf mich an", und JARVIS ruft dich tatsächlich am Telefon an (nicht nur ein Wähldialog wie bei „rufe Mama an" — ein echter eingehender Anruf, bei dem eine Stimme spricht). Verbindest du zusätzlich deinen Google Kalender, ruft JARVIS dich auch automatisch an, kurz bevor ein Termin beginnt — auch wenn die App gerade nicht geöffnet ist, weil das im Hintergrund über deinen eigenen Worker läuft (Cloudflare Cron, alle 5 Minuten). Im Gespräch kann JARVIS beides auch selbst auslösen („ruf mich in 10 Minuten nochmal an" während eines laufenden Gesprächs, „leg einen Termin für morgen 15 Uhr Zahnarzt an").
+
+Weil ein echter Telefonanruf über einen Telefonie-Anbieter läuft und dessen Zugangsdaten niemals in der App landen dürfen, läuft das komplett über deinen eigenen Worker — Kosten für Anrufe trägt dein eigenes Twilio-Konto (siehe Twilios Preisliste; ein paar Cent pro Anruf).
+
+1. **Worker-URL kennen**: Deine Worker-URL steht unter Einstellungen → „KI-Server-Adresse" bzw. im Cloudflare-Dashboard (z. B. `https://jarvis-ai.<dein-name>.workers.dev`).
+2. **WORKER_SELF_URL setzen**: Im [Cloudflare-Dashboard](https://dash.cloudflare.com) → Workers & Pages → deinen Worker öffnen → **Settings → Variables and Secrets → Add** → Name `WORKER_SELF_URL`, Wert = genau diese Worker-URL (ohne Slash am Ende) → Typ **Text** reicht.
+3. **Anruf-Geheimnis festlegen**: Denk dir einen beliebigen langen Zufallstext aus (z. B. mit einem Passwort-Generator) und trage ihn zweimal ein:
+   - Im Worker als Secret `CALL_SHARED_SECRET` (gleicher Weg wie oben, Typ **Secret**).
+   - In der JARVIS-App unter **Einstellungen → „Anruf-Geheimnis"**.
+
+   Das verhindert, dass jemand anderes über deine Worker-URL auf deine Kosten Anrufe auslöst.
+4. **Twilio-Konto einrichten**: Kostenloses Konto unter [twilio.com](https://www.twilio.com) anlegen → eine Telefonnummer kaufen/mieten (mit Sprachfunktion) → **Account SID**, **Auth Token** (beide auf der Twilio-Console-Startseite) und die gekaufte **Telefonnummer** (im E.164-Format, z. B. `+491701234567`) notieren.
+5. **Twilio-Zugangsdaten im Worker hinterlegen**: Im Worker als Secrets `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN` und `TWILIO_FROM_NUMBER` (deine Twilio-Nummer) eintragen → **Deploy**.
+6. **Deine eigene Handynummer eintragen**: In der JARVIS-App unter **Einstellungen → „Telefonnummer für Anrufe"** deine echte Handynummer im E.164-Format eintragen (die JARVIS anruft) → speichern.
+7. **Testen**: „ruf mich an" sagen — dein Telefon sollte innerhalb weniger Sekunden klingeln, mit einer gesprochenen Nachricht von JARVIS.
+
+### Kalender-Erinnerungsanrufe (zusätzlich, optional)
+
+Damit JARVIS automatisch vor Terminen anruft, auch ohne geöffnete App, braucht der Worker dauerhaften Zugriff auf deinen Google Kalender:
+
+1. **Google-Client-ID einrichten**, falls noch nicht geschehen (siehe „YouTube-Video-Upload einrichten" oben) — dieselbe Client-ID wird hier mitbenutzt, nur mit einem zusätzlichen Scope. Unter „OAuth consent screen → Scopes" zusätzlich `.../auth/calendar` hinzufügen.
+2. **Client Secret erzeugen**: „APIs & Services → Credentials" → deinen bestehenden **Web application**-OAuth-Client öffnen (oder neu anlegen) → das dort angezeigte **Client Secret** notieren (nur bei „Web application"-Clients vorhanden).
+3. **KV-Speicher anlegen**: Lokal mit installiertem [Wrangler](https://developers.cloudflare.com/workers/wrangler/) im Projektordner `wrangler kv namespace create JARVIS_KV` ausführen → die zurückgegebene `id` in `wrangler.toml` bei `[[kv_namespaces]]` eintragen (ersetzt `REPLACE_WITH_YOUR_KV_NAMESPACE_ID`) → Worker neu deployen (`wrangler deploy`).
+4. **Google-Zugangsdaten im Worker hinterlegen**: Als Secrets `GOOGLE_CLIENT_ID` (deine Web-Client-ID) und `GOOGLE_CLIENT_SECRET` (aus Schritt 2) eintragen.
+5. **Verbinden**: In der JARVIS-App unter Einstellungen zuerst Telefonnummer und Anruf-Geheimnis eintragen/speichern (siehe oben), dann auf „Google Kalender verbinden" tippen und die Google-Anmeldung bestätigen (auch hier zeigt Google ggf. „App nicht überprüft" — unbedenklich für dein eigenes Test-Projekt, siehe oben).
+
+Ab jetzt prüft der Worker automatisch alle 5 Minuten, ob ein Termin in den nächsten 15 Minuten beginnt, und ruft dich dann einmalig pro Termin an.
 
 ## Projekt bauen
 

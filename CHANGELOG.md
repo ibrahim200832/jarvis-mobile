@@ -5,6 +5,8 @@ wird beim Deploy automatisch in den "Update verfügbar"-Dialog der App
 übernommen (siehe `.github/workflows/deploy-web.yml`).
 
 ## Aktuell
+- Neu: "ruf mich an" lässt JARVIS dich tatsächlich anrufen (echter Telefonanruf mit Ansage) — eigenes Twilio-Konto nötig, siehe README.
+- Neu: Google-Kalender-Anbindung — Termine per Sprache ansagen lassen oder anlegen ("was steht heute an", "leg einen termin an: ..."), plus automatischer Erinnerungsanruf kurz vor Terminbeginn, auch ohne geöffnete App.
 - Neu: Videos lassen sich jetzt auch auf TikTok hochladen ("video auf tiktok hochladen"), mit wählbarer Sichtbarkeit — eigene TikTok-Entwickler-App nötig, siehe README. Wichtig: Ohne bestandenes TikTok-Audit landet jeder Upload automatisch als "Nur ich" (privat), unabhängig von der Auswahl.
 
 ## Vorheriges Update

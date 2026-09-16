@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../services/ai_chat_service.dart';
 import '../services/app_launcher_service.dart';
 import '../services/calculator_service.dart';
+import '../services/calendar_service.dart';
 import '../services/call_service.dart';
 import '../services/contacts_service.dart';
 import '../services/device_info_service.dart';
@@ -13,6 +14,7 @@ import '../services/location_service.dart';
 import '../services/news_service.dart';
 import '../services/notes_service.dart';
 import '../services/notification_service.dart';
+import '../services/phone_call_service.dart';
 import '../services/qr_service.dart';
 import '../services/random_fun_service.dart';
 import '../services/settings_service.dart';
@@ -76,6 +78,8 @@ class CommandRouter {
     required this.notifications,
     required this.spotify,
     required this.webSearch,
+    required this.phoneCall,
+    required this.calendar,
   });
 
   final WikipediaService wikipedia;
@@ -100,6 +104,8 @@ class CommandRouter {
   final NotificationService notifications;
   final SpotifyService spotify;
   final WebSearchService webSearch;
+  final PhoneCallService phoneCall;
+  final CalendarService calendar;
 
   /// Rolling window of past AI exchanges (user+assistant pairs), so a
   /// follow-up like "und morgen?" is understood in context instead of
@@ -135,6 +141,9 @@ Das kann ich für dich tun:
 • "notiz <Text>" / "meine notizen" / "lösche notiz <Nummer>"
 • "wirf eine münze" / "würfle" / "zufallszahl zwischen 1 und 100"
 • "spiele <Song> auf spotify" / "spiele playlist <Name> auf spotify" (Spotify-Verbindung nötig, siehe Einstellungen)
+• "ruf mich an" (Twilio-Einrichtung nötig, siehe Einstellungen)
+• "was steht heute/morgen an" / "meine termine" (Google-Kalender-Verbindung nötig, siehe Einstellungen)
+• "leg einen termin an: <Titel> um <Uhrzeit>"
 • alles andere: frag mich einfach frei, ich antworte mit echter KI und kann
   dabei auch direkt anrufen, WhatsApp schreiben oder Apps öffnen
 ''';
@@ -249,6 +258,27 @@ Das kann ich für dich tun:
           openYoutubeUpload: true,
           youtubePrivacy: privacy,
         );
+      }
+
+      if (_matchesAny(lower, ['ruf mich an', 'rufe mich an', 'call me'])) {
+        return CommandResult(await _callMe('Sir, hier ist JARVIS. Sie wollten, dass ich Sie anrufe.'));
+      }
+
+      if (_matchesAny(lower, ['was steht heute an', 'meine termine heute', 'termine heute'])) {
+        return CommandResult(await _describeEvents(DateTime.now(), 'heute'));
+      }
+
+      if (_matchesAny(lower, ['was steht morgen an', 'meine termine morgen', 'termine morgen'])) {
+        return CommandResult(await _describeEvents(DateTime.now().add(const Duration(days: 1)), 'morgen'));
+      }
+
+      if (_matchesAny(lower, ['meine termine', 'meine kalender'])) {
+        return CommandResult(await _describeEvents(DateTime.now(), 'die nächsten Tage', days: 7));
+      }
+
+      final newEventQuery = _extractAfter(lower, text, ['leg einen termin an', 'trage einen termin ein', 'neuer termin', 'termin:']);
+      if (newEventQuery != null) {
+        return CommandResult(await _createEventFromText(newEventQuery));
       }
 
       final callTarget = _extractAfter(lower, text, ['rufe', 'ruf', 'call']);
@@ -536,6 +566,20 @@ Das kann ich für dich tun:
       case 'open_tiktok_upload':
         return CommandResult('Öffne den TikTok-Upload.', openTiktokUpload: true);
 
+      case 'call_me':
+        final message = (action.params['message'] as String?)?.trim() ?? '';
+        if (message.isEmpty) return CommandResult('Was soll ich dir am Telefon sagen?');
+        return CommandResult(await _callMe(message));
+
+      case 'create_calendar_event':
+        final eventTitle = (action.params['title'] as String?)?.trim() ?? '';
+        final startRaw = (action.params['start'] as String?)?.trim();
+        final start = startRaw == null ? null : DateTime.tryParse(startRaw)?.toLocal();
+        if (eventTitle.isEmpty || start == null) {
+          return CommandResult('Wie soll der Termin heißen und wann soll er stattfinden?');
+        }
+        return CommandResult(await calendar.createEvent(title: eventTitle, start: start));
+
       case 'open_youtube_upload':
         final uploadPrivacy = _normalizeYoutubePrivacy(action.params['privacy_status'] as String?);
         final publishAt = _parseYoutubePublishAt(action.params['publish_at'] as String?);
@@ -577,6 +621,47 @@ Das kann ich für dich tun:
     }
     if (name.isEmpty) return 'Welche Playlist soll ich abspielen?';
     return spotify.playPlaylist(clientId, name);
+  }
+
+  Future<String> _callMe(String message) async {
+    final backendUrl = await settings.getAiBackendUrl();
+    final secret = await settings.getCallSharedSecret();
+    final phone = await settings.getReminderPhone();
+    final error = await phoneCall.callMe(
+      backendUrl: backendUrl ?? '',
+      secret: secret ?? '',
+      phone: phone ?? '',
+      message: message,
+    );
+    return error ?? 'Ich rufe dich jetzt an.';
+  }
+
+  Future<String> _describeEvents(DateTime from, String label, {int days = 1}) async {
+    final events = await calendar.listEvents(from, from.add(Duration(days: days)));
+    if (events.isEmpty) return 'Für $label steht nichts in deinem Kalender.';
+    final lines = events.map((e) {
+      final time = e.allDay ? 'ganztägig' : DateFormat.Hm('de_DE').format(e.start);
+      return '• ${e.title} ($time)';
+    });
+    return 'Termine für $label:\n${lines.join('\n')}';
+  }
+
+  static final _eventTimePattern = RegExp(r'\bum\s+(\d{1,2})(?::(\d{2}))?\s*(?:uhr)?\b');
+
+  Future<String> _createEventFromText(String input) async {
+    final match = _eventTimePattern.firstMatch(input.toLowerCase());
+    if (match == null) {
+      return 'Sag z. B. "leg einen termin an: Zahnarzt um 15 Uhr".';
+    }
+    final hour = int.parse(match.group(1)!);
+    final minute = int.tryParse(match.group(2) ?? '0') ?? 0;
+    var day = DateTime.now();
+    if (input.toLowerCase().contains('morgen')) day = day.add(const Duration(days: 1));
+    final start = DateTime(day.year, day.month, day.day, hour, minute);
+
+    final title = input.substring(0, match.start).replaceAll(RegExp(r'\s*(morgen|heute)\s*$', caseSensitive: false), '').trim();
+    if (title.isEmpty) return 'Wie soll der Termin heißen?';
+    return calendar.createEvent(title: title, start: start);
   }
 
   String? _normalizeYoutubePrivacy(String? raw) {

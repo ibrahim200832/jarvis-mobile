@@ -238,6 +238,40 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'call_me',
+      description:
+        'Ruft den Nutzer selbst per Telefon an (nicht einen Kontakt) und sagt ihm eine kurze Nachricht. Nur verwenden, wenn der Nutzer klar darum bittet, ihn anzurufen, oder wenn er zuvor gebeten hat, ihn zu einem bestimmten Anlass anzurufen und dieser Anlass jetzt eintritt.',
+      parameters: {
+        type: 'object',
+        properties: {
+          message: { type: 'string', description: 'Was JARVIS dem Nutzer am Telefon sagen soll, kurz und natürlich gesprochen.' },
+        },
+        required: ['message'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_calendar_event',
+      description:
+        'Legt einen Termin im Google Kalender des Nutzers an. Nur verwenden, wenn der Nutzer klar darum bittet, einen Termin einzutragen.',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'Titel des Termins' },
+          start: {
+            type: 'string',
+            description: 'Startzeitpunkt als ISO-8601-UTC-Zeitstempel, berechnet relativ zur aktuellen Zeit unten.',
+          },
+        },
+        required: ['title', 'start'],
+      },
+    },
+  },
 ];
 
 const SYSTEM_PROMPT =
@@ -257,7 +291,8 @@ const SYSTEM_PROMPT =
   'Du hast Werkzeuge für: Anrufen, WhatsApp senden, Apps öffnen, Timer stellen, Notizen speichern, Wetter ' +
   'abrufen, Kamera öffnen, Wikipedia-Suche, Nachrichten abrufen, E-Mail senden, YouTube-Suche, das Web ' +
   'durchsuchen, Musik oder eine Playlist auf Spotify abspielen, den TikTok-Video-Upload öffnen und den ' +
-  'YouTube-Video-Upload öffnen (mit Sichtbarkeit/Zeitplanung). ' +
+  'YouTube-Video-Upload öffnen (mit Sichtbarkeit/Zeitplanung), den Nutzer selbst anrufen und einen Termin im ' +
+  'Google Kalender anlegen. ' +
   'Nutze ein Werkzeug ausschließlich dann, wenn der Nutzer eine konkrete, eindeutige Handlungsaufforderung ' +
   'ausspricht (z.B. "ruf Mama an", "schreib eine E-Mail an..."). Nutze niemals ein Werkzeug bei einer ' +
   'bloßen Erwähnung, Frage über die Vergangenheit oder einem Gedanken laut — z.B. bei "ich sollte mal ' +
@@ -303,6 +338,30 @@ export default {
         return json({ error: 'method not allowed' }, 405);
       }
       return handleTiktokToken(url.pathname, request, env);
+    }
+    if (url.pathname === '/call') {
+      if (request.method !== 'POST') {
+        return json({ error: 'method not allowed' }, 405);
+      }
+      return handleCall(request, env);
+    }
+    if (url.pathname === '/twiml') {
+      if (request.method !== 'GET') {
+        return json({ error: 'method not allowed' }, 405);
+      }
+      return handleTwiml(url);
+    }
+    if (url.pathname === '/calendar/connect') {
+      if (request.method !== 'POST') {
+        return json({ error: 'method not allowed' }, 405);
+      }
+      return handleCalendarConnect(request, env);
+    }
+    if (url.pathname === '/calendar/disconnect') {
+      if (request.method !== 'POST') {
+        return json({ error: 'method not allowed' }, 405);
+      }
+      return handleCalendarDisconnect(request, env);
     }
 
     if (request.method !== 'POST') {
@@ -371,7 +430,220 @@ export default {
 
     return json({ reply, action });
   },
+
+  // Runs on the cron schedule in wrangler.toml (e.g. every 5 minutes).
+  // Checks the connected Google Calendar for events starting soon and places
+  // a real phone call announcing each one, so reminders work even while the
+  // app isn't open — see "Anruf-Erinnerungen" in README.md.
+  async scheduled(_event, env, ctx) {
+    ctx.waitUntil(runCalendarReminders(env));
+  },
 };
+
+// Places a real outbound phone call via Twilio that reads out [message] when
+// answered. Requires TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN/TWILIO_FROM_NUMBER
+// set as Worker secrets (`wrangler secret put ...`) — never shipped in the
+// app. Protected by CALL_SHARED_SECRET so only this user's own app (which
+// knows the same secret, entered in Einstellungen) can trigger a call
+// through the Worker.
+async function handleCall(request, env) {
+  if (!env.TWILIO_ACCOUNT_SID || !env.TWILIO_AUTH_TOKEN || !env.TWILIO_FROM_NUMBER) {
+    return json({ error: 'Twilio ist auf dem Server nicht eingerichtet.' }, 500);
+  }
+  if (!env.CALL_SHARED_SECRET) {
+    return json({ error: 'Kein Anruf-Geheimnis auf dem Server hinterlegt.' }, 500);
+  }
+
+  let body;
+  try {
+    body = await request.json();
+  } catch (_) {
+    return json({ error: 'invalid json body' }, 400);
+  }
+  if (body.secret !== env.CALL_SHARED_SECRET) {
+    return json({ error: 'Falsches Anruf-Geheimnis.' }, 403);
+  }
+  const to = typeof body.to === 'string' ? body.to.trim() : '';
+  const message = typeof body.message === 'string' ? body.message.trim() : '';
+  if (!to || !message) {
+    return json({ error: 'to/message fehlt' }, 400);
+  }
+
+  try {
+    await placeTwilioCall(env, to, message);
+  } catch (err) {
+    return json({ error: 'Anruf fehlgeschlagen', detail: String(err) }, 502);
+  }
+  return json({ ok: true });
+}
+
+async function placeTwilioCall(env, to, message) {
+  if (!env.WORKER_SELF_URL) {
+    throw new Error('WORKER_SELF_URL ist nicht gesetzt (siehe README, Abschnitt Telefonanrufe).');
+  }
+  const callbackUrl = new URL('/twiml', env.WORKER_SELF_URL);
+  callbackUrl.searchParams.set('msg', message);
+
+  const form = new URLSearchParams({
+    To: to,
+    From: env.TWILIO_FROM_NUMBER,
+    Url: callbackUrl.toString(),
+  });
+  const auth = btoa(`${env.TWILIO_ACCOUNT_SID}:${env.TWILIO_AUTH_TOKEN}`);
+  const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${env.TWILIO_ACCOUNT_SID}/Calls.json`, {
+    method: 'POST',
+    headers: { Authorization: `Basic ${auth}`, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: form,
+  });
+  if (!res.ok) {
+    throw new Error(`Twilio antwortete mit ${res.status}: ${await res.text()}`);
+  }
+}
+
+// Twilio fetches this URL (given as `Url` above) once the call connects, and
+// speaks back whatever TwiML it gets — here a single <Say> of the message.
+function handleTwiml(url) {
+  const message = url.searchParams.get('msg') || '';
+  const escaped = message
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  const twiml = `<?xml version="1.0" encoding="UTF-8"?><Response><Say voice="Polly.Vicki" language="de-DE">${escaped}</Say></Response>`;
+  return new Response(twiml, { headers: { 'content-type': 'text/xml', ...corsHeaders() } });
+}
+
+// Exchanges the one-time serverAuthCode the app got from Google Sign-In
+// (requested with offline access) for a refresh token, and stores it in KV
+// together with the phone number to call for reminders — this is what lets
+// the cron job above place calls without the app being open. Requires
+// GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET Worker secrets and a JARVIS_KV
+// binding (see README).
+async function handleCalendarConnect(request, env) {
+  if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) {
+    return json({ error: 'Google-Zugangsdaten sind auf dem Server nicht eingerichtet.' }, 500);
+  }
+  if (!env.JARVIS_KV) {
+    return json({ error: 'Kein KV-Speicher an den Server gebunden.' }, 500);
+  }
+  let body;
+  try {
+    body = await request.json();
+  } catch (_) {
+    return json({ error: 'invalid json body' }, 400);
+  }
+  if (body.secret !== env.CALL_SHARED_SECRET) {
+    return json({ error: 'Falsches Anruf-Geheimnis.' }, 403);
+  }
+  const serverAuthCode = typeof body.serverAuthCode === 'string' ? body.serverAuthCode.trim() : '';
+  const phone = typeof body.phone === 'string' ? body.phone.trim() : '';
+  if (!serverAuthCode || !phone) {
+    return json({ error: 'serverAuthCode/phone fehlt' }, 400);
+  }
+
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      code: serverAuthCode,
+      client_id: env.GOOGLE_CLIENT_ID,
+      client_secret: env.GOOGLE_CLIENT_SECRET,
+      grant_type: 'authorization_code',
+      // "postmessage" is what Google expects as redirect_uri for the
+      // serverAuthCode flow used by Google Sign-In SDKs.
+      redirect_uri: 'postmessage',
+    }),
+  });
+  const data = await res.json();
+  if (!res.ok || !data.refresh_token) {
+    return json({ error: data.error_description || 'Google-Token-Austausch fehlgeschlagen' }, 502);
+  }
+
+  await env.JARVIS_KV.put(
+    'calendar_reminder_config',
+    JSON.stringify({ refresh_token: data.refresh_token, phone }),
+  );
+  return json({ ok: true });
+}
+
+async function handleCalendarDisconnect(request, env) {
+  if (!env.JARVIS_KV) {
+    return json({ error: 'Kein KV-Speicher an den Server gebunden.' }, 500);
+  }
+  let body;
+  try {
+    body = await request.json();
+  } catch (_) {
+    body = {};
+  }
+  if (body.secret !== env.CALL_SHARED_SECRET) {
+    return json({ error: 'Falsches Anruf-Geheimnis.' }, 403);
+  }
+  await env.JARVIS_KV.delete('calendar_reminder_config');
+  return json({ ok: true });
+}
+
+// Checks the connected Google Calendar for events starting within the next
+// REMINDER_WINDOW_MINUTES and calls the stored phone number for each one it
+// hasn't already called (tracked per-event in KV with a short TTL).
+const REMINDER_WINDOW_MINUTES = 15;
+
+async function runCalendarReminders(env) {
+  if (!env.JARVIS_KV || !env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) return;
+  const raw = await env.JARVIS_KV.get('calendar_reminder_config');
+  if (!raw) return;
+  const config = JSON.parse(raw);
+
+  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      refresh_token: config.refresh_token,
+      client_id: env.GOOGLE_CLIENT_ID,
+      client_secret: env.GOOGLE_CLIENT_SECRET,
+      grant_type: 'refresh_token',
+    }),
+  });
+  if (!tokenRes.ok) return;
+  const { access_token: accessToken } = await tokenRes.json();
+  if (!accessToken) return;
+
+  const now = new Date();
+  const windowEnd = new Date(now.getTime() + REMINDER_WINDOW_MINUTES * 60 * 1000);
+  const eventsUrl = new URL('https://www.googleapis.com/calendar/v3/calendars/primary/events');
+  eventsUrl.searchParams.set('timeMin', now.toISOString());
+  eventsUrl.searchParams.set('timeMax', windowEnd.toISOString());
+  eventsUrl.searchParams.set('singleEvents', 'true');
+  eventsUrl.searchParams.set('orderBy', 'startTime');
+
+  const eventsRes = await fetch(eventsUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (!eventsRes.ok) return;
+  const { items } = await eventsRes.json();
+  if (!Array.isArray(items)) return;
+
+  for (const event of items) {
+    if (!event.id || !event.start) continue;
+    const alreadyCalledKey = `called_event_${event.id}`;
+    if (await env.JARVIS_KV.get(alreadyCalledKey)) continue;
+
+    const start = event.start.dateTime || event.start.date;
+    const startTime = new Date(start);
+    const minutesUntil = Math.round((startTime.getTime() - now.getTime()) / 60000);
+    const title = event.summary || 'ein Termin';
+    const message =
+      minutesUntil <= 1
+        ? `Sir, Ihr Termin "${title}" beginnt jetzt.`
+        : `Sir, Ihr Termin "${title}" beginnt in ${minutesUntil} Minuten.`;
+
+    try {
+      await placeTwilioCall(env, config.phone, message);
+      // TTL a bit longer than the reminder window so a re-run of this cron
+      // tick can't double-call the same event.
+      await env.JARVIS_KV.put(alreadyCalledKey, '1', { expirationTtl: REMINDER_WINDOW_MINUTES * 60 * 4 });
+    } catch (_) {
+      // Leave uncalled so the next cron tick retries.
+    }
+  }
+}
 
 function runModel(env, messages, includeTools) {
   const payload = {
