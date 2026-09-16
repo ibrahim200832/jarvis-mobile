@@ -3,6 +3,7 @@ import 'package:installed_apps/app_info.dart';
 import 'package:jarvis_mobile/core/command_router.dart';
 import 'package:jarvis_mobile/services/ai_chat_service.dart';
 import 'package:jarvis_mobile/services/app_launcher_service.dart';
+import 'package:jarvis_mobile/services/calendar_service.dart';
 import 'package:jarvis_mobile/services/call_service.dart';
 import 'package:jarvis_mobile/services/contacts_service.dart';
 import 'package:jarvis_mobile/services/device_info_service.dart';
@@ -13,6 +14,7 @@ import 'package:jarvis_mobile/services/location_service.dart';
 import 'package:jarvis_mobile/services/news_service.dart';
 import 'package:jarvis_mobile/services/notes_service.dart';
 import 'package:jarvis_mobile/services/notification_service.dart';
+import 'package:jarvis_mobile/services/phone_call_service.dart';
 import 'package:jarvis_mobile/services/qr_service.dart';
 import 'package:jarvis_mobile/services/random_fun_service.dart';
 import 'package:jarvis_mobile/services/settings_service.dart';
@@ -189,6 +191,40 @@ class FakeSpotifyService extends SpotifyService {
   Future<bool> isConnected() async => connected;
 }
 
+class FakePhoneCallService extends PhoneCallService {
+  String? lastMessage;
+  String? errorToReturn;
+
+  @override
+  Future<String?> callMe({
+    required String backendUrl,
+    required String secret,
+    required String phone,
+    required String message,
+  }) async {
+    lastMessage = message;
+    return errorToReturn;
+  }
+}
+
+class FakeCalendarService extends CalendarService {
+  FakeCalendarService() : super(clientIdProvider: () async => null);
+
+  List<CalendarEvent> eventsToReturn = [];
+  String? lastCreatedTitle;
+  DateTime? lastCreatedStart;
+
+  @override
+  Future<List<CalendarEvent>> listEvents(DateTime from, DateTime to) async => eventsToReturn;
+
+  @override
+  Future<String> createEvent({required String title, required DateTime start, Duration duration = const Duration(hours: 1)}) async {
+    lastCreatedTitle = title;
+    lastCreatedStart = start;
+    return 'Termin "$title" angelegt.';
+  }
+}
+
 class FakeNotificationService extends NotificationService {
   int scheduleCalls = 0;
   int cancelCalls = 0;
@@ -220,6 +256,8 @@ void main() {
   late FakeSpotifyService spotify;
   late FakeWebSearchService webSearch;
   late FakeSettingsService settings;
+  late FakePhoneCallService phoneCall;
+  late FakeCalendarService calendar;
   late CommandRouter router;
 
   setUp(() {
@@ -237,6 +275,8 @@ void main() {
     spotify = FakeSpotifyService();
     webSearch = FakeWebSearchService();
     settings = FakeSettingsService();
+    phoneCall = FakePhoneCallService();
+    calendar = FakeCalendarService();
 
     router = CommandRouter(
       wikipedia: wikipedia,
@@ -261,6 +301,8 @@ void main() {
       notifications: notifications,
       spotify: spotify,
       webSearch: webSearch,
+      phoneCall: phoneCall,
+      calendar: calendar,
     );
   });
 

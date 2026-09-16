@@ -161,7 +161,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _connectCalendar() async {
-    final backendUrl = await widget.settings.getAiBackendUrl();
     final secret = _callSecretCtrl.text.trim();
     final phone = _reminderPhoneCtrl.text.trim();
     if (secret.isEmpty || phone.isEmpty) {
@@ -170,6 +169,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
       return;
     }
+    final backendUrl = await widget.settings.getAiBackendUrl();
+    if (!mounted) return;
     await widget.settings.setCallSharedSecret(secret);
     await widget.settings.setReminderPhone(phone);
     setState(() => _connectingCalendar = true);

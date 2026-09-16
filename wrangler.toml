@@ -7,11 +7,17 @@ binding = "AI"
 
 # Stores the Google Calendar refresh token + reminder phone number, and
 # tracks already-called event IDs, for the cron-triggered reminder calls
-# below. Create with `wrangler kv namespace create JARVIS_KV` and paste the
-# returned id here — see README, Abschnitt "Anruf-Erinnerungen".
-[[kv_namespaces]]
-binding = "JARVIS_KV"
-id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+# below. Left commented out by default so a fresh deploy (e.g. this repo's
+# Cloudflare Workers Build) doesn't fail on a placeholder namespace id that
+# doesn't exist yet — the Worker itself handles a missing JARVIS_KV binding
+# gracefully (calendar reminders just report "not set up" until this is
+# uncommented). To enable calendar reminders: run
+# `wrangler kv namespace create JARVIS_KV`, then uncomment the two lines
+# below and paste the returned id — see README, Abschnitt
+# "Anruf-Erinnerungen".
+# [[kv_namespaces]]
+# binding = "JARVIS_KV"
+# id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
 
 # Runs the calendar-reminder check (see the `scheduled` handler) every 5
 # minutes.
