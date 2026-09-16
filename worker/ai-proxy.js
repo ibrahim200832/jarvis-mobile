@@ -764,13 +764,42 @@ async function handleTelegramWebhook(request, env) {
   }
   if (!text) return json({ ok: true });
 
+  // Dauerhaftes Gedächtnis (kein TTL, anders als der Gesprächsverlauf
+  // unten) — bewusst als eigene früh-zurückkehrende Befehle wie search_web,
+  // nicht über den AI-Tool-Mechanismus, damit "merk dir: ..." auch dann
+  // zuverlässig funktioniert, wenn das Modell das nicht selbst als
+  // Werkzeugaufruf erkennt.
+  const rememberMatch = text.match(/^(?:merk(?:e)? dir|remember this|notiere dir)\s*:\s*(.+)$/i);
+  if (rememberMatch) {
+    await addTelegramMemory(env, rememberMatch[1].trim());
+    await sendTelegramMessage(env, chatId, `🧠 Gemerkt: „${rememberMatch[1].trim()}"`);
+    return json({ ok: true });
+  }
+  if (/^(was weißt du über mich\??|meine erinnerungen|was hast du dir gemerkt\??)$/i.test(text.trim())) {
+    const memory = await getTelegramMemory(env);
+    const reply = memory.length === 0
+      ? 'Ich habe mir noch nichts gemerkt. Sag z. B. "merk dir: ich mag keinen Kaffee".'
+      : `🧠 Das habe ich mir gemerkt:\n${memory.map((m) => `• ${m.text}`).join('\n')}`;
+    await sendTelegramMessage(env, chatId, reply);
+    return json({ ok: true });
+  }
+  if (/^(vergiss alles|lösche (meine|alle) erinnerungen)$/i.test(text.trim())) {
+    await clearTelegramMemory(env);
+    await sendTelegramMessage(env, chatId, '🧠 Erledigt, ich habe alles vergessen.');
+    return json({ ok: true });
+  }
+
   const historyKey = `telegram_history_${chatId}`;
   const history = JSON.parse((await env.JARVIS_KV.get(historyKey)) || '[]');
+  const memory = await getTelegramMemory(env);
 
-  const systemPrompt =
+  let systemPrompt =
     `${SYSTEM_PROMPT} Du sprichst hier gerade über Telegram, nicht über die JARVIS-App — deshalb kannst du hier keine ` +
     'Anrufe/WhatsApp/Apps/Kalender/Hue/Home-Connect auslösen, sondern nur in Worten antworten. Websuche steht dir ' +
     'hier trotzdem zur Verfügung, nutze sie wie gewohnt bei aktuellen oder unsicheren Fakten.';
+  if (memory.length > 0) {
+    systemPrompt += ` Bekannte Fakten über den Nutzer, die er dir zu merken gebeten hat: ${memory.map((m) => m.text).join('; ')}.`;
+  }
   const messages = [{ role: 'system', content: systemPrompt }, ...history, { role: 'user', content: text }];
 
   let replyText;
@@ -843,6 +872,26 @@ async function transcribeTelegramVoice(env, fileId) {
   const text = (result.text || '').trim();
   if (!text) throw new Error('Whisper hat keinen Text erkannt.');
   return text;
+}
+
+const TELEGRAM_MEMORY_KEY = 'telegram_memory';
+const TELEGRAM_MEMORY_LIMIT = 50;
+
+async function getTelegramMemory(env) {
+  if (!env.JARVIS_KV) return [];
+  return JSON.parse((await env.JARVIS_KV.get(TELEGRAM_MEMORY_KEY)) || '[]');
+}
+
+async function addTelegramMemory(env, text) {
+  if (!env.JARVIS_KV || !text) return;
+  const memory = await getTelegramMemory(env);
+  memory.push({ text, at: new Date().toISOString() });
+  await env.JARVIS_KV.put(TELEGRAM_MEMORY_KEY, JSON.stringify(memory.slice(-TELEGRAM_MEMORY_LIMIT)));
+}
+
+async function clearTelegramMemory(env) {
+  if (!env.JARVIS_KV) return;
+  await env.JARVIS_KV.delete(TELEGRAM_MEMORY_KEY);
 }
 
 async function sendTelegramMessage(env, chatId, message) {
