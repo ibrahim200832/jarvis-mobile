@@ -258,6 +258,8 @@ Das braucht zwei zusätzliche Dinge, die teils schon aus anderen Abschnitten obe
 
 Danach einmal (erneut) in der App auf **„Mit Telegram verbinden"** tippen — das registriert automatisch den Webhook bei Telegram. Ab dann antwortet der Bot auf jede Nachricht, die du ihm direkt in Telegram schickst — auch auf **Sprachnachrichten**: der Bot erkennt gesprochenen Text automatisch (über dieselbe kostenlose Cloudflare-KI, ohne extra Einrichtung), schickt den erkannten Text als Bestätigung zurück und antwortet direkt darauf.
 
+Der Bot merkt sich außerdem den Gesprächsverlauf (die letzten Nachrichten, ca. 6 Stunden lang) — Anschlussfragen wie „und morgen?" funktionieren also. Und er kann bei aktuellen/unsicheren Fakten selbst das Web durchsuchen (braucht einen `BRAVE_API_KEY`, siehe „Websuche einrichten" oben) — alles andere, was das Handy selbst braucht (Anrufe, Kalender, Hue, Home Connect, Wetter, Nachrichten), bleibt der App vorbehalten.
+
 ## Philips-Hue-Lichtsteuerung einrichten (optional)
 
 Sag „hue Wohnzimmer an", „licht Küche aus" oder „hue Wohnzimmer auf 40 prozent", und JARVIS steuert deine Philips-Hue-Lampen — komplett lokal über deine Hue Bridge im selben WLAN wie dein Handy, ohne Cloud oder Philips-Account. Portiert vom Original-Desktop-Tool (`hue.py`).
