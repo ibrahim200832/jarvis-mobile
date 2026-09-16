@@ -44,6 +44,10 @@ Jeder Push auf `main` baut die App automatisch als Website und veröffentlicht s
 | — | Video vom Handy auf dein eigenes TikTok-Konto hochladen — Sichtbarkeit wählbar (optional, siehe unten; Einschränkungen beachten) |
 | — | Echter Telefonanruf: „ruf mich an" lässt JARVIS dich tatsächlich anrufen und etwas ansagen (optional, siehe unten) |
 | — | Google-Kalender: Termine ansagen/anlegen per Sprache, plus automatischer Erinnerungsanruf kurz vor einem Termin (optional, siehe unten) |
+| — | Echter Telefonanruf an einen Kontakt mit Ansage: „ruf Mama an und sag ihr: bin gleich da" (optional, siehe oben) |
+| — | Kostenlose Telegram-Benachrichtigungen statt/zusätzlich zu Anrufen (optional, siehe unten) |
+| — | Philips-Hue-Lichter steuern (an/aus/dimmen) — komplett lokal, keine Cloud (optional, siehe unten) |
+| — | Status von Bosch/Siemens-Hausgeräten abfragen, z. B. „ist die waschmaschine fertig" (optional, siehe unten) |
 
 ## Sprachbefehle (Beispiele)
 
@@ -71,6 +75,11 @@ Jeder Push auf `main` baut die App automatisch als Website und veröffentlicht s
 - „meine timer" / „timer abbrechen"
 - „notiz kaufe milch" / „meine notizen" / „lösche notiz 2"
 - „wirf eine münze" / „würfle" / „würfle mit 20 seiten" / „zufallszahl zwischen 1 und 100"
+- „ruf mich an" / „ruf Mama an und sag ihr: bin gleich da" (siehe „Telefonanrufe" unten)
+- „was steht heute an" / „leg einen termin an: Zahnarzt um 15 Uhr" (siehe „Telefonanrufe & Kalender-Erinnerungen" unten)
+- „schick mir eine telegram nachricht: Test" (siehe „Telegram-Benachrichtigungen" unten)
+- „hue Wohnzimmer an" / „licht Küche auf 40 prozent" (siehe „Philips-Hue-Lichtsteuerung" unten)
+- „ist die waschmaschine fertig" (siehe „Bosch/Siemens Home Connect" unten)
 - „hilfe" — zeigt die vollständige Befehlsliste
 - alles andere — wird an eine echte KI weitergegeben (siehe „Freies KI-Gespräch")
 
@@ -226,6 +235,39 @@ Damit JARVIS automatisch vor Terminen anruft, auch ohne geöffnete App, braucht 
 5. **Verbinden**: In der JARVIS-App unter Einstellungen zuerst Telefonnummer und Anruf-Geheimnis eintragen/speichern (siehe oben), dann auf „Google Kalender verbinden" tippen und die Google-Anmeldung bestätigen (auch hier zeigt Google ggf. „App nicht überprüft" — unbedenklich für dein eigenes Test-Projekt, siehe oben).
 
 Ab jetzt prüft der Worker automatisch alle 5 Minuten, ob ein Termin in den nächsten 15 Minuten beginnt, und ruft dich dann einmalig pro Termin an.
+
+## Telegram-Benachrichtigungen einrichten (optional)
+
+Kostenlose Alternative bzw. Ergänzung zu den Anrufen oben: „schick mir eine telegram nachricht: \<Text\>" schickt dir eine Telegram-Nachricht statt eines Anrufs. Ist zusätzlich zum Telefon-Setup oben auch ein Telegram-Chat verbunden, schickt der Kalender-Erinnerungs-Cronjob **zusätzlich** eine Telegram-Nachricht (auch ohne Twilio nutzbar, wenn dir Nachrichten statt Anrufen reichen).
+
+1. **Bot anlegen**: In Telegram mit [@BotFather](https://t.me/BotFather) chatten → `/newbot` → Namen vergeben → den angezeigten **Bot-Token** notieren.
+2. **Bot-Token im Worker hinterlegen**: Als Secret `TELEGRAM_BOT_TOKEN` eintragen (gleicher Weg wie bei den anderen Secrets oben).
+3. **Anruf-Geheimnis eintragen**, falls noch nicht geschehen (siehe „Telefonanrufe" oben) — wird hier mitbenutzt, damit nicht jeder über deine Worker-URL Nachrichten in deinem Namen verschicken kann.
+4. **Bot anschreiben**: In Telegram eine beliebige Nachricht an deinen neuen Bot schicken (z. B. „hi").
+5. **Verbinden**: In der JARVIS-App unter Einstellungen auf „Mit Telegram verbinden" tippen — die App findet deine Chat-ID automatisch über die zuletzt an den Bot geschickte Nachricht (kein manuelles Heraussuchen der Chat-ID nötig).
+6. **Testen**: „schick mir eine telegram nachricht: Test" sagen.
+
+## Philips-Hue-Lichtsteuerung einrichten (optional)
+
+Sag „hue Wohnzimmer an", „licht Küche aus" oder „hue Wohnzimmer auf 40 prozent", und JARVIS steuert deine Philips-Hue-Lampen — komplett lokal über deine Hue Bridge im selben WLAN wie dein Handy, ohne Cloud oder Philips-Account. Portiert vom Original-Desktop-Tool (`hue.py`).
+
+> **Wichtig:** Dein Handy muss dafür im selben WLAN wie die Hue Bridge sein. Im Browser (Web-Version) funktioniert das nicht — Browser lassen sich nicht dazu bringen, dem selbstsignierten Zertifikat der Bridge zu vertrauen; nur die App (Android/iOS) kann das.
+
+1. **Bridge-IP finden**: In der offiziellen Hue-App unter „Einstellungen → Mein Hue-System" nachschauen, oder [discovery.meethue.com](https://discovery.meethue.com) öffnen.
+2. **IP eintragen**: In der JARVIS-App unter **Einstellungen → „Philips-Hue-Bridge-IP"** eintragen und speichern.
+3. **Koppeln**: Den runden Knopf auf der Hue Bridge drücken, und **innerhalb von 30 Sekunden** in den Einstellungen auf „Hue Bridge koppeln" tippen.
+4. **Testen**: „hue \<Lampenname\> an" sagen, mit dem Namen, den die Lampe in der Hue-App trägt.
+
+## Bosch/Siemens Home Connect einrichten (optional)
+
+Sag „ist die waschmaschine fertig", „ist der trockner fertig" oder „ist der geschirrspüler fertig", und JARVIS prüft den Status deines Bosch/Siemens-Hausgeräts über die Home-Connect-Cloud-API. Portiert vom Original-Desktop-Tool (`bosch.py`).
+
+1. **Home-Connect-Entwickler-App anlegen**: Kostenloses Konto unter [developer.home-connect.com](https://developer.home-connect.com) anlegen → neue Anwendung erstellen → als **Authorization Flow** unbedingt **„Device Flow"** wählen (nicht „Authorization Code Grant Flow" — Device Flow braucht keinen Client Secret und keine Redirect-URI, was auf dem Handy viel einfacher ist).
+2. **Client-ID kopieren**: Die angezeigte **Client-ID** in der JARVIS-App unter **Einstellungen → „Home-Connect-Client-ID"** eintragen und speichern.
+3. **Verbinden**: In den Einstellungen auf „Mit Home Connect verbinden" tippen — es öffnet sich eine Home-Connect-Seite im Browser mit einem Code, den die App automatisch schon eingetragen hat; dort mit deinem Home-Connect-Konto anmelden und bestätigen. Die App wartet im Hintergrund, bis das erledigt ist (bis zu ein paar Minuten Zeit).
+4. **Testen**: „ist die waschmaschine fertig" sagen (auch ohne aktives Programm antwortet JARVIS, z. B. mit „läuft gerade nicht").
+
+Falls du kein echtes Gerät zum Testen hast: Home Connect bietet einen [Simulator](https://developer.home-connect.com/simulator) mit virtuellen Geräten für genau diesen Zweck.
 
 ## Projekt bauen
 

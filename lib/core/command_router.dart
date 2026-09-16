@@ -2,12 +2,14 @@ import 'package:intl/intl.dart';
 
 import '../services/ai_chat_service.dart';
 import '../services/app_launcher_service.dart';
+import '../services/bosch_service.dart';
 import '../services/calculator_service.dart';
 import '../services/calendar_service.dart';
 import '../services/call_service.dart';
 import '../services/contacts_service.dart';
 import '../services/device_info_service.dart';
 import '../services/email_service.dart';
+import '../services/hue_service.dart';
 import '../services/ip_service.dart';
 import '../services/joke_service.dart';
 import '../services/location_service.dart';
@@ -19,6 +21,7 @@ import '../services/qr_service.dart';
 import '../services/random_fun_service.dart';
 import '../services/settings_service.dart';
 import '../services/spotify_service.dart';
+import '../services/telegram_service.dart';
 import '../services/timer_service.dart';
 import '../services/weather_service.dart';
 import '../services/web_search_service.dart';
@@ -80,6 +83,9 @@ class CommandRouter {
     required this.webSearch,
     required this.phoneCall,
     required this.calendar,
+    required this.hue,
+    required this.bosch,
+    required this.telegram,
   });
 
   final WikipediaService wikipedia;
@@ -106,6 +112,9 @@ class CommandRouter {
   final WebSearchService webSearch;
   final PhoneCallService phoneCall;
   final CalendarService calendar;
+  final HueService hue;
+  final BoschService bosch;
+  final TelegramService telegram;
 
   /// Rolling window of past AI exchanges (user+assistant pairs), so a
   /// follow-up like "und morgen?" is understood in context instead of
@@ -144,6 +153,9 @@ Das kann ich für dich tun:
 • "ruf mich an" / "ruf <Kontakt> an und sag ihm/ihr: <Nachricht>" (Twilio-Einrichtung nötig, siehe Einstellungen)
 • "was steht heute/morgen an" / "meine termine" (Google-Kalender-Verbindung nötig, siehe Einstellungen)
 • "leg einen termin an: <Titel> um <Uhrzeit>"
+• "hue <Lampenname> an/aus" / "hue <Lampenname> auf <Prozent>%" (Hue-Bridge-Einrichtung nötig, siehe Einstellungen)
+• "schick mir eine telegram nachricht: <Text>" (Telegram-Verbindung nötig, siehe Einstellungen)
+• "ist die waschmaschine/der trockner/der geschirrspüler fertig" (Home-Connect-Verbindung nötig, siehe Einstellungen)
 • alles andere: frag mich einfach frei, ich antworte mit echter KI und kann
   dabei auch direkt anrufen, WhatsApp schreiben oder Apps öffnen
 ''';
@@ -279,6 +291,37 @@ Das kann ich für dich tun:
       final newEventQuery = _extractAfter(lower, text, ['leg einen termin an', 'trage einen termin ein', 'neuer termin', 'termin:']);
       if (newEventQuery != null) {
         return CommandResult(await _createEventFromText(newEventQuery));
+      }
+
+      final telegramText = _extractAfter(lower, text, ['schick mir eine telegram nachricht', 'schicke mir eine telegram nachricht', 'telegram nachricht']);
+      if (telegramText != null) {
+        final message = telegramText.replaceAll(RegExp(r'^:\s*'), '').trim();
+        if (message.isEmpty) return CommandResult('Was soll in der Telegram-Nachricht stehen?');
+        return CommandResult(await _sendTelegram(message));
+      }
+
+      final applianceFertigMatch = _applianceFertigPattern.firstMatch(text);
+      if (applianceFertigMatch != null) {
+        return CommandResult(await bosch.describeStatus(applianceFertigMatch.group(1)!.trim()));
+      }
+
+      final applianceStatusQuery = _extractAfter(lower, text, ['status']);
+      if (applianceStatusQuery != null) {
+        return CommandResult(await bosch.describeStatus(applianceStatusQuery));
+      }
+
+      final hueOnOffMatch = _hueOnOffPattern.firstMatch(text);
+      if (hueOnOffMatch != null) {
+        final name = hueOnOffMatch.group(1)!.trim();
+        final wantsOn = hueOnOffMatch.group(2)!.toLowerCase() == 'an';
+        return CommandResult(await hue.setLight(name, on: wantsOn));
+      }
+
+      final hueDimMatch = _hueDimPattern.firstMatch(text);
+      if (hueDimMatch != null) {
+        final name = hueDimMatch.group(1)!.trim();
+        final level = double.parse(hueDimMatch.group(2)!);
+        return CommandResult(await hue.setLight(name, brightness: level));
       }
 
       final callWithMessageMatch = _callWithMessagePattern.firstMatch(text);
@@ -586,6 +629,26 @@ Das kann ich für dich tun:
         }
         return CommandResult(await _callContact(contactName, contactMessage));
 
+      case 'send_telegram_message':
+        final telegramMessage = (action.params['message'] as String?)?.trim() ?? '';
+        if (telegramMessage.isEmpty) return CommandResult('Was soll in der Telegram-Nachricht stehen?');
+        return CommandResult(await _sendTelegram(telegramMessage));
+
+      case 'check_appliance_status':
+        final applianceQuery = (action.params['appliance'] as String?)?.trim() ?? '';
+        if (applianceQuery.isEmpty) return CommandResult('Welches Gerät meinst du?');
+        return CommandResult(await bosch.describeStatus(applianceQuery));
+
+      case 'control_hue_light':
+        final lightName = (action.params['name'] as String?)?.trim() ?? '';
+        if (lightName.isEmpty) return CommandResult('Welche Lampe meinst du?');
+        final brightnessValue = action.params['brightness'];
+        final lightBrightness = brightnessValue is num ? brightnessValue.toDouble() : double.tryParse('$brightnessValue');
+        final onValue = action.params['on'];
+        final wantsLightOn = onValue == null ? null : (onValue is bool ? onValue : onValue.toString().toLowerCase() == 'true');
+        if (lightBrightness == null && wantsLightOn == null) return CommandResult('Soll ich die Lampe an-, ausschalten oder dimmen?');
+        return CommandResult(await hue.setLight(lightName, on: lightBrightness == null ? wantsLightOn : null, brightness: lightBrightness));
+
       case 'create_calendar_event':
         final eventTitle = (action.params['title'] as String?)?.trim() ?? '';
         final startRaw = (action.params['start'] as String?)?.trim();
@@ -651,6 +714,18 @@ Das kann ich für dich tun:
     return error ?? 'Ich rufe dich jetzt an.';
   }
 
+  // Matches e.g. "ist die waschmaschine fertig", "ist der trockner fertig?"
+  // — Bosch/Siemens Home Connect appliance status. Ported from bosch.py.
+  static final _applianceFertigPattern = RegExp(r'^ist\s+(?:der|die|das)\s+(.+?)\s+fertig\??$', caseSensitive: false);
+
+  // Matches e.g. "hue Wohnzimmer an", "licht Küche aus" — controls a Philips
+  // Hue light by name over the local network. Ported from the original
+  // desktop tool's hue.py.
+  static final _hueOnOffPattern = RegExp(r'^(?:hue|licht)\s+(.+?)\s+(an|aus)$', caseSensitive: false);
+
+  // Matches e.g. "hue Wohnzimmer auf 40 prozent" / "licht Küche auf 100%".
+  static final _hueDimPattern = RegExp(r'^(?:hue|licht)\s+(.+?)\s+auf\s+(\d{1,3})\s*(?:%|prozent)$', caseSensitive: false);
+
   // Matches e.g. "ruf Mama an und sag ihr, dass ich später komme" or "rufe
   // Papa an und sage: bin gleich da" — a real Twilio call to a contact that
   // speaks [message], unlike the plain "ruf Mama an" above, which just opens
@@ -659,6 +734,13 @@ Das kann ich für dich tun:
     r'^(?:ruf|rufe)\s+(.+?)\s+an\s+und\s+sag(?:e)?\s*(?:(?:ihm|ihr|ihnen),?\s*)?:?\s*(.+)$',
     caseSensitive: false,
   );
+
+  Future<String> _sendTelegram(String message) async {
+    final backendUrl = await settings.getAiBackendUrl();
+    final secret = await settings.getCallSharedSecret();
+    final error = await telegram.sendMessage(backendUrl: backendUrl ?? '', secret: secret ?? '', message: message);
+    return error ?? 'Telegram-Nachricht geschickt.';
+  }
 
   Future<String> _callContact(String name, String message) async {
     final contact = await contacts.find(name);

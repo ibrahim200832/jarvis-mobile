@@ -272,6 +272,53 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'send_telegram_message',
+      description:
+        'Schickt dem Nutzer eine Telegram-Nachricht (kostenlose Alternative/Ergänzung zu einem Anruf). Nur verwenden, wenn der Nutzer klar darum bittet, ihm etwas per Telegram zu schicken.',
+      parameters: {
+        type: 'object',
+        properties: {
+          message: { type: 'string', description: 'Der Nachrichtentext' },
+        },
+        required: ['message'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'control_hue_light',
+      description:
+        'Schaltet eine Philips-Hue-Lampe im Zuhause des Nutzers an/aus oder dimmt sie. Nur verwenden, wenn der Nutzer klar darum bittet, ein Licht zu steuern.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Name der Lampe/des Raums, z.B. "Wohnzimmer"' },
+          on: { type: 'boolean', description: 'true zum Einschalten, false zum Ausschalten. Weglassen, wenn nur brightness gesetzt wird.' },
+          brightness: { type: 'number', description: 'Helligkeit 0-100. Weglassen, wenn nur an/aus geschaltet wird.' },
+        },
+        required: ['name'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'check_appliance_status',
+      description:
+        'Prüft den Status eines Bosch/Siemens-Hausgeräts über Home Connect (z.B. ob die Waschmaschine fertig ist). Nur verwenden, wenn der Nutzer klar danach fragt.',
+      parameters: {
+        type: 'object',
+        properties: {
+          appliance: { type: 'string', description: 'Gerätetyp oder -name, z.B. "Waschmaschine", "Trockner", "Geschirrspüler"' },
+        },
+        required: ['appliance'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'create_calendar_event',
       description:
         'Legt einen Termin im Google Kalender des Nutzers an. Nur verwenden, wenn der Nutzer klar darum bittet, einen Termin einzutragen.',
@@ -308,7 +355,8 @@ const SYSTEM_PROMPT =
   'abrufen, Kamera öffnen, Wikipedia-Suche, Nachrichten abrufen, E-Mail senden, YouTube-Suche, das Web ' +
   'durchsuchen, Musik oder eine Playlist auf Spotify abspielen, den TikTok-Video-Upload öffnen und den ' +
   'YouTube-Video-Upload öffnen (mit Sichtbarkeit/Zeitplanung), den Nutzer selbst anrufen, einen Kontakt anrufen ' +
-  'und ihm dabei eine Nachricht ausrichten lassen, und einen Termin im Google Kalender anlegen. ' +
+  'und ihm dabei eine Nachricht ausrichten lassen, einen Termin im Google Kalender anlegen, eine Telegram-Nachricht ' +
+  'schicken, Philips-Hue-Lichter steuern und den Status von Bosch/Siemens-Hausgeräten (Home Connect) abfragen. ' +
   'Nutze ein Werkzeug ausschließlich dann, wenn der Nutzer eine konkrete, eindeutige Handlungsaufforderung ' +
   'ausspricht (z.B. "ruf Mama an", "schreib eine E-Mail an..."). Nutze niemals ein Werkzeug bei einer ' +
   'bloßen Erwähnung, Frage über die Vergangenheit oder einem Gedanken laut — z.B. bei "ich sollte mal ' +
@@ -378,6 +426,18 @@ export default {
         return json({ error: 'method not allowed' }, 405);
       }
       return handleCalendarDisconnect(request, env);
+    }
+    if (url.pathname === '/telegram/link') {
+      if (request.method !== 'GET') {
+        return json({ error: 'method not allowed' }, 405);
+      }
+      return handleTelegramLink(url, env);
+    }
+    if (url.pathname === '/telegram/notify') {
+      if (request.method !== 'POST') {
+        return json({ error: 'method not allowed' }, 405);
+      }
+      return handleTelegramNotify(request, env);
     }
 
     if (request.method !== 'POST') {
@@ -552,8 +612,9 @@ async function handleCalendarConnect(request, env) {
   }
   const serverAuthCode = typeof body.serverAuthCode === 'string' ? body.serverAuthCode.trim() : '';
   const phone = typeof body.phone === 'string' ? body.phone.trim() : '';
-  if (!serverAuthCode || !phone) {
-    return json({ error: 'serverAuthCode/phone fehlt' }, 400);
+  const telegramChatId = typeof body.telegram_chat_id === 'string' ? body.telegram_chat_id.trim() : '';
+  if (!serverAuthCode || (!phone && !telegramChatId)) {
+    return json({ error: 'serverAuthCode fehlt, oder weder phone noch telegram_chat_id gesetzt' }, 400);
   }
 
   const res = await fetch('https://oauth2.googleapis.com/token', {
@@ -576,7 +637,7 @@ async function handleCalendarConnect(request, env) {
 
   await env.JARVIS_KV.put(
     'calendar_reminder_config',
-    JSON.stringify({ refresh_token: data.refresh_token, phone }),
+    JSON.stringify({ refresh_token: data.refresh_token, phone, telegram_chat_id: telegramChatId }),
   );
   return json({ ok: true });
 }
@@ -596,6 +657,68 @@ async function handleCalendarDisconnect(request, env) {
   }
   await env.JARVIS_KV.delete('calendar_reminder_config');
   return json({ ok: true });
+}
+
+// Finds the chat id of whoever most recently messaged the bot, so the app
+// can link a Telegram account without the user ever typing a numeric chat
+// id by hand — same one-time linking idea as telegram_bot.py's `setup`
+// command, minus the long-polling daemon (a Worker can't run one; this just
+// looks at the single most recent update on demand instead).
+async function handleTelegramLink(url, env) {
+  if (!env.TELEGRAM_BOT_TOKEN) {
+    return json({ error: 'Telegram ist auf dem Server nicht eingerichtet.' }, 500);
+  }
+  if (url.searchParams.get('secret') !== env.CALL_SHARED_SECRET) {
+    return json({ error: 'Falsches Anruf-Geheimnis.' }, 403);
+  }
+
+  const res = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/getUpdates?limit=1&offset=-1`);
+  if (!res.ok) return json({ error: 'Telegram-Anfrage fehlgeschlagen' }, 502);
+  const data = await res.json();
+  const update = data.result?.[0];
+  const chat = update?.message?.chat;
+  if (!chat) {
+    return json({ error: 'Keine Nachricht gefunden. Schick deinem Bot zuerst eine Nachricht in Telegram, dann versuch es erneut.' }, 404);
+  }
+  return json({ chat_id: String(chat.id), name: chat.first_name || chat.username || '' });
+}
+
+async function handleTelegramNotify(request, env) {
+  if (!env.TELEGRAM_BOT_TOKEN) {
+    return json({ error: 'Telegram ist auf dem Server nicht eingerichtet.' }, 500);
+  }
+  let body;
+  try {
+    body = await request.json();
+  } catch (_) {
+    return json({ error: 'invalid json body' }, 400);
+  }
+  if (body.secret !== env.CALL_SHARED_SECRET) {
+    return json({ error: 'Falsches Anruf-Geheimnis.' }, 403);
+  }
+  const chatId = typeof body.chat_id === 'string' ? body.chat_id.trim() : '';
+  const message = typeof body.message === 'string' ? body.message.trim() : '';
+  if (!chatId || !message) {
+    return json({ error: 'chat_id/message fehlt' }, 400);
+  }
+
+  try {
+    await sendTelegramMessage(env, chatId, message);
+  } catch (err) {
+    return json({ error: 'Telegram-Nachricht fehlgeschlagen', detail: String(err) }, 502);
+  }
+  return json({ ok: true });
+}
+
+async function sendTelegramMessage(env, chatId, message) {
+  const res = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, text: message }),
+  });
+  if (!res.ok) {
+    throw new Error(`Telegram antwortete mit ${res.status}: ${await res.text()}`);
+  }
 }
 
 // Checks the connected Google Calendar for events starting within the next
@@ -650,13 +773,33 @@ async function runCalendarReminders(env) {
         ? `Sir, Ihr Termin "${title}" beginnt jetzt.`
         : `Sir, Ihr Termin "${title}" beginnt in ${minutesUntil} Minuten.`;
 
-    try {
-      await placeTwilioCall(env, config.phone, message);
+    // Both channels are independent and best-effort: a Telegram-only or
+    // call-only setup is fine, and one channel failing doesn't block the
+    // other or block marking the event as handled — the event has already
+    // been announced through whichever channel(s) succeeded.
+    let announced = false;
+    if (config.phone) {
+      try {
+        await placeTwilioCall(env, config.phone, message);
+        announced = true;
+      } catch (_) {
+        // Leave uncalled so the next cron tick retries, unless Telegram
+        // already got through below.
+      }
+    }
+    if (config.telegram_chat_id && env.TELEGRAM_BOT_TOKEN) {
+      try {
+        await sendTelegramMessage(env, config.telegram_chat_id, `⏰ ${message}`);
+        announced = true;
+      } catch (_) {
+        // Same reasoning as above.
+      }
+    }
+
+    if (announced) {
       // TTL a bit longer than the reminder window so a re-run of this cron
-      // tick can't double-call the same event.
+      // tick can't double-announce the same event.
       await env.JARVIS_KV.put(alreadyCalledKey, '1', { expirationTtl: REMINDER_WINDOW_MINUTES * 60 * 4 });
-    } catch (_) {
-      // Leave uncalled so the next cron tick retries.
     }
   }
 }
