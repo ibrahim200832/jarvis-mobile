@@ -764,6 +764,10 @@ async function handleTelegramWebhook(request, env) {
   }
   if (!text) return json({ ok: true });
 
+  // Rein kosmetisch, darf den eigentlichen Antwort-Flow nie aufhalten oder
+  // abbrechen — Fehler werden bewusst verschluckt.
+  await reactToTelegramMessage(env, chatId, message.message_id, pickReactionEmoji(text)).catch(() => {});
+
   // Dauerhaftes Gedächtnis (kein TTL, anders als der Gesprächsverlauf
   // unten) — bewusst als eigene früh-zurückkehrende Befehle wie search_web,
   // nicht über den AI-Tool-Mechanismus, damit "merk dir: ..." auch dann
@@ -892,6 +896,34 @@ async function addTelegramMemory(env, text) {
 async function clearTelegramMemory(env) {
   if (!env.JARVIS_KV) return;
   await env.JARVIS_KV.delete(TELEGRAM_MEMORY_KEY);
+}
+
+// Simple keyword heuristic — Telegram only allows a fixed set of reaction
+// emoji (no arbitrary Unicode), so this picks from a small safe subset
+// rather than trying to be exhaustive.
+function pickReactionEmoji(text) {
+  const lower = text.toLowerCase();
+  if (/\b(danke|toll|liebe|lieb)\b/.test(lower)) return '❤';
+  if (/\b(haha|lol|witzig|lustig)\b/.test(lower)) return '😁';
+  if (/\b(schlecht|traurig|problem|fehler|kaputt)\b/.test(lower)) return '😢';
+  if (/\b(geschafft|fertig|yes|super|erledigt)\b/.test(lower)) return '🎉';
+  if (/\b(wow|krass|unglaublich)\b/.test(lower)) return '😱';
+  if (/\?$/.test(text.trim()) || /^(was|wie|warum|wer|wann|wo)\b/.test(lower)) return '🤔';
+  return '👍';
+}
+
+// Reacts to a Telegram message with an emoji, in addition to (not instead
+// of) the normal text reply — same idea as reacting to a WhatsApp/Slack
+// message. Requires Bot API 7.0+, which Telegram has supported since 2024.
+async function reactToTelegramMessage(env, chatId, messageId, emoji) {
+  const res = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/setMessageReaction`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, message_id: messageId, reaction: [{ type: 'emoji', emoji }] }),
+  });
+  if (!res.ok) {
+    throw new Error(`setMessageReaction antwortete mit ${res.status}: ${await res.text()}`);
+  }
 }
 
 async function sendTelegramMessage(env, chatId, message) {
