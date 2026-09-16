@@ -5,6 +5,7 @@ wird beim Deploy automatisch in den "Update verfügbar"-Dialog der App
 übernommen (siehe `.github/workflows/deploy-web.yml`).
 
 ## Aktuell
+- Neu: JARVIS' Telegram-Bot antwortet jetzt auch direkt auf Nachrichten, die man ihm in Telegram schreibt — ganz ohne die App zu öffnen.
 - Neu: JARVIS kann jetzt auch Kontakte per echtem Telefonanruf erreichen und ihnen etwas ausrichten: "ruf Mama an und sag ihr: bin gleich da".
 - Neu: Kostenlose Telegram-Benachrichtigungen als Alternative/Ergänzung zu Anrufen — auch für Kalender-Erinnerungen.
 - Neu: Philips-Hue-Lichtsteuerung ("hue Wohnzimmer an", "licht Küche auf 40 prozent") — komplett lokal, keine Cloud.

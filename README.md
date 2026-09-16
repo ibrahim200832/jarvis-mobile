@@ -247,6 +247,17 @@ Kostenlose Alternative bzw. Ergänzung zu den Anrufen oben: „schick mir eine t
 5. **Verbinden**: In der JARVIS-App unter Einstellungen auf „Mit Telegram verbinden" tippen — die App findet deine Chat-ID automatisch über die zuletzt an den Bot geschickte Nachricht (kein manuelles Heraussuchen der Chat-ID nötig).
 6. **Testen**: „schick mir eine telegram nachricht: Test" sagen.
 
+### Direkt mit dem Bot chatten (zusätzlich, optional)
+
+Zusätzlich zum "schick mir eine telegram nachricht"-Befehl aus der App kannst du deinem Bot auch **direkt in Telegram schreiben** und bekommst eine echte KI-Antwort zurück — ganz ohne die JARVIS-App zu öffnen. Anrufe/WhatsApp/Apps-Öffnen funktionieren darüber nicht (die brauchen das Handy selbst), aber normale Fragen und Gespräche schon.
+
+Das braucht zwei zusätzliche Dinge, die teils schon aus anderen Abschnitten oben bekannt sind:
+
+1. **`WORKER_SELF_URL` setzen**, falls noch nicht geschehen (siehe „Telefonanrufe" oben) — der Worker muss seine eigene URL kennen, um sich bei Telegram als Webhook zu registrieren.
+2. **KV-Speicher einrichten**, falls noch nicht geschehen (siehe „Kalender-Erinnerungsanrufe" oben, Schritt „KV-Speicher anlegen") — dort wird gespeichert, welche Chat-ID dein eigener Bot beantworten darf (jede andere Nachricht wird stillschweigend ignoriert, damit niemand sonst auf deine Kosten mit deinem Bot chatten kann).
+
+Danach einmal (erneut) in der App auf **„Mit Telegram verbinden"** tippen — das registriert automatisch den Webhook bei Telegram. Ab dann antwortet der Bot auf jede Nachricht, die du ihm direkt in Telegram schickst.
+
 ## Philips-Hue-Lichtsteuerung einrichten (optional)
 
 Sag „hue Wohnzimmer an", „licht Küche aus" oder „hue Wohnzimmer auf 40 prozent", und JARVIS steuert deine Philips-Hue-Lampen — komplett lokal über deine Hue Bridge im selben WLAN wie dein Handy, ohne Cloud oder Philips-Account. Portiert vom Original-Desktop-Tool (`hue.py`).

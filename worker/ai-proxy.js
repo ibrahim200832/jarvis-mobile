@@ -439,6 +439,12 @@ export default {
       }
       return handleTelegramNotify(request, env);
     }
+    if (url.pathname === '/telegram/webhook') {
+      if (request.method !== 'POST') {
+        return json({ error: 'method not allowed' }, 405);
+      }
+      return handleTelegramWebhook(request, env);
+    }
 
     if (request.method !== 'POST') {
       return json({ error: 'method not allowed' }, 405);
@@ -664,6 +670,13 @@ async function handleCalendarDisconnect(request, env) {
 // id by hand — same one-time linking idea as telegram_bot.py's `setup`
 // command, minus the long-polling daemon (a Worker can't run one; this just
 // looks at the single most recent update on demand instead).
+//
+// Also stores that chat id as the bot's one authorized owner (in KV) and
+// registers /telegram/webhook with Telegram, so the user can from now on
+// message the bot directly in Telegram and get a real AI reply — no need to
+// go through the JARVIS app for that. Every future message from a different
+// chat id is ignored (see handleTelegramWebhook), so a stranger who finds
+// the bot's username can't rack up AI usage on the owner's Worker.
 async function handleTelegramLink(url, env) {
   if (!env.TELEGRAM_BOT_TOKEN) {
     return json({ error: 'Telegram ist auf dem Server nicht eingerichtet.' }, 500);
@@ -680,7 +693,68 @@ async function handleTelegramLink(url, env) {
   if (!chat) {
     return json({ error: 'Keine Nachricht gefunden. Schick deinem Bot zuerst eine Nachricht in Telegram, dann versuch es erneut.' }, 404);
   }
-  return json({ chat_id: String(chat.id), name: chat.first_name || chat.username || '' });
+  const chatId = String(chat.id);
+
+  if (env.JARVIS_KV) {
+    await env.JARVIS_KV.put('telegram_owner_chat_id', chatId);
+  }
+  if (env.WORKER_SELF_URL) {
+    await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/setWebhook`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: `${env.WORKER_SELF_URL}/telegram/webhook`,
+        secret_token: env.CALL_SHARED_SECRET,
+      }),
+    });
+  }
+
+  return json({ chat_id: chatId, name: chat.first_name || chat.username || '' });
+}
+
+// Telegram calls this whenever someone messages the bot directly (registered
+// via setWebhook above). Only replies to the linked owner's chat id — a
+// stranger's message is silently ignored, not answered. No tool-calling
+// here (call/WhatsApp/app actions need the phone itself, which Telegram
+// chats don't have access to), and no conversation memory across messages
+// yet — each message is answered on its own.
+async function handleTelegramWebhook(request, env) {
+  // Telegram echoes back the secret_token set in setWebhook on every
+  // request, so a request without it (or a guessed wrong value) can't be
+  // Telegram — reject it instead of spending an AI call on it.
+  if (request.headers.get('X-Telegram-Bot-Api-Secret-Token') !== env.CALL_SHARED_SECRET) {
+    return json({ error: 'unauthorized' }, 403);
+  }
+  if (!env.JARVIS_KV || !env.TELEGRAM_BOT_TOKEN) {
+    return json({ ok: true }); // nothing to do without an owner chat id to check against
+  }
+
+  let update;
+  try {
+    update = await request.json();
+  } catch (_) {
+    return json({ ok: true });
+  }
+
+  const message = update.message;
+  const text = message?.text;
+  const chatId = message?.chat?.id != null ? String(message.chat.id) : null;
+  if (!text || !chatId) return json({ ok: true });
+
+  const ownerChatId = await env.JARVIS_KV.get('telegram_owner_chat_id');
+  if (!ownerChatId || chatId !== ownerChatId) return json({ ok: true });
+
+  const systemPrompt = `${SYSTEM_PROMPT} Du sprichst hier gerade über Telegram, nicht über die JARVIS-App — deshalb kannst du hier keine Anrufe/WhatsApp/Apps auf dem Handy auslösen, sondern nur in Worten antworten.`;
+  let replyText;
+  try {
+    const data = await runModel(env, [{ role: 'system', content: systemPrompt }, { role: 'user', content: text }], false);
+    replyText = (data.response ?? data.result?.response ?? '').toString().trim();
+  } catch (_) {
+    replyText = '';
+  }
+
+  await sendTelegramMessage(env, chatId, replyText || 'Ich habe keine Antwort erhalten.');
+  return json({ ok: true });
 }
 
 async function handleTelegramNotify(request, env) {
