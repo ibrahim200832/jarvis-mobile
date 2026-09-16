@@ -256,7 +256,7 @@ Das braucht zwei zusätzliche Dinge, die teils schon aus anderen Abschnitten obe
 1. **`WORKER_SELF_URL` setzen**, falls noch nicht geschehen (siehe „Telefonanrufe" oben) — der Worker muss seine eigene URL kennen, um sich bei Telegram als Webhook zu registrieren.
 2. **KV-Speicher einrichten**, falls noch nicht geschehen (siehe „Kalender-Erinnerungsanrufe" oben, Schritt „KV-Speicher anlegen") — dort wird gespeichert, welche Chat-ID dein eigener Bot beantworten darf (jede andere Nachricht wird stillschweigend ignoriert, damit niemand sonst auf deine Kosten mit deinem Bot chatten kann).
 
-Danach einmal (erneut) in der App auf **„Mit Telegram verbinden"** tippen — das registriert automatisch den Webhook bei Telegram. Ab dann antwortet der Bot auf jede Nachricht, die du ihm direkt in Telegram schickst.
+Danach einmal (erneut) in der App auf **„Mit Telegram verbinden"** tippen — das registriert automatisch den Webhook bei Telegram. Ab dann antwortet der Bot auf jede Nachricht, die du ihm direkt in Telegram schickst — auch auf **Sprachnachrichten**: der Bot erkennt gesprochenen Text automatisch (über dieselbe kostenlose Cloudflare-KI, ohne extra Einrichtung), schickt den erkannten Text als Bestätigung zurück und antwortet direkt darauf.
 
 ## Philips-Hue-Lichtsteuerung einrichten (optional)
 

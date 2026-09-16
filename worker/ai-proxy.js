@@ -737,12 +737,23 @@ async function handleTelegramWebhook(request, env) {
   }
 
   const message = update.message;
-  const text = message?.text;
   const chatId = message?.chat?.id != null ? String(message.chat.id) : null;
-  if (!text || !chatId) return json({ ok: true });
+  if (!message || !chatId) return json({ ok: true });
 
   const ownerChatId = await env.JARVIS_KV.get('telegram_owner_chat_id');
   if (!ownerChatId || chatId !== ownerChatId) return json({ ok: true });
+
+  let text = message.text;
+  const voice = message.voice || message.audio;
+  if (!text && voice) {
+    try {
+      text = await transcribeTelegramVoice(env, voice.file_id);
+    } catch (_) {
+      await sendTelegramMessage(env, chatId, 'Ich konnte die Sprachnachricht nicht verstehen.');
+      return json({ ok: true });
+    }
+  }
+  if (!text) return json({ ok: true });
 
   const systemPrompt = `${SYSTEM_PROMPT} Du sprichst hier gerade über Telegram, nicht über die JARVIS-App — deshalb kannst du hier keine Anrufe/WhatsApp/Apps auf dem Handy auslösen, sondern nur in Worten antworten.`;
   let replyText;
@@ -753,7 +764,10 @@ async function handleTelegramWebhook(request, env) {
     replyText = '';
   }
 
-  await sendTelegramMessage(env, chatId, replyText || 'Ich habe keine Antwort erhalten.');
+  // Voice messages get their transcript echoed back first, so the user can
+  // tell if Whisper misheard something, before JARVIS' actual reply.
+  const prefix = voice ? `🎤 „${text}"\n\n` : '';
+  await sendTelegramMessage(env, chatId, prefix + (replyText || 'Ich habe keine Antwort erhalten.'));
   return json({ ok: true });
 }
 
@@ -782,6 +796,25 @@ async function handleTelegramNotify(request, env) {
     return json({ error: 'Telegram-Nachricht fehlgeschlagen', detail: String(err) }, 502);
   }
   return json({ ok: true });
+}
+
+// Downloads a Telegram voice message and transcribes it with Whisper via
+// Cloudflare Workers AI — the same zero-setup "AI" binding this Worker
+// already uses for chat, no extra speech-to-text account needed.
+async function transcribeTelegramVoice(env, fileId) {
+  const fileInfoRes = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/getFile?file_id=${fileId}`);
+  if (!fileInfoRes.ok) throw new Error(`getFile fehlgeschlagen (${fileInfoRes.status})`);
+  const filePath = (await fileInfoRes.json()).result?.file_path;
+  if (!filePath) throw new Error('Telegram hat keinen Dateipfad geliefert.');
+
+  const audioRes = await fetch(`https://api.telegram.org/file/bot${env.TELEGRAM_BOT_TOKEN}/${filePath}`);
+  if (!audioRes.ok) throw new Error(`Sprachnachricht-Download fehlgeschlagen (${audioRes.status})`);
+  const audioBytes = [...new Uint8Array(await audioRes.arrayBuffer())];
+
+  const result = await env.AI.run('@cf/openai/whisper', { audio: audioBytes });
+  const text = (result.text || '').trim();
+  if (!text) throw new Error('Whisper hat keinen Text erkannt.');
+  return text;
 }
 
 async function sendTelegramMessage(env, chatId, message) {
