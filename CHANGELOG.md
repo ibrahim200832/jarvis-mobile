@@ -5,6 +5,7 @@ wird beim Deploy automatisch in den "Update verfügbar"-Dialog der App
 übernommen (siehe `.github/workflows/deploy-web.yml`).
 
 ## Aktuell
+- Neu: JARVIS' Telegram-Bot hat jetzt ein dauerhaftes Gedächtnis — "merk dir: ..." speichert Fakten für immer, "meine erinnerungen" zeigt sie, "vergiss alles" löscht sie.
 - Neu: JARVIS' Telegram-Bot merkt sich jetzt den Gesprächsverlauf (Anschlussfragen funktionieren) und kann bei aktuellen Fragen selbst das Web durchsuchen.
 - Neu: JARVIS' Telegram-Bot versteht jetzt auch Sprachnachrichten (automatische Spracherkennung, kostenlos über Cloudflare).
 - Neu: JARVIS' Telegram-Bot antwortet jetzt auch direkt auf Nachrichten, die man ihm in Telegram schreibt — ganz ohne die App zu öffnen.

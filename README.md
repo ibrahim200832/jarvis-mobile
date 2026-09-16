@@ -260,6 +260,8 @@ Danach einmal (erneut) in der App auf **„Mit Telegram verbinden"** tippen — 
 
 Der Bot merkt sich außerdem den Gesprächsverlauf (die letzten Nachrichten, ca. 6 Stunden lang) — Anschlussfragen wie „und morgen?" funktionieren also. Und er kann bei aktuellen/unsicheren Fakten selbst das Web durchsuchen (braucht einen `BRAVE_API_KEY`, siehe „Websuche einrichten" oben) — alles andere, was das Handy selbst braucht (Anrufe, Kalender, Hue, Home Connect, Wetter, Nachrichten), bleibt der App vorbehalten.
 
+Zusätzlich gibt es ein **dauerhaftes Gedächtnis** (kein Zeitlimit, anders als der Gesprächsverlauf oben): Sag „merk dir: \<Fakt\>" (z. B. „merk dir: ich mag keinen Kaffee"), und der Bot berücksichtigt das ab sofort bei jeder künftigen Antwort — auch nach Tagen oder Wochen noch. „meine erinnerungen" zeigt alles Gemerkte an, „vergiss alles" löscht es wieder.
+
 ## Philips-Hue-Lichtsteuerung einrichten (optional)
 
 Sag „hue Wohnzimmer an", „licht Küche aus" oder „hue Wohnzimmer auf 40 prozent", und JARVIS steuert deine Philips-Hue-Lampen — komplett lokal über deine Hue Bridge im selben WLAN wie dein Handy, ohne Cloud oder Philips-Account. Portiert vom Original-Desktop-Tool (`hue.py`).
