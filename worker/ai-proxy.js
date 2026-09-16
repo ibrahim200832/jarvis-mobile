@@ -337,6 +337,15 @@ const TOOLS = [
   },
 ];
 
+// Telegram messages are answered entirely server-side, with no phone in the
+// loop — so only tools the Worker itself can fully carry out belong here.
+// search_web fits (it's just an outbound Brave Search call, same as the
+// app's own web-search command); everything else in TOOLS either needs the
+// phone (contacts, apps, camera, Spotify, uploads) or a token that only
+// lives on-device (calendar, weather, news — their API keys are stored in
+// the app's Einstellungen, not on the Worker).
+const TELEGRAM_TOOLS = TOOLS.filter((t) => t.function.name === 'search_web');
+
 const SYSTEM_PROMPT =
   'Du bist JARVIS, das KI-System von Tony Stark aus den Iron-Man-Filmen, jetzt im Dienst des Nutzers. ' +
   'Deine Persönlichkeit: hochintelligent und gebildet, aber vor allem fröhlich, warmherzig und ' +
@@ -484,7 +493,7 @@ export default {
     let toolCall;
     let replyText;
     try {
-      data = await runModel(env, messages, true);
+      data = await runModel(env, messages, TOOLS);
       toolCall = data.tool_calls?.[0];
       replyText = (data.response ?? data.result?.response ?? '').toString().trim();
 
@@ -494,7 +503,7 @@ export default {
       // — cheap insurance against any model occasionally returning empty,
       // and strictly better than surfacing silence to the user.
       if (!replyText && !toolCall) {
-        data = await runModel(env, messages, false);
+        data = await runModel(env, messages);
         toolCall = undefined;
         replyText = (data.response ?? data.result?.response ?? '').toString().trim();
       }
@@ -755,19 +764,38 @@ async function handleTelegramWebhook(request, env) {
   }
   if (!text) return json({ ok: true });
 
-  const systemPrompt = `${SYSTEM_PROMPT} Du sprichst hier gerade über Telegram, nicht über die JARVIS-App — deshalb kannst du hier keine Anrufe/WhatsApp/Apps auf dem Handy auslösen, sondern nur in Worten antworten.`;
+  const historyKey = `telegram_history_${chatId}`;
+  const history = JSON.parse((await env.JARVIS_KV.get(historyKey)) || '[]');
+
+  const systemPrompt =
+    `${SYSTEM_PROMPT} Du sprichst hier gerade über Telegram, nicht über die JARVIS-App — deshalb kannst du hier keine ` +
+    'Anrufe/WhatsApp/Apps/Kalender/Hue/Home-Connect auslösen, sondern nur in Worten antworten. Websuche steht dir ' +
+    'hier trotzdem zur Verfügung, nutze sie wie gewohnt bei aktuellen oder unsicheren Fakten.';
+  const messages = [{ role: 'system', content: systemPrompt }, ...history, { role: 'user', content: text }];
+
   let replyText;
   try {
-    const data = await runModel(env, [{ role: 'system', content: systemPrompt }, { role: 'user', content: text }], false);
-    replyText = (data.response ?? data.result?.response ?? '').toString().trim();
+    const data = await runModel(env, messages, TELEGRAM_TOOLS);
+    const toolCall = data.tool_calls?.[0];
+    if (toolCall?.name === 'search_web') {
+      const query = (typeof toolCall.arguments === 'string' ? JSON.parse(toolCall.arguments) : toolCall.arguments)?.query;
+      const results = query ? await braveSearch(query, env) : [];
+      replyText = results.length > 0 ? results.slice(0, 2).map((r) => r.description).join(' ') : 'Ich konnte dazu nichts im Web finden.';
+    } else {
+      replyText = (data.response ?? data.result?.response ?? '').toString().trim();
+    }
   } catch (_) {
     replyText = '';
   }
+  replyText = replyText || 'Ich habe keine Antwort erhalten.';
+
+  history.push({ role: 'user', content: text }, { role: 'assistant', content: replyText });
+  await env.JARVIS_KV.put(historyKey, JSON.stringify(history.slice(-MAX_HISTORY_MESSAGES)), { expirationTtl: 6 * 60 * 60 });
 
   // Voice messages get their transcript echoed back first, so the user can
   // tell if Whisper misheard something, before JARVIS' actual reply.
   const prefix = voice ? `🎤 „${text}"\n\n` : '';
-  await sendTelegramMessage(env, chatId, prefix + (replyText || 'Ich habe keine Antwort erhalten.'));
+  await sendTelegramMessage(env, chatId, prefix + replyText);
   return json({ ok: true });
 }
 
@@ -911,7 +939,10 @@ async function runCalendarReminders(env) {
   }
 }
 
-function runModel(env, messages, includeTools) {
+// [tools] is either the full TOOLS list, a narrower list (e.g. Telegram only
+// gets search_web — everything else needs the phone itself), or omitted for
+// no tool-calling at all.
+function runModel(env, messages, tools) {
   const payload = {
     messages,
     max_tokens: 2048,
@@ -920,45 +951,46 @@ function runModel(env, messages, includeTools) {
     // flattening the character's intended warm, cheerful tone entirely (temperature 0).
     temperature: 0.3,
   };
-  if (includeTools) payload.tools = TOOLS;
+  if (tools && tools.length > 0) payload.tools = tools;
   return env.AI.run(AI_MODEL, payload);
 }
 
-// Proxies web-search requests through Brave Search, keeping BRAVE_API_KEY a
-// server-side secret (set via `wrangler secret put BRAVE_API_KEY` or the
-// Cloudflare dashboard) instead of shipping it inside the app, where anyone
-// could extract it from the APK/web bundle and drain the quota.
+// Queries Brave Search directly, keeping BRAVE_API_KEY a server-side secret
+// (set via `wrangler secret put BRAVE_API_KEY` or the Cloudflare dashboard)
+// instead of shipping it inside the app, where anyone could extract it from
+// the APK/web bundle and drain the quota. Shared by the app's /search
+// endpoint and the Telegram bot's own search_web tool call.
+async function braveSearch(query, env) {
+  if (!env.BRAVE_API_KEY) {
+    throw new Error('Kein Brave-Schlüssel auf dem Server hinterlegt.');
+  }
+  const braveUrl = new URL('https://api.search.brave.com/res/v1/web/search');
+  braveUrl.searchParams.set('q', query);
+  braveUrl.searchParams.set('count', '3');
+
+  const res = await fetch(braveUrl, {
+    headers: { Accept: 'application/json', 'X-Subscription-Token': env.BRAVE_API_KEY },
+  });
+  if (!res.ok) {
+    throw new Error(`Websuche fehlgeschlagen (${res.status})`);
+  }
+  const data = await res.json();
+  return (data.web?.results ?? []).slice(0, 3).map((r) => ({
+    title: r.title ?? '',
+    description: (r.description ?? '').replace(/<[^>]*>/g, ''), // Brave highlights matches with <strong> tags
+  }));
+}
+
 async function handleSearch(url, env) {
   const query = (url.searchParams.get('q') || '').trim();
   if (!query) {
     return json({ error: 'q fehlt' }, 400);
   }
-  if (!env.BRAVE_API_KEY) {
-    return json({ error: 'Kein Brave-Schlüssel auf dem Server hinterlegt.' }, 500);
-  }
-
-  const braveUrl = new URL('https://api.search.brave.com/res/v1/web/search');
-  braveUrl.searchParams.set('q', query);
-  braveUrl.searchParams.set('count', '3');
-
-  let res;
   try {
-    res = await fetch(braveUrl, {
-      headers: { Accept: 'application/json', 'X-Subscription-Token': env.BRAVE_API_KEY },
-    });
+    return json({ results: await braveSearch(query, env) });
   } catch (err) {
-    return json({ error: 'Websuche fehlgeschlagen', detail: String(err) }, 502);
+    return json({ error: String(err.message || err) }, 502);
   }
-  if (!res.ok) {
-    return json({ error: `Websuche fehlgeschlagen (${res.status})` }, 502);
-  }
-
-  const data = await res.json();
-  const results = (data.web?.results ?? []).slice(0, 3).map((r) => ({
-    title: r.title ?? '',
-    description: (r.description ?? '').replace(/<[^>]*>/g, ''), // Brave highlights matches with <strong> tags
-  }));
-  return json({ results });
 }
 
 // Proxies TikTok's OAuth token exchange/refresh, keeping TIKTOK_CLIENT_KEY
