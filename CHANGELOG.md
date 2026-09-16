@@ -5,6 +5,12 @@ wird beim Deploy automatisch in den "Update verfügbar"-Dialog der App
 übernommen (siehe `.github/workflows/deploy-web.yml`).
 
 ## Aktuell
+- Neu: JARVIS kann jetzt auch Kontakte per echtem Telefonanruf erreichen und ihnen etwas ausrichten: "ruf Mama an und sag ihr: bin gleich da".
+- Neu: Kostenlose Telegram-Benachrichtigungen als Alternative/Ergänzung zu Anrufen — auch für Kalender-Erinnerungen.
+- Neu: Philips-Hue-Lichtsteuerung ("hue Wohnzimmer an", "licht Küche auf 40 prozent") — komplett lokal, keine Cloud.
+- Neu: Bosch/Siemens-Hausgerätestatus per Home Connect abfragen ("ist die waschmaschine fertig").
+- Neu: "ruf mich an" lässt JARVIS dich tatsächlich anrufen (echter Telefonanruf mit Ansage) — eigenes Twilio-Konto nötig, siehe README.
+- Neu: Google-Kalender-Anbindung — Termine per Sprache ansagen lassen oder anlegen ("was steht heute an", "leg einen termin an: ..."), plus automatischer Erinnerungsanruf kurz vor Terminbeginn, auch ohne geöffnete App.
 - Neu: Videos lassen sich jetzt auch auf TikTok hochladen ("video auf tiktok hochladen"), mit wählbarer Sichtbarkeit — eigene TikTok-Entwickler-App nötig, siehe README. Wichtig: Ohne bestandenes TikTok-Audit landet jeder Upload automatisch als "Nur ich" (privat), unabhängig von der Auswahl.
 
 ## Vorheriges Update

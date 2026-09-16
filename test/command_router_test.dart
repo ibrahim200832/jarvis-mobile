@@ -3,20 +3,25 @@ import 'package:installed_apps/app_info.dart';
 import 'package:jarvis_mobile/core/command_router.dart';
 import 'package:jarvis_mobile/services/ai_chat_service.dart';
 import 'package:jarvis_mobile/services/app_launcher_service.dart';
+import 'package:jarvis_mobile/services/bosch_service.dart';
+import 'package:jarvis_mobile/services/calendar_service.dart';
 import 'package:jarvis_mobile/services/call_service.dart';
 import 'package:jarvis_mobile/services/contacts_service.dart';
 import 'package:jarvis_mobile/services/device_info_service.dart';
 import 'package:jarvis_mobile/services/email_service.dart';
+import 'package:jarvis_mobile/services/hue_service.dart';
 import 'package:jarvis_mobile/services/ip_service.dart';
 import 'package:jarvis_mobile/services/joke_service.dart';
 import 'package:jarvis_mobile/services/location_service.dart';
 import 'package:jarvis_mobile/services/news_service.dart';
 import 'package:jarvis_mobile/services/notes_service.dart';
 import 'package:jarvis_mobile/services/notification_service.dart';
+import 'package:jarvis_mobile/services/phone_call_service.dart';
 import 'package:jarvis_mobile/services/qr_service.dart';
 import 'package:jarvis_mobile/services/random_fun_service.dart';
 import 'package:jarvis_mobile/services/settings_service.dart';
 import 'package:jarvis_mobile/services/spotify_service.dart';
+import 'package:jarvis_mobile/services/telegram_service.dart';
 import 'package:jarvis_mobile/services/timer_service.dart';
 import 'package:jarvis_mobile/services/weather_service.dart';
 import 'package:jarvis_mobile/services/web_search_service.dart';
@@ -189,6 +194,77 @@ class FakeSpotifyService extends SpotifyService {
   Future<bool> isConnected() async => connected;
 }
 
+class FakePhoneCallService extends PhoneCallService {
+  String? lastMessage;
+  String? errorToReturn;
+
+  @override
+  Future<String?> callMe({
+    required String backendUrl,
+    required String secret,
+    required String phone,
+    required String message,
+  }) async {
+    lastMessage = message;
+    return errorToReturn;
+  }
+}
+
+class FakeCalendarService extends CalendarService {
+  FakeCalendarService() : super(clientIdProvider: () async => null);
+
+  List<CalendarEvent> eventsToReturn = [];
+  String? lastCreatedTitle;
+  DateTime? lastCreatedStart;
+
+  @override
+  Future<List<CalendarEvent>> listEvents(DateTime from, DateTime to) async => eventsToReturn;
+
+  @override
+  Future<String> createEvent({required String title, required DateTime start, Duration duration = const Duration(hours: 1)}) async {
+    lastCreatedTitle = title;
+    lastCreatedStart = start;
+    return 'Termin "$title" angelegt.';
+  }
+}
+
+class FakeHueService extends HueService {
+  String? lastLightName;
+  bool? lastOn;
+  double? lastBrightness;
+  String resultToReturn = 'ok';
+
+  @override
+  Future<String> setLight(String name, {bool? on, double? brightness}) async {
+    lastLightName = name;
+    lastOn = on;
+    lastBrightness = brightness;
+    return resultToReturn;
+  }
+}
+
+class FakeBoschService extends BoschService {
+  String? lastQuery;
+  String resultToReturn = 'Waschmaschine läuft noch, noch etwa 10 Minuten.';
+
+  @override
+  Future<String> describeStatus(String applianceQuery) async {
+    lastQuery = applianceQuery;
+    return resultToReturn;
+  }
+}
+
+class FakeTelegramService extends TelegramService {
+  String? lastMessage;
+  String? errorToReturn;
+
+  @override
+  Future<String?> sendMessage({required String backendUrl, required String secret, required String message}) async {
+    lastMessage = message;
+    return errorToReturn;
+  }
+}
+
 class FakeNotificationService extends NotificationService {
   int scheduleCalls = 0;
   int cancelCalls = 0;
@@ -220,6 +296,11 @@ void main() {
   late FakeSpotifyService spotify;
   late FakeWebSearchService webSearch;
   late FakeSettingsService settings;
+  late FakePhoneCallService phoneCall;
+  late FakeCalendarService calendar;
+  late FakeHueService hue;
+  late FakeBoschService bosch;
+  late FakeTelegramService telegram;
   late CommandRouter router;
 
   setUp(() {
@@ -237,6 +318,11 @@ void main() {
     spotify = FakeSpotifyService();
     webSearch = FakeWebSearchService();
     settings = FakeSettingsService();
+    phoneCall = FakePhoneCallService();
+    calendar = FakeCalendarService();
+    hue = FakeHueService();
+    bosch = FakeBoschService();
+    telegram = FakeTelegramService();
 
     router = CommandRouter(
       wikipedia: wikipedia,
@@ -261,6 +347,11 @@ void main() {
       notifications: notifications,
       spotify: spotify,
       webSearch: webSearch,
+      phoneCall: phoneCall,
+      calendar: calendar,
+      hue: hue,
+      bosch: bosch,
+      telegram: telegram,
     );
   });
 
@@ -357,6 +448,58 @@ void main() {
     final result = await router.handle('rufe Mama an');
     expect(call.lastPhone, '+491701234567');
     expect(result.reply, contains('Mama'));
+  });
+
+  test('ruf mich an triggers a real Twilio call via PhoneCallService', () async {
+    final result = await router.handle('ruf mich an');
+    expect(phoneCall.lastMessage, isNotNull);
+    expect(result.reply, isNot(contains('Fehler')));
+  });
+
+  test('ruf mich an surfaces a PhoneCallService error', () async {
+    phoneCall.errorToReturn = 'Kein Anruf-Geheimnis in den Einstellungen hinterlegt.';
+    final result = await router.handle('ruf mich an');
+    expect(result.reply, 'Kein Anruf-Geheimnis in den Einstellungen hinterlegt.');
+  });
+
+  test('ruf <unbekannter Kontakt> an und sag ... reports it was not found', () async {
+    final result = await router.handle('ruf Mama an und sag ihr, dass ich später komme');
+    expect(result.reply, contains('keinen Kontakt'));
+    expect(phoneCall.lastMessage, isNull);
+  });
+
+  test('ruf <bekannter Kontakt> an und sag ... triggers a real Twilio call with the message', () async {
+    contacts.contactToReturn = Contact(name: 'Mama', phone: '+491701234567');
+    final result = await router.handle('ruf Mama an und sag ihr, dass ich später komme');
+    expect(phoneCall.lastMessage, 'dass ich später komme');
+    expect(result.reply, contains('Mama'));
+    expect(call.lastPhone, isNull); // real call, not the dialer
+  });
+
+  test('hue <Lampe> an triggers HueService.setLight(on: true)', () async {
+    final result = await router.handle('hue Wohnzimmer an');
+    expect(hue.lastLightName, 'Wohnzimmer');
+    expect(hue.lastOn, isTrue);
+    expect(result.reply, 'ok');
+  });
+
+  test('hue <Lampe> auf <n> prozent triggers HueService.setLight(brightness:)', () async {
+    final result = await router.handle('hue Küche auf 40 prozent');
+    expect(hue.lastLightName, 'Küche');
+    expect(hue.lastBrightness, 40.0);
+    expect(result.reply, 'ok');
+  });
+
+  test('schick mir eine telegram nachricht triggers TelegramService', () async {
+    final result = await router.handle('schick mir eine telegram nachricht: Test');
+    expect(telegram.lastMessage, 'Test');
+    expect(result.reply, 'Telegram-Nachricht geschickt.');
+  });
+
+  test('ist die waschmaschine fertig triggers BoschService.describeStatus', () async {
+    final result = await router.handle('ist die waschmaschine fertig');
+    expect(bosch.lastQuery, 'waschmaschine');
+    expect(result.reply, bosch.resultToReturn);
   });
 
   test('whatsapp an <Kontakt>: <Nachricht> triggers WhatsappService', () async {

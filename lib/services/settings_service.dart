@@ -10,6 +10,8 @@ class SettingsService {
   static const _keyAiModel = 'ai_model';
   static const _keySpotifyClientId = 'spotify_client_id';
   static const _keyTiktokClientKey = 'tiktok_client_key';
+  static const _keyCallSharedSecret = 'call_shared_secret';
+  static const _keyReminderPhone = 'reminder_phone';
 
   Future<String?> getNewsApiKey() async {
     final prefs = await SharedPreferences.getInstance();
@@ -110,5 +112,30 @@ class SettingsService {
   Future<void> setTiktokClientKey(String value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyTiktokClientKey, value);
+  }
+
+  /// Shared secret that must match CALL_SHARED_SECRET on the Worker, so only
+  /// this app can trigger outbound Twilio calls through it — see README,
+  /// Abschnitt "Telefonanrufe".
+  Future<String?> getCallSharedSecret() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyCallSharedSecret);
+  }
+
+  Future<void> setCallSharedSecret(String value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyCallSharedSecret, value);
+  }
+
+  /// The phone number (E.164, e.g. +49...) JARVIS calls for reminders and
+  /// "ruf mich an"-style requests.
+  Future<String?> getReminderPhone() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyReminderPhone);
+  }
+
+  Future<void> setReminderPhone(String value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyReminderPhone, value);
   }
 }

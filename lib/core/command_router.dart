@@ -2,21 +2,26 @@ import 'package:intl/intl.dart';
 
 import '../services/ai_chat_service.dart';
 import '../services/app_launcher_service.dart';
+import '../services/bosch_service.dart';
 import '../services/calculator_service.dart';
+import '../services/calendar_service.dart';
 import '../services/call_service.dart';
 import '../services/contacts_service.dart';
 import '../services/device_info_service.dart';
 import '../services/email_service.dart';
+import '../services/hue_service.dart';
 import '../services/ip_service.dart';
 import '../services/joke_service.dart';
 import '../services/location_service.dart';
 import '../services/news_service.dart';
 import '../services/notes_service.dart';
 import '../services/notification_service.dart';
+import '../services/phone_call_service.dart';
 import '../services/qr_service.dart';
 import '../services/random_fun_service.dart';
 import '../services/settings_service.dart';
 import '../services/spotify_service.dart';
+import '../services/telegram_service.dart';
 import '../services/timer_service.dart';
 import '../services/weather_service.dart';
 import '../services/web_search_service.dart';
@@ -76,6 +81,11 @@ class CommandRouter {
     required this.notifications,
     required this.spotify,
     required this.webSearch,
+    required this.phoneCall,
+    required this.calendar,
+    required this.hue,
+    required this.bosch,
+    required this.telegram,
   });
 
   final WikipediaService wikipedia;
@@ -100,6 +110,11 @@ class CommandRouter {
   final NotificationService notifications;
   final SpotifyService spotify;
   final WebSearchService webSearch;
+  final PhoneCallService phoneCall;
+  final CalendarService calendar;
+  final HueService hue;
+  final BoschService bosch;
+  final TelegramService telegram;
 
   /// Rolling window of past AI exchanges (user+assistant pairs), so a
   /// follow-up like "und morgen?" is understood in context instead of
@@ -135,6 +150,12 @@ Das kann ich für dich tun:
 • "notiz <Text>" / "meine notizen" / "lösche notiz <Nummer>"
 • "wirf eine münze" / "würfle" / "zufallszahl zwischen 1 und 100"
 • "spiele <Song> auf spotify" / "spiele playlist <Name> auf spotify" (Spotify-Verbindung nötig, siehe Einstellungen)
+• "ruf mich an" / "ruf <Kontakt> an und sag ihm/ihr: <Nachricht>" (Twilio-Einrichtung nötig, siehe Einstellungen)
+• "was steht heute/morgen an" / "meine termine" (Google-Kalender-Verbindung nötig, siehe Einstellungen)
+• "leg einen termin an: <Titel> um <Uhrzeit>"
+• "hue <Lampenname> an/aus" / "hue <Lampenname> auf <Prozent>%" (Hue-Bridge-Einrichtung nötig, siehe Einstellungen)
+• "schick mir eine telegram nachricht: <Text>" (Telegram-Verbindung nötig, siehe Einstellungen)
+• "ist die waschmaschine/der trockner/der geschirrspüler fertig" (Home-Connect-Verbindung nötig, siehe Einstellungen)
 • alles andere: frag mich einfach frei, ich antworte mit echter KI und kann
   dabei auch direkt anrufen, WhatsApp schreiben oder Apps öffnen
 ''';
@@ -249,6 +270,65 @@ Das kann ich für dich tun:
           openYoutubeUpload: true,
           youtubePrivacy: privacy,
         );
+      }
+
+      if (_matchesAny(lower, ['ruf mich an', 'rufe mich an', 'call me'])) {
+        return CommandResult(await _callMe('Sir, hier ist JARVIS. Sie wollten, dass ich Sie anrufe.'));
+      }
+
+      if (_matchesAny(lower, ['was steht heute an', 'meine termine heute', 'termine heute'])) {
+        return CommandResult(await _describeEvents(DateTime.now(), 'heute'));
+      }
+
+      if (_matchesAny(lower, ['was steht morgen an', 'meine termine morgen', 'termine morgen'])) {
+        return CommandResult(await _describeEvents(DateTime.now().add(const Duration(days: 1)), 'morgen'));
+      }
+
+      if (_matchesAny(lower, ['meine termine', 'meine kalender'])) {
+        return CommandResult(await _describeEvents(DateTime.now(), 'die nächsten Tage', days: 7));
+      }
+
+      final newEventQuery = _extractAfter(lower, text, ['leg einen termin an', 'trage einen termin ein', 'neuer termin', 'termin:']);
+      if (newEventQuery != null) {
+        return CommandResult(await _createEventFromText(newEventQuery));
+      }
+
+      final telegramText = _extractAfter(lower, text, ['schick mir eine telegram nachricht', 'schicke mir eine telegram nachricht', 'telegram nachricht']);
+      if (telegramText != null) {
+        final message = telegramText.replaceAll(RegExp(r'^:\s*'), '').trim();
+        if (message.isEmpty) return CommandResult('Was soll in der Telegram-Nachricht stehen?');
+        return CommandResult(await _sendTelegram(message));
+      }
+
+      final applianceFertigMatch = _applianceFertigPattern.firstMatch(text);
+      if (applianceFertigMatch != null) {
+        return CommandResult(await bosch.describeStatus(applianceFertigMatch.group(1)!.trim()));
+      }
+
+      final applianceStatusQuery = _extractAfter(lower, text, ['status']);
+      if (applianceStatusQuery != null) {
+        return CommandResult(await bosch.describeStatus(applianceStatusQuery));
+      }
+
+      final hueOnOffMatch = _hueOnOffPattern.firstMatch(text);
+      if (hueOnOffMatch != null) {
+        final name = hueOnOffMatch.group(1)!.trim();
+        final wantsOn = hueOnOffMatch.group(2)!.toLowerCase() == 'an';
+        return CommandResult(await hue.setLight(name, on: wantsOn));
+      }
+
+      final hueDimMatch = _hueDimPattern.firstMatch(text);
+      if (hueDimMatch != null) {
+        final name = hueDimMatch.group(1)!.trim();
+        final level = double.parse(hueDimMatch.group(2)!);
+        return CommandResult(await hue.setLight(name, brightness: level));
+      }
+
+      final callWithMessageMatch = _callWithMessagePattern.firstMatch(text);
+      if (callWithMessageMatch != null) {
+        final name = callWithMessageMatch.group(1)!.trim();
+        final message = callWithMessageMatch.group(2)!.trim();
+        return CommandResult(await _callContact(name, message));
       }
 
       final callTarget = _extractAfter(lower, text, ['rufe', 'ruf', 'call']);
@@ -536,6 +616,48 @@ Das kann ich für dich tun:
       case 'open_tiktok_upload':
         return CommandResult('Öffne den TikTok-Upload.', openTiktokUpload: true);
 
+      case 'call_me':
+        final message = (action.params['message'] as String?)?.trim() ?? '';
+        if (message.isEmpty) return CommandResult('Was soll ich dir am Telefon sagen?');
+        return CommandResult(await _callMe(message));
+
+      case 'call_contact_with_message':
+        final contactName = (action.params['name'] as String?)?.trim() ?? '';
+        final contactMessage = (action.params['message'] as String?)?.trim() ?? '';
+        if (contactName.isEmpty || contactMessage.isEmpty) {
+          return CommandResult('Wen soll ich anrufen und was soll ich ausrichten?');
+        }
+        return CommandResult(await _callContact(contactName, contactMessage));
+
+      case 'send_telegram_message':
+        final telegramMessage = (action.params['message'] as String?)?.trim() ?? '';
+        if (telegramMessage.isEmpty) return CommandResult('Was soll in der Telegram-Nachricht stehen?');
+        return CommandResult(await _sendTelegram(telegramMessage));
+
+      case 'check_appliance_status':
+        final applianceQuery = (action.params['appliance'] as String?)?.trim() ?? '';
+        if (applianceQuery.isEmpty) return CommandResult('Welches Gerät meinst du?');
+        return CommandResult(await bosch.describeStatus(applianceQuery));
+
+      case 'control_hue_light':
+        final lightName = (action.params['name'] as String?)?.trim() ?? '';
+        if (lightName.isEmpty) return CommandResult('Welche Lampe meinst du?');
+        final brightnessValue = action.params['brightness'];
+        final lightBrightness = brightnessValue is num ? brightnessValue.toDouble() : double.tryParse('$brightnessValue');
+        final onValue = action.params['on'];
+        final wantsLightOn = onValue == null ? null : (onValue is bool ? onValue : onValue.toString().toLowerCase() == 'true');
+        if (lightBrightness == null && wantsLightOn == null) return CommandResult('Soll ich die Lampe an-, ausschalten oder dimmen?');
+        return CommandResult(await hue.setLight(lightName, on: lightBrightness == null ? wantsLightOn : null, brightness: lightBrightness));
+
+      case 'create_calendar_event':
+        final eventTitle = (action.params['title'] as String?)?.trim() ?? '';
+        final startRaw = (action.params['start'] as String?)?.trim();
+        final start = startRaw == null ? null : DateTime.tryParse(startRaw)?.toLocal();
+        if (eventTitle.isEmpty || start == null) {
+          return CommandResult('Wie soll der Termin heißen und wann soll er stattfinden?');
+        }
+        return CommandResult(await calendar.createEvent(title: eventTitle, start: start));
+
       case 'open_youtube_upload':
         final uploadPrivacy = _normalizeYoutubePrivacy(action.params['privacy_status'] as String?);
         final publishAt = _parseYoutubePublishAt(action.params['publish_at'] as String?);
@@ -577,6 +699,91 @@ Das kann ich für dich tun:
     }
     if (name.isEmpty) return 'Welche Playlist soll ich abspielen?';
     return spotify.playPlaylist(clientId, name);
+  }
+
+  Future<String> _callMe(String message) async {
+    final backendUrl = await settings.getAiBackendUrl();
+    final secret = await settings.getCallSharedSecret();
+    final phone = await settings.getReminderPhone();
+    final error = await phoneCall.callMe(
+      backendUrl: backendUrl ?? '',
+      secret: secret ?? '',
+      phone: phone ?? '',
+      message: message,
+    );
+    return error ?? 'Ich rufe dich jetzt an.';
+  }
+
+  // Matches e.g. "ist die waschmaschine fertig", "ist der trockner fertig?"
+  // — Bosch/Siemens Home Connect appliance status. Ported from bosch.py.
+  static final _applianceFertigPattern = RegExp(r'^ist\s+(?:der|die|das)\s+(.+?)\s+fertig\??$', caseSensitive: false);
+
+  // Matches e.g. "hue Wohnzimmer an", "licht Küche aus" — controls a Philips
+  // Hue light by name over the local network. Ported from the original
+  // desktop tool's hue.py.
+  static final _hueOnOffPattern = RegExp(r'^(?:hue|licht)\s+(.+?)\s+(an|aus)$', caseSensitive: false);
+
+  // Matches e.g. "hue Wohnzimmer auf 40 prozent" / "licht Küche auf 100%".
+  static final _hueDimPattern = RegExp(r'^(?:hue|licht)\s+(.+?)\s+auf\s+(\d{1,3})\s*(?:%|prozent)$', caseSensitive: false);
+
+  // Matches e.g. "ruf Mama an und sag ihr, dass ich später komme" or "rufe
+  // Papa an und sage: bin gleich da" — a real Twilio call to a contact that
+  // speaks [message], unlike the plain "ruf Mama an" above, which just opens
+  // the phone dialer.
+  static final _callWithMessagePattern = RegExp(
+    r'^(?:ruf|rufe)\s+(.+?)\s+an\s+und\s+sag(?:e)?\s*(?:(?:ihm|ihr|ihnen),?\s*)?:?\s*(.+)$',
+    caseSensitive: false,
+  );
+
+  Future<String> _sendTelegram(String message) async {
+    final backendUrl = await settings.getAiBackendUrl();
+    final secret = await settings.getCallSharedSecret();
+    final error = await telegram.sendMessage(backendUrl: backendUrl ?? '', secret: secret ?? '', message: message);
+    return error ?? 'Telegram-Nachricht geschickt.';
+  }
+
+  Future<String> _callContact(String name, String message) async {
+    final contact = await contacts.find(name);
+    if (contact == null) {
+      return 'Ich habe keinen Kontakt namens "$name" gefunden. Füge ihn in den Einstellungen hinzu.';
+    }
+    final backendUrl = await settings.getAiBackendUrl();
+    final secret = await settings.getCallSharedSecret();
+    final error = await phoneCall.callMe(
+      backendUrl: backendUrl ?? '',
+      secret: secret ?? '',
+      phone: contact.phone,
+      message: message,
+    );
+    return error ?? 'Ich rufe ${contact.name} an und sage: "$message"';
+  }
+
+  Future<String> _describeEvents(DateTime from, String label, {int days = 1}) async {
+    final events = await calendar.listEvents(from, from.add(Duration(days: days)));
+    if (events.isEmpty) return 'Für $label steht nichts in deinem Kalender.';
+    final lines = events.map((e) {
+      final time = e.allDay ? 'ganztägig' : DateFormat.Hm('de_DE').format(e.start);
+      return '• ${e.title} ($time)';
+    });
+    return 'Termine für $label:\n${lines.join('\n')}';
+  }
+
+  static final _eventTimePattern = RegExp(r'\bum\s+(\d{1,2})(?::(\d{2}))?\s*(?:uhr)?\b');
+
+  Future<String> _createEventFromText(String input) async {
+    final match = _eventTimePattern.firstMatch(input.toLowerCase());
+    if (match == null) {
+      return 'Sag z. B. "leg einen termin an: Zahnarzt um 15 Uhr".';
+    }
+    final hour = int.parse(match.group(1)!);
+    final minute = int.tryParse(match.group(2) ?? '0') ?? 0;
+    var day = DateTime.now();
+    if (input.toLowerCase().contains('morgen')) day = day.add(const Duration(days: 1));
+    final start = DateTime(day.year, day.month, day.day, hour, minute);
+
+    final title = input.substring(0, match.start).replaceAll(RegExp(r'\s*(morgen|heute)\s*$', caseSensitive: false), '').trim();
+    if (title.isEmpty) return 'Wie soll der Termin heißen?';
+    return calendar.createEvent(title: title, start: start);
   }
 
   String? _normalizeYoutubePrivacy(String? raw) {
