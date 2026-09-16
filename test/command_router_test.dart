@@ -401,6 +401,32 @@ void main() {
     expect(result.reply, contains('Mama'));
   });
 
+  test('ruf mich an triggers a real Twilio call via PhoneCallService', () async {
+    final result = await router.handle('ruf mich an');
+    expect(phoneCall.lastMessage, isNotNull);
+    expect(result.reply, isNot(contains('Fehler')));
+  });
+
+  test('ruf mich an surfaces a PhoneCallService error', () async {
+    phoneCall.errorToReturn = 'Kein Anruf-Geheimnis in den Einstellungen hinterlegt.';
+    final result = await router.handle('ruf mich an');
+    expect(result.reply, 'Kein Anruf-Geheimnis in den Einstellungen hinterlegt.');
+  });
+
+  test('ruf <unbekannter Kontakt> an und sag ... reports it was not found', () async {
+    final result = await router.handle('ruf Mama an und sag ihr, dass ich später komme');
+    expect(result.reply, contains('keinen Kontakt'));
+    expect(phoneCall.lastMessage, isNull);
+  });
+
+  test('ruf <bekannter Kontakt> an und sag ... triggers a real Twilio call with the message', () async {
+    contacts.contactToReturn = Contact(name: 'Mama', phone: '+491701234567');
+    final result = await router.handle('ruf Mama an und sag ihr, dass ich später komme');
+    expect(phoneCall.lastMessage, 'dass ich später komme');
+    expect(result.reply, contains('Mama'));
+    expect(call.lastPhone, isNull); // real call, not the dialer
+  });
+
   test('whatsapp an <Kontakt>: <Nachricht> triggers WhatsappService', () async {
     contacts.contactToReturn = Contact(name: 'Mama', phone: '+491701234567');
     final result = await router.handle('whatsapp an Mama: Bin gleich da');

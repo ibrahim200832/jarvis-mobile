@@ -256,6 +256,22 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'call_contact_with_message',
+      description:
+        'Ruft einen gespeicherten Kontakt (nicht den Nutzer selbst) per Telefon an und lässt eine kurze Nachricht ansagen. Nur verwenden, wenn der Nutzer klar darum bittet, jemanden anzurufen UND ihm dabei etwas ausrichten zu lassen (z. B. "ruf Mama an und sag ihr, dass ich später komme"). Für einen einfachen Anruf ohne Ansage stattdessen call_contact verwenden.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Name des Kontakts, wie er im Adressbuch gespeichert ist' },
+          message: { type: 'string', description: 'Was JARVIS dem Kontakt am Telefon ausrichten soll, kurz und natürlich gesprochen.' },
+        },
+        required: ['name', 'message'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'create_calendar_event',
       description:
         'Legt einen Termin im Google Kalender des Nutzers an. Nur verwenden, wenn der Nutzer klar darum bittet, einen Termin einzutragen.',
@@ -291,8 +307,8 @@ const SYSTEM_PROMPT =
   'Du hast Werkzeuge für: Anrufen, WhatsApp senden, Apps öffnen, Timer stellen, Notizen speichern, Wetter ' +
   'abrufen, Kamera öffnen, Wikipedia-Suche, Nachrichten abrufen, E-Mail senden, YouTube-Suche, das Web ' +
   'durchsuchen, Musik oder eine Playlist auf Spotify abspielen, den TikTok-Video-Upload öffnen und den ' +
-  'YouTube-Video-Upload öffnen (mit Sichtbarkeit/Zeitplanung), den Nutzer selbst anrufen und einen Termin im ' +
-  'Google Kalender anlegen. ' +
+  'YouTube-Video-Upload öffnen (mit Sichtbarkeit/Zeitplanung), den Nutzer selbst anrufen, einen Kontakt anrufen ' +
+  'und ihm dabei eine Nachricht ausrichten lassen, und einen Termin im Google Kalender anlegen. ' +
   'Nutze ein Werkzeug ausschließlich dann, wenn der Nutzer eine konkrete, eindeutige Handlungsaufforderung ' +
   'ausspricht (z.B. "ruf Mama an", "schreib eine E-Mail an..."). Nutze niemals ein Werkzeug bei einer ' +
   'bloßen Erwähnung, Frage über die Vergangenheit oder einem Gedanken laut — z.B. bei "ich sollte mal ' +

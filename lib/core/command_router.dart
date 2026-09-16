@@ -141,7 +141,7 @@ Das kann ich für dich tun:
 • "notiz <Text>" / "meine notizen" / "lösche notiz <Nummer>"
 • "wirf eine münze" / "würfle" / "zufallszahl zwischen 1 und 100"
 • "spiele <Song> auf spotify" / "spiele playlist <Name> auf spotify" (Spotify-Verbindung nötig, siehe Einstellungen)
-• "ruf mich an" (Twilio-Einrichtung nötig, siehe Einstellungen)
+• "ruf mich an" / "ruf <Kontakt> an und sag ihm/ihr: <Nachricht>" (Twilio-Einrichtung nötig, siehe Einstellungen)
 • "was steht heute/morgen an" / "meine termine" (Google-Kalender-Verbindung nötig, siehe Einstellungen)
 • "leg einen termin an: <Titel> um <Uhrzeit>"
 • alles andere: frag mich einfach frei, ich antworte mit echter KI und kann
@@ -279,6 +279,13 @@ Das kann ich für dich tun:
       final newEventQuery = _extractAfter(lower, text, ['leg einen termin an', 'trage einen termin ein', 'neuer termin', 'termin:']);
       if (newEventQuery != null) {
         return CommandResult(await _createEventFromText(newEventQuery));
+      }
+
+      final callWithMessageMatch = _callWithMessagePattern.firstMatch(text);
+      if (callWithMessageMatch != null) {
+        final name = callWithMessageMatch.group(1)!.trim();
+        final message = callWithMessageMatch.group(2)!.trim();
+        return CommandResult(await _callContact(name, message));
       }
 
       final callTarget = _extractAfter(lower, text, ['rufe', 'ruf', 'call']);
@@ -571,6 +578,14 @@ Das kann ich für dich tun:
         if (message.isEmpty) return CommandResult('Was soll ich dir am Telefon sagen?');
         return CommandResult(await _callMe(message));
 
+      case 'call_contact_with_message':
+        final contactName = (action.params['name'] as String?)?.trim() ?? '';
+        final contactMessage = (action.params['message'] as String?)?.trim() ?? '';
+        if (contactName.isEmpty || contactMessage.isEmpty) {
+          return CommandResult('Wen soll ich anrufen und was soll ich ausrichten?');
+        }
+        return CommandResult(await _callContact(contactName, contactMessage));
+
       case 'create_calendar_event':
         final eventTitle = (action.params['title'] as String?)?.trim() ?? '';
         final startRaw = (action.params['start'] as String?)?.trim();
@@ -634,6 +649,31 @@ Das kann ich für dich tun:
       message: message,
     );
     return error ?? 'Ich rufe dich jetzt an.';
+  }
+
+  // Matches e.g. "ruf Mama an und sag ihr, dass ich später komme" or "rufe
+  // Papa an und sage: bin gleich da" — a real Twilio call to a contact that
+  // speaks [message], unlike the plain "ruf Mama an" above, which just opens
+  // the phone dialer.
+  static final _callWithMessagePattern = RegExp(
+    r'^(?:ruf|rufe)\s+(.+?)\s+an\s+und\s+sag(?:e)?\s*(?:(?:ihm|ihr|ihnen),?\s*)?:?\s*(.+)$',
+    caseSensitive: false,
+  );
+
+  Future<String> _callContact(String name, String message) async {
+    final contact = await contacts.find(name);
+    if (contact == null) {
+      return 'Ich habe keinen Kontakt namens "$name" gefunden. Füge ihn in den Einstellungen hinzu.';
+    }
+    final backendUrl = await settings.getAiBackendUrl();
+    final secret = await settings.getCallSharedSecret();
+    final error = await phoneCall.callMe(
+      backendUrl: backendUrl ?? '',
+      secret: secret ?? '',
+      phone: contact.phone,
+      message: message,
+    );
+    return error ?? 'Ich rufe ${contact.name} an und sage: "$message"';
   }
 
   Future<String> _describeEvents(DateTime from, String label, {int days = 1}) async {
