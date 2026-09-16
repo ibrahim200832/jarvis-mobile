@@ -262,6 +262,8 @@ Der Bot merkt sich außerdem den Gesprächsverlauf (die letzten Nachrichten, ca.
 
 Zusätzlich gibt es ein **dauerhaftes Gedächtnis** (kein Zeitlimit, anders als der Gesprächsverlauf oben): Sag „merk dir: \<Fakt\>" (z. B. „merk dir: ich mag keinen Kaffee"), und der Bot berücksichtigt das ab sofort bei jeder künftigen Antwort — auch nach Tagen oder Wochen noch. „meine erinnerungen" zeigt alles Gemerkte an, „vergiss alles" löscht es wieder.
 
+Der Bot reagiert außerdem auf jede Nachricht zusätzlich mit einem passenden Emoji (z. B. ❤ bei „danke", 🤔 bei einer Frage, 🎉 wenn du „geschafft" sagst) — wie eine Emoji-Reaktion in WhatsApp/Slack, direkt an deiner eigenen Nachricht.
+
 ## Philips-Hue-Lichtsteuerung einrichten (optional)
 
 Sag „hue Wohnzimmer an", „licht Küche aus" oder „hue Wohnzimmer auf 40 prozent", und JARVIS steuert deine Philips-Hue-Lampen — komplett lokal über deine Hue Bridge im selben WLAN wie dein Handy, ohne Cloud oder Philips-Account. Portiert vom Original-Desktop-Tool (`hue.py`).
