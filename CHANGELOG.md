@@ -5,6 +5,7 @@ wird beim Deploy automatisch in den "Update verfügbar"-Dialog der App
 übernommen (siehe `.github/workflows/deploy-web.yml`).
 
 ## Aktuell
+- Fix: Telegram-Befehle, die eine fehlende Einrichtung brauchen (z. B. Kalender oder Websuche), geben jetzt eine klare Anleitung statt zu schweigen oder eine technische Fehlermeldung zu zeigen — und jeder Befehl bekommt garantiert eine Antwort, auch bei unerwarteten Fehlern.
 - Neu: Zwei weitere Telegram-Slash-Befehle: `/neu` startet ein frisches Gespräch, `/status` zeigt, was verbunden ist (Kalender, Sprachausgabe, Websuche).
 - Neu: Zwei weitere Telegram-Slash-Befehle: `/termin` legt direkt einen Kalendertermin an, `/suche` durchsucht sofort das Web.
 - Neu: JARVIS' Telegram-Bot hat jetzt echte Slash-Befehle ("/" tippen zeigt ein Menü, `/hilfe` listet alle Befehle) — die bisherigen natürlichsprachlichen Formulierungen funktionieren weiterhin zusätzlich.

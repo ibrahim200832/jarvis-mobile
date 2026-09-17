@@ -738,7 +738,7 @@ async function getGoogleAccessToken(env) {
 // the Telegram bot's get_calendar_events tool.
 async function getUpcomingCalendarEvents(env) {
   const accessToken = await getGoogleAccessToken(env);
-  if (!accessToken) throw new Error('Kein Google Kalender verbunden.');
+  if (!accessToken) throw new Error("Google Kalender ist noch nicht verbunden. Öffne die JARVIS-App → Einstellungen → „Google Kalender verbinden\".");
 
   const eventsUrl = new URL('https://www.googleapis.com/calendar/v3/calendars/primary/events');
   eventsUrl.searchParams.set('timeMin', new Date().toISOString());
@@ -765,7 +765,7 @@ function formatUpcomingEvents(events) {
 // bot's create_calendar_event tool.
 async function createCalendarEvent(env, title, startIso) {
   const accessToken = await getGoogleAccessToken(env);
-  if (!accessToken) throw new Error('Kein Google Kalender verbunden.');
+  if (!accessToken) throw new Error("Google Kalender ist noch nicht verbunden. Öffne die JARVIS-App → Einstellungen → „Google Kalender verbinden\".");
 
   const start = new Date(startIso);
   const end = new Date(start.getTime() + 60 * 60 * 1000); // 1h default duration
@@ -865,7 +865,25 @@ async function handleTelegramLink(url, env) {
 // here (call/WhatsApp/app actions need the phone itself, which Telegram
 // chats don't have access to), and no conversation memory across messages
 // yet — each message is answered on its own.
+// Safety net around handleTelegramWebhookInner: any command should "just
+// work" or fail with a clear message, never silently — so an unexpected
+// exception anywhere in the (long) handler below still gets a reply
+// instead of leaving the user hanging with no response at all.
 async function handleTelegramWebhook(request, env) {
+  let chatIdForFallback;
+  try {
+    return await handleTelegramWebhookInner(request, env, (id) => {
+      chatIdForFallback = id;
+    });
+  } catch (err) {
+    if (chatIdForFallback) {
+      await sendTelegramMessage(env, chatIdForFallback, `Da ist etwas schiefgegangen: ${err.message || String(err)}`).catch(() => {});
+    }
+    return json({ ok: true });
+  }
+}
+
+async function handleTelegramWebhookInner(request, env, reportChatId) {
   // Telegram echoes back the secret_token set in setWebhook on every
   // request, so a request without it (or a guessed wrong value) can't be
   // Telegram — reject it instead of spending an AI call on it.
@@ -886,6 +904,7 @@ async function handleTelegramWebhook(request, env) {
   const message = update.message;
   const chatId = message?.chat?.id != null ? String(message.chat.id) : null;
   if (!message || !chatId) return json({ ok: true });
+  reportChatId(chatId);
 
   const ownerChatId = await env.JARVIS_KV.get('telegram_owner_chat_id');
   if (!ownerChatId || chatId !== ownerChatId) return json({ ok: true });
@@ -931,16 +950,20 @@ async function handleTelegramWebhook(request, env) {
       const events = await getUpcomingCalendarEvents(env);
       await sendTelegramMessage(env, chatId, formatUpcomingEvents(events));
     } catch (err) {
-      await sendTelegramMessage(env, chatId, `Ich konnte den Kalender nicht abrufen: ${String(err)}`);
+      await sendTelegramMessage(env, chatId, err.message || 'Ich konnte den Kalender nicht abrufen.');
     }
     return json({ ok: true });
   }
 
   const searchMatch = text.match(TELEGRAM_COMMANDS.find((c) => c.cmd === 'suche').alias);
   if (searchMatch) {
-    const results = await braveSearch(searchMatch[1].trim(), env);
-    const reply = results.length > 0 ? results.slice(0, 2).map((r) => r.description).join(' ') : 'Ich konnte dazu nichts im Web finden.';
-    await sendTelegramMessage(env, chatId, reply);
+    try {
+      const results = await braveSearch(searchMatch[1].trim(), env);
+      const reply = results.length > 0 ? results.slice(0, 2).map((r) => r.description).join(' ') : 'Ich konnte dazu nichts im Web finden.';
+      await sendTelegramMessage(env, chatId, reply);
+    } catch (err) {
+      await sendTelegramMessage(env, chatId, err.message || 'Die Websuche ist fehlgeschlagen.');
+    }
     return json({ ok: true });
   }
 
@@ -1065,22 +1088,26 @@ async function handleTelegramWebhook(request, env) {
     const toolCall = data.tool_calls?.[0];
     const toolArgs = toolCall && (typeof toolCall.arguments === 'string' ? JSON.parse(toolCall.arguments) : toolCall.arguments);
     if (toolCall?.name === 'search_web') {
-      const results = toolArgs?.query ? await braveSearch(toolArgs.query, env) : [];
-      replyText = results.length > 0 ? results.slice(0, 2).map((r) => r.description).join(' ') : 'Ich konnte dazu nichts im Web finden.';
+      try {
+        const results = toolArgs?.query ? await braveSearch(toolArgs.query, env) : [];
+        replyText = results.length > 0 ? results.slice(0, 2).map((r) => r.description).join(' ') : 'Ich konnte dazu nichts im Web finden.';
+      } catch (err) {
+        replyText = err.message || 'Die Websuche ist fehlgeschlagen.';
+      }
     } else if (toolCall?.name === 'get_calendar_events') {
       try {
         const events = await getUpcomingCalendarEvents(env);
         replyText = formatUpcomingEvents(events);
       } catch (err) {
-        replyText = `Ich konnte den Kalender nicht abrufen: ${String(err)}`;
+        replyText = err.message || 'Ich konnte den Kalender nicht abrufen.';
       }
     } else if (toolCall?.name === 'create_calendar_event') {
       try {
-        if (!toolArgs?.title || !toolArgs?.start) throw new Error('Titel oder Startzeit fehlt.');
+        if (!toolArgs?.title || !toolArgs?.start) throw new Error('Titel oder Startzeit fehlt, um den Termin anzulegen.');
         await createCalendarEvent(env, toolArgs.title, toolArgs.start);
         replyText = `✅ Termin "${toolArgs.title}" wurde angelegt.`;
       } catch (err) {
-        replyText = `Ich konnte den Termin nicht anlegen: ${String(err)}`;
+        replyText = err.message || 'Ich konnte den Termin nicht anlegen.';
       }
     } else {
       replyText = (data.response ?? data.result?.response ?? '').toString().trim();
