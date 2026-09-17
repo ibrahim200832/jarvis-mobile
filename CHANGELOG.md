@@ -5,6 +5,7 @@ wird beim Deploy automatisch in den "Update verfügbar"-Dialog der App
 übernommen (siehe `.github/workflows/deploy-web.yml`).
 
 ## Aktuell
+- Fix: "Mit Telegram verbinden" schlug nach dem ersten erfolgreichen Verbinden immer fehl ("Telegram-Anfrage fehlgeschlagen") — funktioniert jetzt auch beim erneuten Verbinden zuverlässig.
 - Neu: JARVIS' Telegram-Bot kann jetzt Fotos ansehen und beschreiben, und auf Zuruf eigene Bilder erstellen ("erstelle mir ein bild von ...") — komplett über Cloudflare-KI, keine Weitergabe an Dritte.
 - Neu: JARVIS' Telegram-Bot reagiert jetzt zusätzlich mit einem passenden Emoji auf jede Nachricht (wie eine Emoji-Reaktion in WhatsApp/Slack).
 - Neu: JARVIS' Telegram-Bot hat jetzt ein dauerhaftes Gedächtnis — "merk dir: ..." speichert Fakten für immer, "meine erinnerungen" zeigt sie, "vergiss alles" löscht sie.

@@ -694,6 +694,12 @@ async function handleTelegramLink(url, env) {
     return json({ error: 'Falsches Anruf-Geheimnis.' }, 403);
   }
 
+  // getUpdates fails with 409 while a webhook is already registered (true
+  // for any re-link after the first successful one, since that call itself
+  // registers a webhook below) — clear it first so this always works, not
+  // just on the very first link.
+  await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/deleteWebhook`, { method: 'POST' });
+
   const res = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/getUpdates?limit=1&offset=-1`);
   if (!res.ok) return json({ error: 'Telegram-Anfrage fehlgeschlagen' }, 502);
   const data = await res.json();
