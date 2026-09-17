@@ -394,6 +394,8 @@ const TELEGRAM_COMMANDS = [
   { cmd: 'termine', alias: /^\/termine$/i, description: 'Zeigt die nächsten Kalendertermine' },
   { cmd: 'termin', alias: /^\/termin\s+(.+)$/i, description: 'Legt einen Kalendertermin an, z. B. /termin Zahnarzt morgen um 10 Uhr' },
   { cmd: 'suche', alias: /^\/suche\s+(.+)$/i, description: 'Durchsucht sofort das Web, z. B. /suche wetter berlin' },
+  { cmd: 'neu', alias: /^\/neu$/i, description: 'Startet ein frisches Gespräch (dauerhaftes Gedächtnis bleibt erhalten)' },
+  { cmd: 'status', alias: /^\/status$/i, description: 'Zeigt, was verbunden ist (Kalender, Sprachausgabe)' },
 ];
 
 const SYSTEM_PROMPT =
@@ -949,6 +951,24 @@ async function handleTelegramWebhook(request, env) {
   const eventCommandMatch = text.match(TELEGRAM_COMMANDS.find((c) => c.cmd === 'termin').alias);
   if (eventCommandMatch) {
     text = `Leg einen Kalendertermin an: ${eventCommandMatch[1].trim()}`;
+  }
+
+  if (TELEGRAM_COMMANDS.find((c) => c.cmd === 'neu').alias.test(text.trim())) {
+    if (env.JARVIS_KV) await env.JARVIS_KV.delete(`telegram_history_${chatId}`);
+    await sendTelegramMessage(env, chatId, '🆕 Neues Gespräch gestartet. Dein dauerhaftes Gedächtnis bleibt natürlich erhalten.');
+    return json({ ok: true });
+  }
+
+  if (TELEGRAM_COMMANDS.find((c) => c.cmd === 'status').alias.test(text.trim())) {
+    const calendarConnected = env.JARVIS_KV ? Boolean(await env.JARVIS_KV.get('calendar_reminder_config')) : false;
+    const statusLines = [
+      `🤖 JARVIS ist online.`,
+      `📅 Google Kalender: ${calendarConnected ? 'verbunden' : 'nicht verbunden'}`,
+      `🔊 Sprachausgabe: ${env.ELEVENLABS_API_KEY ? 'aktiv' : 'nicht eingerichtet'}`,
+      `🔍 Websuche: ${env.BRAVE_API_KEY ? 'aktiv' : 'nicht eingerichtet'}`,
+    ];
+    await sendTelegramMessage(env, chatId, statusLines.join('\n'));
+    return json({ ok: true });
   }
 
   const imageMatch =
