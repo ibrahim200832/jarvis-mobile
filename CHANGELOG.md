@@ -5,6 +5,7 @@ wird beim Deploy automatisch in den "Update verfügbar"-Dialog der App
 übernommen (siehe `.github/workflows/deploy-web.yml`).
 
 ## Aktuell
+- Neu: JARVIS' Telegram-Bot hat jetzt echte Slash-Befehle ("/" tippen zeigt ein Menü, `/hilfe` listet alle Befehle) — die bisherigen natürlichsprachlichen Formulierungen funktionieren weiterhin zusätzlich.
 - Neu: JARVIS' Telegram-Bot kann jetzt direkt auf den Google Kalender zugreifen — Termine ansehen und anlegen, ganz ohne die App zu öffnen.
 - Neu: JARVIS' Telegram-Bot kann jetzt zusätzlich zur Textantwort auch mit einer eigenen Sprachnachricht antworten (optional, kleine Zusatzkosten über ElevenLabs, siehe README).
 - Neu: JARVIS' Telegram-Bot kann jetzt auch ein zuvor geschicktes Foto bearbeiten ("bearbeite das bild: mach den himmel rot") — komplett über Cloudflare-KI, keine Weitergabe an Dritte.
