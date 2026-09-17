@@ -258,7 +258,9 @@ Das braucht zwei zusätzliche Dinge, die teils schon aus anderen Abschnitten obe
 
 Danach einmal (erneut) in der App auf **„Mit Telegram verbinden"** tippen — das registriert automatisch den Webhook bei Telegram. Ab dann antwortet der Bot auf jede Nachricht, die du ihm direkt in Telegram schickst — auch auf **Sprachnachrichten**: der Bot erkennt gesprochenen Text automatisch (über dieselbe kostenlose Cloudflare-KI, ohne extra Einrichtung), schickt den erkannten Text als Bestätigung zurück und antwortet direkt darauf.
 
-Der Bot merkt sich außerdem den Gesprächsverlauf (die letzten Nachrichten, ca. 6 Stunden lang) — Anschlussfragen wie „und morgen?" funktionieren also. Und er kann bei aktuellen/unsicheren Fakten selbst das Web durchsuchen (braucht einen `BRAVE_API_KEY`, siehe „Websuche einrichten" oben) — alles andere, was das Handy selbst braucht (Anrufe, Kalender, Hue, Home Connect, Wetter, Nachrichten), bleibt der App vorbehalten.
+Der Bot merkt sich außerdem den Gesprächsverlauf (die letzten Nachrichten, ca. 6 Stunden lang) — Anschlussfragen wie „und morgen?" funktionieren also. Und er kann bei aktuellen/unsicheren Fakten selbst das Web durchsuchen (braucht einen `BRAVE_API_KEY`, siehe „Websuche einrichten" oben) — alles andere, was das Handy selbst braucht (Anrufe, Hue, Home Connect, Wetter, Nachrichten), bleibt der App vorbehalten.
+
+Der **Google Kalender** ist eine Ausnahme: Ist er über die App verbunden (siehe „Kalender-Erinnerungsanrufe" oben), kann der Bot ihn auch direkt in Telegram nutzen — „was steht heute an" zeigt die nächsten Termine, „leg einen Termin an: Zahnarzt morgen um 10 Uhr" trägt einen neuen ein. Keine zusätzliche Einrichtung nötig, das läuft über dieselbe Verbindung wie die Erinnerungsanrufe.
 
 Zusätzlich gibt es ein **dauerhaftes Gedächtnis** (kein Zeitlimit, anders als der Gesprächsverlauf oben): Sag „merk dir: \<Fakt\>" (z. B. „merk dir: ich mag keinen Kaffee"), und der Bot berücksichtigt das ab sofort bei jeder künftigen Antwort — auch nach Tagen oder Wochen noch. „meine erinnerungen" zeigt alles Gemerkte an, „vergiss alles" löscht es wieder.
 
