@@ -392,6 +392,8 @@ const TELEGRAM_COMMANDS = [
   { cmd: 'bild', alias: /^\/bild\s+(.+)$/i, description: 'Erstellt ein Bild, z. B. /bild eine Katze im Weltraum' },
   { cmd: 'bearbeiten', alias: /^\/bearbeiten\s+(.+)$/i, description: 'Bearbeitet das zuletzt geschickte Foto' },
   { cmd: 'termine', alias: /^\/termine$/i, description: 'Zeigt die nächsten Kalendertermine' },
+  { cmd: 'termin', alias: /^\/termin\s+(.+)$/i, description: 'Legt einen Kalendertermin an, z. B. /termin Zahnarzt morgen um 10 Uhr' },
+  { cmd: 'suche', alias: /^\/suche\s+(.+)$/i, description: 'Durchsucht sofort das Web, z. B. /suche wetter berlin' },
 ];
 
 const SYSTEM_PROMPT =
@@ -930,6 +932,23 @@ async function handleTelegramWebhook(request, env) {
       await sendTelegramMessage(env, chatId, `Ich konnte den Kalender nicht abrufen: ${String(err)}`);
     }
     return json({ ok: true });
+  }
+
+  const searchMatch = text.match(TELEGRAM_COMMANDS.find((c) => c.cmd === 'suche').alias);
+  if (searchMatch) {
+    const results = await braveSearch(searchMatch[1].trim(), env);
+    const reply = results.length > 0 ? results.slice(0, 2).map((r) => r.description).join(' ') : 'Ich konnte dazu nichts im Web finden.';
+    await sendTelegramMessage(env, chatId, reply);
+    return json({ ok: true });
+  }
+
+  // /termin lässt bewusst keinen eigenen Datums-Parser laufen — der Text
+  // wird nur als klarer Kalender-Auftrag umformuliert und fällt normal in
+  // den KI-Fluss unten durch, der das create_calendar_event-Tool (inkl.
+  // Datum/Uhrzeit-Verständnis) schon beherrscht.
+  const eventCommandMatch = text.match(TELEGRAM_COMMANDS.find((c) => c.cmd === 'termin').alias);
+  if (eventCommandMatch) {
+    text = `Leg einen Kalendertermin an: ${eventCommandMatch[1].trim()}`;
   }
 
   const imageMatch =

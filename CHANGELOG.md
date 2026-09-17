@@ -5,6 +5,7 @@ wird beim Deploy automatisch in den "Update verfügbar"-Dialog der App
 übernommen (siehe `.github/workflows/deploy-web.yml`).
 
 ## Aktuell
+- Neu: Zwei weitere Telegram-Slash-Befehle: `/termin` legt direkt einen Kalendertermin an, `/suche` durchsucht sofort das Web.
 - Neu: JARVIS' Telegram-Bot hat jetzt echte Slash-Befehle ("/" tippen zeigt ein Menü, `/hilfe` listet alle Befehle) — die bisherigen natürlichsprachlichen Formulierungen funktionieren weiterhin zusätzlich.
 - Neu: JARVIS' Telegram-Bot kann jetzt direkt auf den Google Kalender zugreifen — Termine ansehen und anlegen, ganz ohne die App zu öffnen.
 - Neu: JARVIS' Telegram-Bot kann jetzt zusätzlich zur Textantwort auch mit einer eigenen Sprachnachricht antworten (optional, kleine Zusatzkosten über ElevenLabs, siehe README).
