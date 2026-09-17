@@ -12,6 +12,8 @@ class SettingsService {
   static const _keyTiktokClientKey = 'tiktok_client_key';
   static const _keyCallSharedSecret = 'call_shared_secret';
   static const _keyReminderPhone = 'reminder_phone';
+  static const _keyPicovoiceAccessKey = 'picovoice_access_key';
+  static const _keyWakeWordEnabled = 'wake_word_enabled';
 
   Future<String?> getNewsApiKey() async {
     final prefs = await SharedPreferences.getInstance();
@@ -137,5 +139,30 @@ class SettingsService {
   Future<void> setReminderPhone(String value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyReminderPhone, value);
+  }
+
+  /// Picovoice AccessKey for the "Jarvis" wake-word (see
+  /// [WakeWordService]) — free for personal use, one per Picovoice
+  /// account, obtained at console.picovoice.ai.
+  Future<String?> getPicovoiceAccessKey() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyPicovoiceAccessKey);
+  }
+
+  Future<void> setPicovoiceAccessKey(String value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyPicovoiceAccessKey, value);
+  }
+
+  /// Whether the user turned on always-on "Jarvis" wake-word listening
+  /// (requires [getPicovoiceAccessKey] to also be set).
+  Future<bool> getWakeWordEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyWakeWordEnabled) ?? false;
+  }
+
+  Future<void> setWakeWordEnabled(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyWakeWordEnabled, value);
   }
 }

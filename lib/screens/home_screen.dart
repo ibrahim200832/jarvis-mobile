@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -34,6 +35,7 @@ import '../services/tiktok_upload_service.dart';
 import '../services/timer_service.dart';
 import '../services/tts_service.dart';
 import '../services/update_service.dart';
+import '../services/wake_word_manager.dart';
 import '../services/weather_service.dart';
 import '../services/web_search_service.dart';
 import '../services/whatsapp_service.dart';
@@ -127,6 +129,29 @@ class _HomeScreenState extends State<HomeScreen> {
     _timer.onFire = _onTimerFired;
     _speech.init();
     unawaited(_checkForUpdate());
+    if (!kIsWeb) {
+      FlutterForegroundTask.addTaskDataCallback(_onWakeWordTaskData);
+      unawaited(_initWakeWordIfEnabled());
+    }
+  }
+
+  /// Starts the always-on "Jarvis"-Weckwort-Hintergrunddienst, wenn der
+  /// Nutzer das in den Einstellungen aktiviert und einen Picovoice-Key
+  /// hinterlegt hat (siehe README, Abschnitt "Weckwort 'Jarvis'").
+  Future<void> _initWakeWordIfEnabled() async {
+    final enabled = await _settings.getWakeWordEnabled();
+    if (!enabled) return;
+    await WakeWordManager.start();
+  }
+
+  /// Läuft, wenn der Hintergrunddienst "Jarvis" erkannt hat — bringt die
+  /// App in den Vordergrund (schon durch FlutterForegroundTask.launchApp
+  /// erledigt) und startet direkt das Zuhören, wie ein Tippen auf das
+  /// Mikrofon-Symbol.
+  void _onWakeWordTaskData(Object data) {
+    if (data == 'wake_word_detected' && mounted && !_listening && !_processing) {
+      unawaited(_startListening());
+    }
   }
 
   /// Announces a fired timer the same way any other JARVIS reply is shown:
@@ -200,6 +225,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _timer.cancelAll();
     _textCtrl.dispose();
     _scrollCtrl.dispose();
+    if (!kIsWeb) FlutterForegroundTask.removeTaskDataCallback(_onWakeWordTaskData);
     super.dispose();
   }
 

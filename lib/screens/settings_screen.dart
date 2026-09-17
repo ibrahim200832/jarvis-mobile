@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
@@ -9,6 +10,7 @@ import '../services/settings_service.dart';
 import '../services/spotify_service.dart';
 import '../services/telegram_service.dart';
 import '../services/tiktok_upload_service.dart';
+import '../services/wake_word_manager.dart';
 import 'changelog_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -49,6 +51,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _reminderPhoneCtrl = TextEditingController();
   final _hueBridgeIpCtrl = TextEditingController();
   final _boschClientIdCtrl = TextEditingController();
+  final _picovoiceAccessKeyCtrl = TextEditingController();
   List<Contact> _contacts = [];
   String _appVersion = '';
   String _aiModel = 'openai';
@@ -65,6 +68,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _connectingTelegram = false;
   bool _boschConnected = false;
   bool _connectingBosch = false;
+  bool _wakeWordEnabled = false;
+  bool _togglingWakeWord = false;
 
   static const _aiModels = {
     'openai': 'ChatGPT (Standard)',
@@ -91,6 +96,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _reminderPhoneCtrl.text = await widget.settings.getReminderPhone() ?? '';
     _hueBridgeIpCtrl.text = await widget.hue.getBridgeIp() ?? '';
     _boschClientIdCtrl.text = await widget.bosch.getClientId() ?? '';
+    _picovoiceAccessKeyCtrl.text = await widget.settings.getPicovoiceAccessKey() ?? '';
+    _wakeWordEnabled = await widget.settings.getWakeWordEnabled();
     _aiModel = await widget.settings.getAiModel();
     _contacts = await widget.contacts.all();
     _spotifyConnected = await widget.spotify.isConnected();
@@ -117,9 +124,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await widget.settings.setTiktokClientKey(_tiktokClientKeyCtrl.text.trim());
     await widget.settings.setCallSharedSecret(_callSecretCtrl.text.trim());
     await widget.settings.setReminderPhone(_reminderPhoneCtrl.text.trim());
+    await widget.settings.setPicovoiceAccessKey(_picovoiceAccessKeyCtrl.text.trim());
     await widget.settings.setAiModel(_aiModel);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gespeichert.')));
+  }
+
+  /// Schaltet den "Jarvis"-Weckwort-Hintergrunddienst an/aus — startet ihn
+  /// nur, wenn vorher ein Picovoice-AccessKey eingetragen und gespeichert
+  /// wurde (siehe README, Abschnitt "Weckwort 'Jarvis'").
+  Future<void> _toggleWakeWord(bool value) async {
+    if (value && _picovoiceAccessKeyCtrl.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Bitte zuerst einen Picovoice-AccessKey eintragen und speichern.')),
+      );
+      return;
+    }
+    setState(() => _togglingWakeWord = true);
+    await widget.settings.setPicovoiceAccessKey(_picovoiceAccessKeyCtrl.text.trim());
+    await widget.settings.setWakeWordEnabled(value);
+    String? error;
+    if (value) {
+      error = await WakeWordManager.start();
+    } else {
+      await WakeWordManager.stop();
+    }
+    if (!mounted) return;
+    setState(() {
+      _togglingWakeWord = false;
+      _wakeWordEnabled = value && error == null;
+    });
+    if (error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+    }
   }
 
   Future<void> _connectSpotify() async {
@@ -478,6 +515,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   : const Icon(Icons.calendar_month_outlined),
               label: Text(_connectingCalendar ? 'Verbinde…' : 'Google Kalender verbinden (für Anruf-Erinnerungen)'),
             ),
+          if (!kIsWeb) ...[
+            const SizedBox(height: 16),
+            TextField(
+              controller: _picovoiceAccessKeyCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Picovoice-AccessKey (für Weckwort "Jarvis")',
+                helperText: 'Kostenloses Konto auf console.picovoice.ai, siehe README',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Weckwort "Jarvis" (auch bei geschlossener App)'),
+              subtitle: const Text('Sag einfach "Jarvis", JARVIS hört dann automatisch zu — nur Android'),
+              value: _wakeWordEnabled,
+              onChanged: _togglingWakeWord ? null : _toggleWakeWord,
+            ),
+          ],
           const SizedBox(height: 16),
           TextField(
             controller: _hueBridgeIpCtrl,
