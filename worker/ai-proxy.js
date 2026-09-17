@@ -379,6 +379,21 @@ const TELEGRAM_CALENDAR_TOOLS = [
 ];
 const TELEGRAM_TOOLS = [...TOOLS.filter((t) => t.function.name === 'search_web'), ...TELEGRAM_CALENDAR_TOOLS];
 
+// Telegram's own "/" command menu (registered via setMyCommands, see
+// handleTelegramLink) plus the /help listing both read from this single
+// list — each entry's `alias` also gets OR'd onto the matching
+// natural-language regex below, so "/merken ..." and "merk dir: ..." both
+// keep working side by side.
+const TELEGRAM_COMMANDS = [
+  { cmd: 'hilfe', alias: /^\/?(?:hilfe|help)$/i, description: 'Zeigt diese Befehlsübersicht' },
+  { cmd: 'merken', alias: /^\/merken?\s+(.+)$/i, description: 'Merkt sich einen Fakt dauerhaft, z. B. /merken ich mag keinen Kaffee' },
+  { cmd: 'erinnerungen', alias: /^\/erinnerungen$/i, description: 'Zeigt, was sich JARVIS gemerkt hat' },
+  { cmd: 'vergessen', alias: /^\/vergessen$/i, description: 'Löscht das gesamte dauerhafte Gedächtnis' },
+  { cmd: 'bild', alias: /^\/bild\s+(.+)$/i, description: 'Erstellt ein Bild, z. B. /bild eine Katze im Weltraum' },
+  { cmd: 'bearbeiten', alias: /^\/bearbeiten\s+(.+)$/i, description: 'Bearbeitet das zuletzt geschickte Foto' },
+  { cmd: 'termine', alias: /^\/termine$/i, description: 'Zeigt die nächsten Kalendertermine' },
+];
+
 const SYSTEM_PROMPT =
   'Du bist JARVIS, das KI-System von Tony Stark aus den Iron-Man-Filmen, jetzt im Dienst des Nutzers. ' +
   'Deine Persönlichkeit: hochintelligent und gebildet, aber vor allem fröhlich, warmherzig und ' +
@@ -733,6 +748,15 @@ async function getUpcomingCalendarEvents(env) {
   return Array.isArray(items) ? items : [];
 }
 
+// Shared by the get_calendar_events tool call and the /termine slash
+// command, so both list upcoming events identically.
+function formatUpcomingEvents(events) {
+  if (events.length === 0) return 'Ich sehe keine anstehenden Termine.';
+  return `📅 Deine nächsten Termine:\n${events
+    .map((e) => `• ${e.summary || 'Ohne Titel'} — ${new Date(e.start.dateTime || e.start.date).toLocaleString('de-DE')}`)
+    .join('\n')}`;
+}
+
 // Creates a new event on the connected Google Calendar, for the Telegram
 // bot's create_calendar_event tool.
 async function createCalendarEvent(env, title, startIso) {
@@ -820,6 +844,14 @@ async function handleTelegramLink(url, env) {
     });
   }
 
+  // Registers Telegram's native "/" command menu — cosmetic, so failures
+  // here don't block linking itself.
+  await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/setMyCommands`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ commands: TELEGRAM_COMMANDS.map((c) => ({ command: c.cmd, description: c.description })) }),
+  }).catch(() => {});
+
   return json({ chat_id: chatId, name: chat.first_name || chat.username || '' });
 }
 
@@ -884,7 +916,25 @@ async function handleTelegramWebhook(request, env) {
   }
   if (!text) return json({ ok: true });
 
-  const imageMatch = text.match(/^(?:erstell(?:e)? (?:mir )?ein bild von|mal(?:e)? mir|zeichne mir)\s+(.+)$/i);
+  if (TELEGRAM_COMMANDS[0].alias.test(text.trim())) {
+    const helpText = `🤖 Verfügbare Befehle:\n${TELEGRAM_COMMANDS.map((c) => `/${c.cmd} — ${c.description}`).join('\n')}`;
+    await sendTelegramMessage(env, chatId, helpText);
+    return json({ ok: true });
+  }
+
+  if (TELEGRAM_COMMANDS.find((c) => c.cmd === 'termine').alias.test(text.trim())) {
+    try {
+      const events = await getUpcomingCalendarEvents(env);
+      await sendTelegramMessage(env, chatId, formatUpcomingEvents(events));
+    } catch (err) {
+      await sendTelegramMessage(env, chatId, `Ich konnte den Kalender nicht abrufen: ${String(err)}`);
+    }
+    return json({ ok: true });
+  }
+
+  const imageMatch =
+    text.match(/^(?:erstell(?:e)? (?:mir )?ein bild von|mal(?:e)? mir|zeichne mir)\s+(.+)$/i) ||
+    text.match(TELEGRAM_COMMANDS.find((c) => c.cmd === 'bild').alias);
   if (imageMatch) {
     try {
       const imageBytes = await generateTelegramImage(env, imageMatch[1].trim());
@@ -895,7 +945,9 @@ async function handleTelegramWebhook(request, env) {
     return json({ ok: true });
   }
 
-  const editMatch = text.match(/^(?:bearbeite|editier(?:e)?|ändere)\s+(?:das\s+bild\s*[:,]?\s*)?(.+)$/i);
+  const editMatch =
+    text.match(/^(?:bearbeite|editier(?:e)?|ändere)\s+(?:das\s+bild\s*[:,]?\s*)?(.+)$/i) ||
+    text.match(TELEGRAM_COMMANDS.find((c) => c.cmd === 'bearbeiten').alias);
   if (editMatch) {
     const lastPhotoFileId = env.JARVIS_KV ? await env.JARVIS_KV.get(`telegram_last_photo_${chatId}`) : null;
     if (!lastPhotoFileId) {
@@ -921,13 +973,18 @@ async function handleTelegramWebhook(request, env) {
   // nicht über den AI-Tool-Mechanismus, damit "merk dir: ..." auch dann
   // zuverlässig funktioniert, wenn das Modell das nicht selbst als
   // Werkzeugaufruf erkennt.
-  const rememberMatch = text.match(/^(?:merk(?:e)? dir|remember this|notiere dir)\s*:\s*(.+)$/i);
+  const rememberMatch =
+    text.match(/^(?:merk(?:e)? dir|remember this|notiere dir)\s*:\s*(.+)$/i) ||
+    text.match(TELEGRAM_COMMANDS.find((c) => c.cmd === 'merken').alias);
   if (rememberMatch) {
     await addTelegramMemory(env, rememberMatch[1].trim());
     await sendTelegramMessage(env, chatId, `🧠 Gemerkt: „${rememberMatch[1].trim()}"`);
     return json({ ok: true });
   }
-  if (/^(was weißt du über mich\??|meine erinnerungen|was hast du dir gemerkt\??)$/i.test(text.trim())) {
+  if (
+    /^(was weißt du über mich\??|meine erinnerungen|was hast du dir gemerkt\??)$/i.test(text.trim()) ||
+    TELEGRAM_COMMANDS.find((c) => c.cmd === 'erinnerungen').alias.test(text.trim())
+  ) {
     const memory = await getTelegramMemory(env);
     const reply = memory.length === 0
       ? 'Ich habe mir noch nichts gemerkt. Sag z. B. "merk dir: ich mag keinen Kaffee".'
@@ -935,7 +992,10 @@ async function handleTelegramWebhook(request, env) {
     await sendTelegramMessage(env, chatId, reply);
     return json({ ok: true });
   }
-  if (/^(vergiss alles|lösche (meine|alle) erinnerungen)$/i.test(text.trim())) {
+  if (
+    /^(vergiss alles|lösche (meine|alle) erinnerungen)$/i.test(text.trim()) ||
+    TELEGRAM_COMMANDS.find((c) => c.cmd === 'vergessen').alias.test(text.trim())
+  ) {
     await clearTelegramMemory(env);
     await sendTelegramMessage(env, chatId, '🧠 Erledigt, ich habe alles vergessen.');
     return json({ ok: true });
@@ -971,12 +1031,7 @@ async function handleTelegramWebhook(request, env) {
     } else if (toolCall?.name === 'get_calendar_events') {
       try {
         const events = await getUpcomingCalendarEvents(env);
-        replyText =
-          events.length === 0
-            ? 'Ich sehe keine anstehenden Termine.'
-            : `📅 Deine nächsten Termine:\n${events
-                .map((e) => `• ${e.summary || 'Ohne Titel'} — ${new Date(e.start.dateTime || e.start.date).toLocaleString('de-DE')}`)
-                .join('\n')}`;
+        replyText = formatUpcomingEvents(events);
       } catch (err) {
         replyText = `Ich konnte den Kalender nicht abrufen: ${String(err)}`;
       }
