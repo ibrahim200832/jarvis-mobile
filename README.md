@@ -267,6 +267,15 @@ Der Bot kann außerdem mit **Bildern** umgehen, komplett über die gleiche koste
 - **Bilder erstellen**: Sag z. B. „erstelle mir ein bild von einer katze im weltraum" oder „mal mir einen sonnenuntergang" — der Bot generiert ein passendes Bild und schickt es zurück.
 - **Bilder bearbeiten**: Schick zuerst ein Foto, dann sag z. B. „bearbeite das bild: mach den himmel rot" — der Bot merkt sich das zuletzt geschickte Foto eine Stunde lang und schickt eine bearbeitete Version zurück.
 
+#### Sprachnachrichten von JARVIS (optional, kostenpflichtig)
+
+Der Bot kann auf jede Nachricht (egal ob du tippst oder eine Sprachnachricht schickst) zusätzlich zur Textantwort auch mit einer **eigenen Sprachnachricht** antworten. Das braucht einen kleinen kostenpflichtigen Zusatzdienst (ElevenLabs), weil die kostenlose Cloudflare-KI leider kein Deutsch spricht — die Kosten sind aber sehr gering (Bruchteile eines Cents pro Antwort).
+
+1. Auf [elevenlabs.io](https://elevenlabs.io) ein kostenloses Konto anlegen, dann unter „Profile" (oben rechts) den **API Key** kopieren.
+2. In Cloudflare bei `jarvis-ai` → Settings → Variables and Secrets einen neuen Eintrag **`ELEVENLABS_API_KEY`** mit diesem Wert anlegen — unbedingt Typ **Secret** wählen, nicht „Text"/„Variable" (sonst geht der Wert beim nächsten automatischen Deploy wieder verloren) → **Deploy**.
+
+Ohne diesen Secret antwortet der Bot einfach weiter nur in Text, wie bisher — kein Fehler, kein Zwang, das einzurichten.
+
 Der Bot reagiert außerdem auf jede Nachricht zusätzlich mit einem passenden Emoji (z. B. ❤ bei „danke", 🤔 bei einer Frage, 🎉 wenn du „geschafft" sagst) — wie eine Emoji-Reaktion in WhatsApp/Slack, direkt an deiner eigenen Nachricht.
 
 ## Philips-Hue-Lichtsteuerung einrichten (optional)
