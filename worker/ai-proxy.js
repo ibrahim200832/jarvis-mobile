@@ -951,6 +951,21 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
       return json({ ok: true });
     }
   }
+  // Bots können nicht beliebig nach fremden Stickern suchen (keine
+  // öffentliche Sticker-Such-API), aber GIFs schon — Sticker und
+  // eingehende GIFs (Telegram nennt sie intern "animation") bekommen
+  // deshalb beide ein automatisch gesuchtes, passendes GIF als Antwort.
+  const stickerOrGif = message.sticker || message.animation;
+  if (stickerOrGif && env.TENOR_API_KEY) {
+    const query = message.caption?.trim() || message.sticker?.emoji || 'reaction';
+    try {
+      await searchAndSendTenorGif(env, chatId, query);
+    } catch (_) {
+      // rein kosmetisch, kein Fehler an den Nutzer nötig
+    }
+    return json({ ok: true });
+  }
+
   if (!text) return json({ ok: true });
 
   if (TELEGRAM_COMMANDS[0].alias.test(text.trim())) {
@@ -1349,6 +1364,32 @@ async function sendTelegramPhoto(env, chatId, imageBytes, caption) {
   });
   if (!res.ok) {
     throw new Error(`sendPhoto antwortete mit ${res.status}: ${await res.text()}`);
+  }
+}
+
+// Sucht ein passendes GIF über Tenor (kostenlos, kein Kreditkarten-Konto
+// nötig, siehe README) und schickt es direkt per URL an Telegram — kein
+// Datei-Download/Upload nötig, sendAnimation akzeptiert auch eine URL.
+async function searchAndSendTenorGif(env, chatId, query) {
+  const searchUrl = new URL('https://tenor.googleapis.com/v2/search');
+  searchUrl.searchParams.set('q', query);
+  searchUrl.searchParams.set('key', env.TENOR_API_KEY);
+  searchUrl.searchParams.set('limit', '1');
+  searchUrl.searchParams.set('media_filter', 'gif');
+
+  const res = await fetch(searchUrl);
+  if (!res.ok) throw new Error(`Tenor antwortete mit ${res.status}`);
+  const data = await res.json();
+  const gifUrl = data.results?.[0]?.media_formats?.gif?.url;
+  if (!gifUrl) throw new Error('Kein passendes GIF gefunden.');
+
+  const sendRes = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendAnimation`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, animation: gifUrl }),
+  });
+  if (!sendRes.ok) {
+    throw new Error(`sendAnimation antwortete mit ${sendRes.status}: ${await sendRes.text()}`);
   }
 }
 
