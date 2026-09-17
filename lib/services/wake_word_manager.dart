@@ -38,7 +38,7 @@ class WakeWordManager {
       await FlutterForegroundTask.requestNotificationPermission();
     }
     if (!await FlutterForegroundTask.isIgnoringBatteryOptimizations) {
-      await FlutterForegroundTask.requestIgnoreBatteryOptimizations();
+      await FlutterForegroundTask.requestIgnoreBatteryOptimization();
     }
 
     try {
