@@ -852,7 +852,10 @@ async function handleTelegramWebhook(request, env) {
   let systemPrompt =
     `${SYSTEM_PROMPT} Du sprichst hier gerade über Telegram, nicht über die JARVIS-App — deshalb kannst du hier keine ` +
     'Anrufe/WhatsApp/Apps/Kalender/Hue/Home-Connect auslösen, sondern nur in Worten antworten. Websuche steht dir ' +
-    'hier trotzdem zur Verfügung, nutze sie wie gewohnt bei aktuellen oder unsicheren Fakten.';
+    'hier trotzdem zur Verfügung, nutze sie wie gewohnt bei aktuellen oder unsicheren Fakten. Jede deiner Antworten ' +
+    'wird automatisch zusätzlich als gesprochene Sprachnachricht an den Nutzer geschickt — das übernimmt das System ' +
+    'automatisch im Hintergrund, du musst (und kannst) dafür nichts extra tun oder ankündigen. Wenn der Nutzer nach ' +
+    'einer Sprachnachricht fragt, antworte einfach normal in Worten — die Sprachnachricht kommt dann von selbst dazu.';
   if (memory.length > 0) {
     systemPrompt += ` Bekannte Fakten über den Nutzer, die er dir zu merken gebeten hat: ${memory.map((m) => m.text).join('; ')}.`;
   }
