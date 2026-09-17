@@ -271,6 +271,15 @@ Der Bot kann außerdem mit **Bildern** umgehen, komplett über die gleiche koste
 - **Bilder erstellen**: Sag z. B. „erstelle mir ein bild von einer katze im weltraum" oder „mal mir einen sonnenuntergang" — der Bot generiert ein passendes Bild und schickt es zurück.
 - **Bilder bearbeiten**: Schick zuerst ein Foto, dann sag z. B. „bearbeite das bild: mach den himmel rot" — der Bot merkt sich das zuletzt geschickte Foto eine Stunde lang und schickt eine bearbeitete Version zurück.
 
+#### GIF-Antworten einrichten (optional)
+
+Schickst du dem Bot einen **Sticker** oder ein **GIF** (mit oder ohne Text dazu), sucht er automatisch ein passendes GIF (über [Tenor](https://tenor.com/gifapi), gehört Google) und schickt es zurück — als Suchbegriff nutzt er deinen Text, sonst das Emoji des Stickers. Eine echte Sticker-Suche ist über die Telegram-Bot-API technisch nicht möglich (keine öffentliche Schnittstelle dafür), ein passendes GIF sieht im Chat aber sehr ähnlich aus.
+
+1. Auf [tenor.com/developer/keys](https://tenor.com/developer/keys) ein kostenloses API-Konto anlegen (keine Kreditkarte nötig) und den **API Key** kopieren.
+2. In Cloudflare bei `jarvis-ai` → Settings → Variables and Secrets einen neuen Eintrag **`TENOR_API_KEY`** mit diesem Wert anlegen — Typ **Secret** → **Deploy**.
+
+Ohne diesen Secret ignoriert der Bot Sticker/GIFs einfach weiter wie bisher.
+
 #### Sprachnachrichten von JARVIS (optional, kostenpflichtig)
 
 Der Bot kann auf jede Nachricht (egal ob du tippst oder eine Sprachnachricht schickst) zusätzlich zur Textantwort auch mit einer **eigenen Sprachnachricht** antworten. Das braucht einen kleinen kostenpflichtigen Zusatzdienst (ElevenLabs), weil die kostenlose Cloudflare-KI leider kein Deutsch spricht — die Kosten sind aber sehr gering (Bruchteile eines Cents pro Antwort).
