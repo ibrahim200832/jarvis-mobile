@@ -890,8 +890,11 @@ async function handleTelegramWebhook(request, env) {
     try {
       const audioBytes = await synthesizeTelegramVoice(env, replyText);
       await sendTelegramAudio(env, chatId, audioBytes);
-    } catch (_) {
-      // stumm ignorieren, die Textantwort ist schon raus
+    } catch (err) {
+      // Bleibt kosmetisch (blockiert nie die Textantwort), aber landet
+      // sichtbar im Log, damit sich ein ElevenLabs-Problem diagnostizieren
+      // lässt (siehe Cloudflare → Observability → Logs).
+      console.error('ElevenLabs-Sprachnachricht fehlgeschlagen:', String(err));
     }
   }
 
