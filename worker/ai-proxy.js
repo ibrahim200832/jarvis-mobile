@@ -762,7 +762,30 @@ async function handleTelegramWebhook(request, env) {
       return json({ ok: true });
     }
   }
+  // Bildbeschreibung läuft komplett über Cloudflare Workers AI (gleiches
+  // "AI"-Binding wie Chat/Whisper) — das Foto wird an keinen Drittanbieter
+  // (z. B. Brave Search) weitergegeben, nur beschrieben.
+  const photo = message.photo;
+  if (!text && photo && photo.length > 0) {
+    try {
+      text = await describeTelegramPhoto(env, photo[photo.length - 1].file_id, message.caption);
+    } catch (_) {
+      await sendTelegramMessage(env, chatId, 'Ich konnte das Bild nicht auswerten.');
+      return json({ ok: true });
+    }
+  }
   if (!text) return json({ ok: true });
+
+  const imageMatch = text.match(/^(?:erstell(?:e)? (?:mir )?ein bild von|mal(?:e)? mir|zeichne mir)\s+(.+)$/i);
+  if (imageMatch) {
+    try {
+      const imageBytes = await generateTelegramImage(env, imageMatch[1].trim());
+      await sendTelegramPhoto(env, chatId, imageBytes, `🎨 „${imageMatch[1].trim()}"`);
+    } catch (_) {
+      await sendTelegramMessage(env, chatId, 'Ich konnte das Bild leider nicht erstellen.');
+    }
+    return json({ ok: true });
+  }
 
   // Rein kosmetisch, darf den eigentlichen Antwort-Flow nie aufhalten oder
   // abbrechen — Fehler werden bewusst verschluckt.
@@ -827,7 +850,7 @@ async function handleTelegramWebhook(request, env) {
 
   // Voice messages get their transcript echoed back first, so the user can
   // tell if Whisper misheard something, before JARVIS' actual reply.
-  const prefix = voice ? `🎤 „${text}"\n\n` : '';
+  const prefix = voice ? `🎤 „${text}"\n\n` : photo ? `📷 „${text}"\n\n` : '';
   await sendTelegramMessage(env, chatId, prefix + replyText);
   return json({ ok: true });
 }
@@ -934,6 +957,56 @@ async function sendTelegramMessage(env, chatId, message) {
   });
   if (!res.ok) {
     throw new Error(`Telegram antwortete mit ${res.status}: ${await res.text()}`);
+  }
+}
+
+// Downloads a Telegram photo and describes it with a vision model via
+// Cloudflare Workers AI (same "AI" binding as Whisper/chat) — the image
+// bytes never leave Cloudflare, they aren't forwarded to Brave Search or
+// any other third party, only turned into a text description.
+async function describeTelegramPhoto(env, fileId, caption) {
+  const fileInfoRes = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/getFile?file_id=${fileId}`);
+  if (!fileInfoRes.ok) throw new Error(`getFile fehlgeschlagen (${fileInfoRes.status})`);
+  const filePath = (await fileInfoRes.json()).result?.file_path;
+  if (!filePath) throw new Error('Telegram hat keinen Dateipfad geliefert.');
+
+  const imageRes = await fetch(`https://api.telegram.org/file/bot${env.TELEGRAM_BOT_TOKEN}/${filePath}`);
+  if (!imageRes.ok) throw new Error(`Bild-Download fehlgeschlagen (${imageRes.status})`);
+  const imageBytes = [...new Uint8Array(await imageRes.arrayBuffer())];
+
+  const result = await env.AI.run('@cf/llava-hf/llava-1.5-7b-hf', {
+    image: imageBytes,
+    prompt: (caption && caption.trim()) || 'Beschreibe dieses Bild auf Deutsch.',
+  });
+  const text = (result.description || result.response || '').toString().trim();
+  if (!text) throw new Error('Kein Bildbeschreibung erhalten.');
+  return text;
+}
+
+// Generates an image from a text prompt via Cloudflare Workers AI — stays
+// entirely within the same "AI" binding, nothing is sent to a third party.
+async function generateTelegramImage(env, prompt) {
+  const result = await env.AI.run('@cf/black-forest-labs/flux-1-schnell', { prompt });
+  const base64 = result.image;
+  if (!base64) throw new Error('Kein Bild erhalten.');
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+async function sendTelegramPhoto(env, chatId, imageBytes, caption) {
+  const form = new FormData();
+  form.append('chat_id', chatId);
+  if (caption) form.append('caption', caption);
+  form.append('photo', new Blob([imageBytes], { type: 'image/png' }), 'jarvis.png');
+
+  const res = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendPhoto`, {
+    method: 'POST',
+    body: form,
+  });
+  if (!res.ok) {
+    throw new Error(`sendPhoto antwortete mit ${res.status}: ${await res.text()}`);
   }
 }
 

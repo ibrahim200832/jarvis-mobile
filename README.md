@@ -262,6 +262,10 @@ Der Bot merkt sich außerdem den Gesprächsverlauf (die letzten Nachrichten, ca.
 
 Zusätzlich gibt es ein **dauerhaftes Gedächtnis** (kein Zeitlimit, anders als der Gesprächsverlauf oben): Sag „merk dir: \<Fakt\>" (z. B. „merk dir: ich mag keinen Kaffee"), und der Bot berücksichtigt das ab sofort bei jeder künftigen Antwort — auch nach Tagen oder Wochen noch. „meine erinnerungen" zeigt alles Gemerkte an, „vergiss alles" löscht es wieder.
 
+Der Bot kann außerdem mit **Bildern** umgehen, komplett über die gleiche kostenlose Cloudflare-KI (keine Weitergabe an Drittanbieter wie die Websuche):
+- **Fotos ansehen**: Schick dem Bot ein Foto (mit oder ohne Bildunterschrift/Frage dazu) — er beschreibt bzw. beantwortet es auf Deutsch.
+- **Bilder erstellen**: Sag z. B. „erstelle mir ein bild von einer katze im weltraum" oder „mal mir einen sonnenuntergang" — der Bot generiert ein passendes Bild und schickt es zurück.
+
 Der Bot reagiert außerdem auf jede Nachricht zusätzlich mit einem passenden Emoji (z. B. ❤ bei „danke", 🤔 bei einer Frage, 🎉 wenn du „geschafft" sagst) — wie eine Emoji-Reaktion in WhatsApp/Slack, direkt an deiner eigenen Nachricht.
 
 ## Philips-Hue-Lichtsteuerung einrichten (optional)
