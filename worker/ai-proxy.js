@@ -396,6 +396,20 @@ const TELEGRAM_COMMANDS = [
   { cmd: 'suche', alias: /^\/suche\s+(.+)$/i, description: 'Durchsucht sofort das Web, z. B. /suche wetter berlin' },
   { cmd: 'neu', alias: /^\/neu$/i, description: 'Startet ein frisches Gespräch (dauerhaftes Gedächtnis bleibt erhalten)' },
   { cmd: 'status', alias: /^\/status$/i, description: 'Zeigt, was verbunden ist (Kalender, Sprachausgabe)' },
+  { cmd: 'witz', alias: /^\/witz$/i, description: 'Erzählt einen zufälligen Witz' },
+  { cmd: 'nachrichten', alias: /^\/nachrichten$/i, description: 'Zeigt aktuelle Schlagzeilen' },
+];
+
+// Gleiche lokale Witz-Sammlung wie lib/services/joke_service.dart (kein
+// Netzwerk/API-Schlüssel nötig, funktioniert immer).
+const TELEGRAM_JOKES = [
+  'Warum ist der Informatiker beim Autofahren so entspannt? Er hat immer ein Backup.',
+  'Es gibt 10 Arten von Menschen: die, die Binär verstehen, und die, die es nicht verstehen.',
+  'Ein SQL-Query kommt in eine Bar, geht zu zwei Tischen und fragt: "Darf ich mich JOINen?"',
+  'Warum reden Programmierer nicht gerne? Weil sie lieber committen als sich zu unterhalten.',
+  '99 kleine Bugs in der Software, 99 kleine Bugs. Einen behoben, neu kompiliert - 127 kleine Bugs in der Software.',
+  'Wie viele Programmierer braucht man, um eine Glühbirne zu wechseln? Keinen, das ist ein Hardware-Problem.',
+  'Warum benutzen Programmierer gerne dunkle Themes? Weil Licht Bugs anzieht.',
 ];
 
 const SYSTEM_PROMPT =
@@ -991,6 +1005,25 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
       `🔍 Websuche: ${env.BRAVE_API_KEY ? 'aktiv' : 'nicht eingerichtet'}`,
     ];
     await sendTelegramMessage(env, chatId, statusLines.join('\n'));
+    return json({ ok: true });
+  }
+
+  if (TELEGRAM_COMMANDS.find((c) => c.cmd === 'witz').alias.test(text.trim())) {
+    await sendTelegramMessage(env, chatId, `😄 ${TELEGRAM_JOKES[Math.floor(Math.random() * TELEGRAM_JOKES.length)]}`);
+    return json({ ok: true });
+  }
+
+  if (TELEGRAM_COMMANDS.find((c) => c.cmd === 'nachrichten').alias.test(text.trim())) {
+    try {
+      const results = await braveSearch('aktuelle nachrichten deutschland', env);
+      const reply =
+        results.length > 0
+          ? `📰 Aktuelle Schlagzeilen:\n${results.map((r) => `• ${r.title}`).join('\n')}`
+          : 'Ich konnte gerade keine Nachrichten finden.';
+      await sendTelegramMessage(env, chatId, reply);
+    } catch (err) {
+      await sendTelegramMessage(env, chatId, err.message || 'Die Nachrichtensuche ist fehlgeschlagen.');
+    }
     return json({ ok: true });
   }
 
