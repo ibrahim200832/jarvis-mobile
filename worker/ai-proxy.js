@@ -340,11 +340,44 @@ const TOOLS = [
 // Telegram messages are answered entirely server-side, with no phone in the
 // loop — so only tools the Worker itself can fully carry out belong here.
 // search_web fits (it's just an outbound Brave Search call, same as the
-// app's own web-search command); everything else in TOOLS either needs the
-// phone (contacts, apps, camera, Spotify, uploads) or a token that only
-// lives on-device (calendar, weather, news — their API keys are stored in
-// the app's Einstellungen, not on the Worker).
-const TELEGRAM_TOOLS = TOOLS.filter((t) => t.function.name === 'search_web');
+// app's own web-search command); everything else in TOOLS needs the phone
+// (contacts, apps, camera, Spotify, uploads) or a token that only lives
+// on-device (weather, news — their API keys are stored in the app's
+// Einstellungen, not on the Worker). Calendar is the exception: the Worker
+// already holds a Google Calendar refresh token server-side (for the
+// reminder cron job, see getGoogleAccessToken), so it gets its own
+// Telegram-specific tool pair below instead of reusing the app's
+// client-side create_calendar_event from TOOLS.
+const TELEGRAM_CALENDAR_TOOLS = [
+  {
+    type: 'function',
+    function: {
+      name: 'get_calendar_events',
+      description:
+        'Zeigt die nächsten anstehenden Termine im Google Kalender des Nutzers. Nur verwenden, wenn der Nutzer klar danach fragt (z. B. "was steht heute an", "wann ist mein nächster Termin").',
+      parameters: { type: 'object', properties: {}, required: [] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'create_calendar_event',
+      description: 'Legt einen Termin im Google Kalender des Nutzers an. Nur verwenden, wenn der Nutzer klar darum bittet.',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'Titel des Termins' },
+          start: {
+            type: 'string',
+            description: 'Startzeitpunkt als ISO-8601-UTC-Zeitstempel, berechnet relativ zur aktuellen Zeit unten.',
+          },
+        },
+        required: ['title', 'start'],
+      },
+    },
+  },
+];
+const TELEGRAM_TOOLS = [...TOOLS.filter((t) => t.function.name === 'search_web'), ...TELEGRAM_CALENDAR_TOOLS];
 
 const SYSTEM_PROMPT =
   'Du bist JARVIS, das KI-System von Tony Stark aus den Iron-Man-Filmen, jetzt im Dienst des Nutzers. ' +
@@ -657,6 +690,69 @@ async function handleCalendarConnect(request, env) {
   return json({ ok: true });
 }
 
+// Exchanges the stored refresh token (from handleCalendarConnect above) for
+// a fresh access token — shared by the reminder cron job and the Telegram
+// calendar tools below, so both read the same connected calendar.
+async function getGoogleAccessToken(env) {
+  if (!env.JARVIS_KV || !env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) return null;
+  const raw = await env.JARVIS_KV.get('calendar_reminder_config');
+  if (!raw) return null;
+  const { refresh_token: refreshToken } = JSON.parse(raw);
+  if (!refreshToken) return null;
+
+  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      refresh_token: refreshToken,
+      client_id: env.GOOGLE_CLIENT_ID,
+      client_secret: env.GOOGLE_CLIENT_SECRET,
+      grant_type: 'refresh_token',
+    }),
+  });
+  if (!tokenRes.ok) return null;
+  const { access_token: accessToken } = await tokenRes.json();
+  return accessToken || null;
+}
+
+// Lists the next few upcoming events on the connected Google Calendar, for
+// the Telegram bot's get_calendar_events tool.
+async function getUpcomingCalendarEvents(env) {
+  const accessToken = await getGoogleAccessToken(env);
+  if (!accessToken) throw new Error('Kein Google Kalender verbunden.');
+
+  const eventsUrl = new URL('https://www.googleapis.com/calendar/v3/calendars/primary/events');
+  eventsUrl.searchParams.set('timeMin', new Date().toISOString());
+  eventsUrl.searchParams.set('maxResults', '5');
+  eventsUrl.searchParams.set('singleEvents', 'true');
+  eventsUrl.searchParams.set('orderBy', 'startTime');
+
+  const res = await fetch(eventsUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (!res.ok) throw new Error(`Google Kalender antwortete mit ${res.status}`);
+  const { items } = await res.json();
+  return Array.isArray(items) ? items : [];
+}
+
+// Creates a new event on the connected Google Calendar, for the Telegram
+// bot's create_calendar_event tool.
+async function createCalendarEvent(env, title, startIso) {
+  const accessToken = await getGoogleAccessToken(env);
+  if (!accessToken) throw new Error('Kein Google Kalender verbunden.');
+
+  const start = new Date(startIso);
+  const end = new Date(start.getTime() + 60 * 60 * 1000); // 1h default duration
+  const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      summary: title,
+      start: { dateTime: start.toISOString() },
+      end: { dateTime: end.toISOString() },
+    }),
+  });
+  if (!res.ok) throw new Error(`Google Kalender antwortete mit ${res.status}: ${await res.text()}`);
+}
+
 async function handleCalendarDisconnect(request, env) {
   if (!env.JARVIS_KV) {
     return json({ error: 'Kein KV-Speicher an den Server gebunden.' }, 500);
@@ -851,11 +947,14 @@ async function handleTelegramWebhook(request, env) {
 
   let systemPrompt =
     `${SYSTEM_PROMPT} Du sprichst hier gerade über Telegram, nicht über die JARVIS-App — deshalb kannst du hier keine ` +
-    'Anrufe/WhatsApp/Apps/Kalender/Hue/Home-Connect auslösen, sondern nur in Worten antworten. Websuche steht dir ' +
-    'hier trotzdem zur Verfügung, nutze sie wie gewohnt bei aktuellen oder unsicheren Fakten. Jede deiner Antworten ' +
-    'wird automatisch zusätzlich als gesprochene Sprachnachricht an den Nutzer geschickt — das übernimmt das System ' +
-    'automatisch im Hintergrund, du musst (und kannst) dafür nichts extra tun oder ankündigen. Wenn der Nutzer nach ' +
-    'einer Sprachnachricht fragt, antworte einfach normal in Worten — die Sprachnachricht kommt dann von selbst dazu.';
+    'Anrufe/WhatsApp/Apps/Hue/Home-Connect auslösen, sondern nur in Worten antworten. Websuche steht dir hier ' +
+    'trotzdem zur Verfügung, nutze sie wie gewohnt bei aktuellen oder unsicheren Fakten. Auch der Google Kalender des ' +
+    'Nutzers steht dir hier zur Verfügung (get_calendar_events zum Nachschauen, create_calendar_event zum Anlegen) — ' +
+    `aktuelles Datum/Uhrzeit (UTC): ${new Date().toISOString()}, berechne relative Angaben wie "morgen" davon ausgehend. ` +
+    'Jede deiner Antworten wird automatisch zusätzlich als gesprochene Sprachnachricht an den Nutzer geschickt — das ' +
+    'übernimmt das System automatisch im Hintergrund, du musst (und kannst) dafür nichts extra tun oder ankündigen. ' +
+    'Wenn der Nutzer nach einer Sprachnachricht fragt, antworte einfach normal in Worten — die Sprachnachricht kommt ' +
+    'dann von selbst dazu.';
   if (memory.length > 0) {
     systemPrompt += ` Bekannte Fakten über den Nutzer, die er dir zu merken gebeten hat: ${memory.map((m) => m.text).join('; ')}.`;
   }
@@ -865,10 +964,30 @@ async function handleTelegramWebhook(request, env) {
   try {
     const data = await runModel(env, messages, TELEGRAM_TOOLS);
     const toolCall = data.tool_calls?.[0];
+    const toolArgs = toolCall && (typeof toolCall.arguments === 'string' ? JSON.parse(toolCall.arguments) : toolCall.arguments);
     if (toolCall?.name === 'search_web') {
-      const query = (typeof toolCall.arguments === 'string' ? JSON.parse(toolCall.arguments) : toolCall.arguments)?.query;
-      const results = query ? await braveSearch(query, env) : [];
+      const results = toolArgs?.query ? await braveSearch(toolArgs.query, env) : [];
       replyText = results.length > 0 ? results.slice(0, 2).map((r) => r.description).join(' ') : 'Ich konnte dazu nichts im Web finden.';
+    } else if (toolCall?.name === 'get_calendar_events') {
+      try {
+        const events = await getUpcomingCalendarEvents(env);
+        replyText =
+          events.length === 0
+            ? 'Ich sehe keine anstehenden Termine.'
+            : `📅 Deine nächsten Termine:\n${events
+                .map((e) => `• ${e.summary || 'Ohne Titel'} — ${new Date(e.start.dateTime || e.start.date).toLocaleString('de-DE')}`)
+                .join('\n')}`;
+      } catch (err) {
+        replyText = `Ich konnte den Kalender nicht abrufen: ${String(err)}`;
+      }
+    } else if (toolCall?.name === 'create_calendar_event') {
+      try {
+        if (!toolArgs?.title || !toolArgs?.start) throw new Error('Titel oder Startzeit fehlt.');
+        await createCalendarEvent(env, toolArgs.title, toolArgs.start);
+        replyText = `✅ Termin "${toolArgs.title}" wurde angelegt.`;
+      } catch (err) {
+        replyText = `Ich konnte den Termin nicht anlegen: ${String(err)}`;
+      }
     } else {
       replyText = (data.response ?? data.result?.response ?? '').toString().trim();
     }
@@ -1128,18 +1247,7 @@ async function runCalendarReminders(env) {
   if (!raw) return;
   const config = JSON.parse(raw);
 
-  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      refresh_token: config.refresh_token,
-      client_id: env.GOOGLE_CLIENT_ID,
-      client_secret: env.GOOGLE_CLIENT_SECRET,
-      grant_type: 'refresh_token',
-    }),
-  });
-  if (!tokenRes.ok) return;
-  const { access_token: accessToken } = await tokenRes.json();
+  const accessToken = await getGoogleAccessToken(env);
   if (!accessToken) return;
 
   const now = new Date();

@@ -5,6 +5,7 @@ wird beim Deploy automatisch in den "Update verfügbar"-Dialog der App
 übernommen (siehe `.github/workflows/deploy-web.yml`).
 
 ## Aktuell
+- Neu: JARVIS' Telegram-Bot kann jetzt direkt auf den Google Kalender zugreifen — Termine ansehen und anlegen, ganz ohne die App zu öffnen.
 - Neu: JARVIS' Telegram-Bot kann jetzt zusätzlich zur Textantwort auch mit einer eigenen Sprachnachricht antworten (optional, kleine Zusatzkosten über ElevenLabs, siehe README).
 - Neu: JARVIS' Telegram-Bot kann jetzt auch ein zuvor geschicktes Foto bearbeiten ("bearbeite das bild: mach den himmel rot") — komplett über Cloudflare-KI, keine Weitergabe an Dritte.
 - Fix: "Mit Telegram verbinden" schlug nach dem ersten erfolgreichen Verbinden immer fehl ("Telegram-Anfrage fehlgeschlagen") — funktioniert jetzt auch beim erneuten Verbinden zuverlässig.
