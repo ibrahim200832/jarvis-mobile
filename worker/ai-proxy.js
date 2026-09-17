@@ -772,6 +772,12 @@ async function handleTelegramWebhook(request, env) {
   // "AI"-Binding wie Chat/Whisper) — das Foto wird an keinen Drittanbieter
   // (z. B. Brave Search) weitergegeben, nur beschrieben.
   const photo = message.photo;
+  if (photo && photo.length > 0 && env.JARVIS_KV) {
+    // Merkt sich das zuletzt geschickte Foto (1 Stunde), damit ein
+    // Folgebefehl wie "bearbeite das bild: ..." weiß, welches Bild gemeint
+    // ist, ohne dass der Nutzer es noch einmal mitschicken muss.
+    await env.JARVIS_KV.put(`telegram_last_photo_${chatId}`, photo[photo.length - 1].file_id, { expirationTtl: 3600 });
+  }
   if (!text && photo && photo.length > 0) {
     try {
       text = await describeTelegramPhoto(env, photo[photo.length - 1].file_id, message.caption);
@@ -789,6 +795,23 @@ async function handleTelegramWebhook(request, env) {
       await sendTelegramPhoto(env, chatId, imageBytes, `🎨 „${imageMatch[1].trim()}"`);
     } catch (_) {
       await sendTelegramMessage(env, chatId, 'Ich konnte das Bild leider nicht erstellen.');
+    }
+    return json({ ok: true });
+  }
+
+  const editMatch = text.match(/^(?:bearbeite|editier(?:e)?|ändere)\s+(?:das\s+bild\s*[:,]?\s*)?(.+)$/i);
+  if (editMatch) {
+    const lastPhotoFileId = env.JARVIS_KV ? await env.JARVIS_KV.get(`telegram_last_photo_${chatId}`) : null;
+    if (!lastPhotoFileId) {
+      await sendTelegramMessage(env, chatId, 'Schick mir zuerst ein Bild, dann kann ich es bearbeiten.');
+      return json({ ok: true });
+    }
+    try {
+      const photoBytes = await downloadTelegramFile(env, lastPhotoFileId);
+      const editedBytes = await editTelegramImage(env, photoBytes, editMatch[1].trim());
+      await sendTelegramPhoto(env, chatId, editedBytes, `🖌️ „${editMatch[1].trim()}"`);
+    } catch (_) {
+      await sendTelegramMessage(env, chatId, 'Ich konnte das Bild leider nicht bearbeiten.');
     }
     return json({ ok: true });
   }
@@ -966,19 +989,25 @@ async function sendTelegramMessage(env, chatId, message) {
   }
 }
 
-// Downloads a Telegram photo and describes it with a vision model via
-// Cloudflare Workers AI (same "AI" binding as Whisper/chat) — the image
-// bytes never leave Cloudflare, they aren't forwarded to Brave Search or
-// any other third party, only turned into a text description.
-async function describeTelegramPhoto(env, fileId, caption) {
+// Downloads a Telegram-hosted file (photo) by file id and returns its raw
+// bytes — shared by photo description and photo editing below.
+async function downloadTelegramFile(env, fileId) {
   const fileInfoRes = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/getFile?file_id=${fileId}`);
   if (!fileInfoRes.ok) throw new Error(`getFile fehlgeschlagen (${fileInfoRes.status})`);
   const filePath = (await fileInfoRes.json()).result?.file_path;
   if (!filePath) throw new Error('Telegram hat keinen Dateipfad geliefert.');
 
-  const imageRes = await fetch(`https://api.telegram.org/file/bot${env.TELEGRAM_BOT_TOKEN}/${filePath}`);
-  if (!imageRes.ok) throw new Error(`Bild-Download fehlgeschlagen (${imageRes.status})`);
-  const imageBytes = [...new Uint8Array(await imageRes.arrayBuffer())];
+  const fileRes = await fetch(`https://api.telegram.org/file/bot${env.TELEGRAM_BOT_TOKEN}/${filePath}`);
+  if (!fileRes.ok) throw new Error(`Datei-Download fehlgeschlagen (${fileRes.status})`);
+  return new Uint8Array(await fileRes.arrayBuffer());
+}
+
+// Describes a Telegram photo with a vision model via Cloudflare Workers AI
+// (same "AI" binding as Whisper/chat) — the image bytes never leave
+// Cloudflare, they aren't forwarded to Brave Search or any other third
+// party, only turned into a text description.
+async function describeTelegramPhoto(env, fileId, caption) {
+  const imageBytes = [...(await downloadTelegramFile(env, fileId))];
 
   const result = await env.AI.run('@cf/llava-hf/llava-1.5-7b-hf', {
     image: imageBytes,
@@ -998,6 +1027,20 @@ async function generateTelegramImage(env, prompt) {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+// Edits an existing photo (e.g. "mach den Himmel rot") via an image-to-image
+// model, again entirely within Cloudflare Workers AI — the photo is never
+// forwarded anywhere else, only sent back edited.
+async function editTelegramImage(env, photoBytes, prompt) {
+  const result = await env.AI.run('@cf/runwayml/stable-diffusion-v1-5-img2img', {
+    prompt,
+    image: [...photoBytes],
+    strength: 0.7,
+  });
+  const bytes = new Uint8Array(await new Response(result).arrayBuffer());
+  if (bytes.length === 0) throw new Error('Kein bearbeitetes Bild erhalten.');
   return bytes;
 }
 
