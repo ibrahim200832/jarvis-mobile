@@ -881,6 +881,20 @@ async function handleTelegramWebhook(request, env) {
   // tell if Whisper misheard something, before JARVIS' actual reply.
   const prefix = voice ? `🎤 „${text}"\n\n` : photo ? `📷 „${text}"\n\n` : '';
   await sendTelegramMessage(env, chatId, prefix + replyText);
+
+  // Zusätzlich zur Textantwort auch als Sprachnachricht schicken, egal ob
+  // der Nutzer getippt oder gesprochen hat — rein kosmetisch/optional
+  // (nur wenn ELEVENLABS_API_KEY gesetzt ist), darf die eigentliche
+  // Textantwort nie aufhalten oder abbrechen.
+  if (env.ELEVENLABS_API_KEY) {
+    try {
+      const audioBytes = await synthesizeTelegramVoice(env, replyText);
+      await sendTelegramAudio(env, chatId, audioBytes);
+    } catch (_) {
+      // stumm ignorieren, die Textantwort ist schon raus
+    }
+  }
+
   return json({ ok: true });
 }
 
@@ -1056,6 +1070,44 @@ async function sendTelegramPhoto(env, chatId, imageBytes, caption) {
   });
   if (!res.ok) {
     throw new Error(`sendPhoto antwortete mit ${res.status}: ${await res.text()}`);
+  }
+}
+
+// Cloudflare Workers AI's own free TTS model (MeloTTS) doesn't support
+// German, so voice replies go through ElevenLabs instead (paid, hence
+// gated behind the optional ELEVENLABS_API_KEY secret — see README,
+// Abschnitt "Sprachnachrichten von JARVIS"). "Rachel", ElevenLabs' default
+// premade voice, available on every account, speaks German fine with the
+// multilingual model.
+const ELEVENLABS_VOICE_ID = '21m00Tcm4TlvDq8ikWAM';
+
+async function synthesizeTelegramVoice(env, text) {
+  const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${env.ELEVENLABS_VOICE_ID || ELEVENLABS_VOICE_ID}`, {
+    method: 'POST',
+    headers: {
+      'xi-api-key': env.ELEVENLABS_API_KEY,
+      'Content-Type': 'application/json',
+      Accept: 'audio/mpeg',
+    },
+    body: JSON.stringify({ text, model_id: 'eleven_multilingual_v2' }),
+  });
+  if (!res.ok) {
+    throw new Error(`ElevenLabs antwortete mit ${res.status}: ${await res.text()}`);
+  }
+  return new Uint8Array(await res.arrayBuffer());
+}
+
+async function sendTelegramAudio(env, chatId, audioBytes) {
+  const form = new FormData();
+  form.append('chat_id', chatId);
+  form.append('audio', new Blob([audioBytes], { type: 'audio/mpeg' }), 'jarvis.mp3');
+
+  const res = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendAudio`, {
+    method: 'POST',
+    body: form,
+  });
+  if (!res.ok) {
+    throw new Error(`sendAudio antwortete mit ${res.status}: ${await res.text()}`);
   }
 }
 
