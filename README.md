@@ -266,7 +266,7 @@ Der Bot hat außerdem richtige Telegram-**Slash-Befehle**: Tippst du in Telegram
 
 **Nachrichten an andere Personen weiterleiten**: Sag „schick Mama: bin gleich da" (oder `/schick Mama: bin gleich da`), und der Bot schickt diese Nachricht an Mama weiter — vorausgesetzt, Mama hat dem Bot selbst schon mal irgendetwas geschrieben (der Bot merkt sich dann automatisch ihren Namen). Ein echtes "Kaltanschreiben" fremder Personen ist bei Telegram-Bots technisch nicht möglich (feste Anti-Spam-Regel von Telegram) — der Bot darf nur Chats antworten, die zuerst selbst geschrieben haben.
 
-**Alles zurücksetzen**: `/reset` löscht sowohl den Gesprächsverlauf als auch das komplette dauerhafte Gedächtnis — nicht rückgängig machbar. (Die sichtbaren Nachrichten im Telegram-Chat selbst bleiben dabei stehen, Telegram erlaubt Bots nicht, fremde Chatverläufe zu löschen — nur was JARVIS sich merkt, wird gelöscht.)
+**Alles zurücksetzen**: `/reset` löscht den Gesprächsverlauf, das komplette dauerhafte Gedächtnis **und** JARVIS' eigene Nachrichten der letzten 48h im Chat — nicht rückgängig machbar. Deine eigenen geschickten Nachrichten bleiben dabei stehen: Telegram erlaubt Bots grundsätzlich nicht, fremde (also deine eigenen) Nachrichten zu löschen, das ist eine feste Plattform-Regel ohne Ausnahme.
 
 Zusätzlich gibt es ein **dauerhaftes Gedächtnis** (kein Zeitlimit, anders als der Gesprächsverlauf oben): Sag „merk dir: \<Fakt\>" (z. B. „merk dir: ich mag keinen Kaffee"), und der Bot berücksichtigt das ab sofort bei jeder künftigen Antwort — auch nach Tagen oder Wochen noch. „meine erinnerungen" zeigt alles Gemerkte an, „vergiss alles" löscht es wieder.
 

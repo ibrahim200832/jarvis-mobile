@@ -1054,10 +1054,14 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
   if (TELEGRAM_COMMANDS.find((c) => c.cmd === 'reset').alias.test(text.trim())) {
     if (env.JARVIS_KV) await env.JARVIS_KV.delete(`telegram_history_${chatId}`);
     await clearTelegramMemory(env);
+    // Löscht JARVIS' eigene Nachrichten der letzten 48h aus dem sichtbaren
+    // Chat — mehr erlaubt Telegram Bots nicht (eigene Nachrichten der
+    // Nutzerin/des Nutzers können Bots grundsätzlich nie löschen).
+    await deleteRecentBotMessages(env, chatId);
     await sendTelegramMessage(
       env,
       chatId,
-      '🔄 Alles zurückgesetzt: Gesprächsverlauf und dauerhaftes Gedächtnis sind komplett gelöscht — das lässt sich nicht rückgängig machen.',
+      '🔄 Alles zurückgesetzt: Gesprächsverlauf, dauerhaftes Gedächtnis und meine eigenen Nachrichten der letzten 48h sind gelöscht — das lässt sich nicht rückgängig machen.',
     );
     return json({ ok: true });
   }
@@ -1346,6 +1350,35 @@ async function sendTelegramMessage(env, chatId, message) {
   if (!res.ok) {
     throw new Error(`Telegram antwortete mit ${res.status}: ${await res.text()}`);
   }
+  await trackSentTelegramMessage(env, chatId, (await res.json()).result?.message_id);
+}
+
+// Telegram lets a bot delete its own messages, but only within 48h — so
+// /reset keeps a short-lived list of the bot's own message ids per chat
+// (KV, same TTL) to actually clear them from the visible chat. The user's
+// own messages can never be touched (a bot can't do that, see README).
+const SENT_MESSAGE_TTL_SECONDS = 48 * 60 * 60;
+
+async function trackSentTelegramMessage(env, chatId, messageId) {
+  if (!env.JARVIS_KV || !messageId) return;
+  const key = `telegram_sent_${chatId}`;
+  const ids = JSON.parse((await env.JARVIS_KV.get(key)) || '[]');
+  ids.push(messageId);
+  await env.JARVIS_KV.put(key, JSON.stringify(ids.slice(-200)), { expirationTtl: SENT_MESSAGE_TTL_SECONDS });
+}
+
+async function deleteRecentBotMessages(env, chatId) {
+  if (!env.JARVIS_KV) return;
+  const key = `telegram_sent_${chatId}`;
+  const ids = JSON.parse((await env.JARVIS_KV.get(key)) || '[]');
+  await env.JARVIS_KV.delete(key);
+  for (const messageId of ids) {
+    await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/deleteMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, message_id: messageId }),
+    }).catch(() => {});
+  }
 }
 
 // Downloads a Telegram-hosted file (photo) by file id and returns its raw
@@ -1416,6 +1449,7 @@ async function sendTelegramPhoto(env, chatId, imageBytes, caption) {
   if (!res.ok) {
     throw new Error(`sendPhoto antwortete mit ${res.status}: ${await res.text()}`);
   }
+  await trackSentTelegramMessage(env, chatId, (await res.json()).result?.message_id);
 }
 
 // Sucht ein passendes GIF über Tenor (kostenlos, kein Kreditkarten-Konto
@@ -1442,6 +1476,7 @@ async function searchAndSendTenorGif(env, chatId, query) {
   if (!sendRes.ok) {
     throw new Error(`sendAnimation antwortete mit ${sendRes.status}: ${await sendRes.text()}`);
   }
+  await trackSentTelegramMessage(env, chatId, (await sendRes.json()).result?.message_id);
 }
 
 // Cloudflare Workers AI's own free TTS model (MeloTTS) doesn't support
@@ -1480,6 +1515,7 @@ async function sendTelegramAudio(env, chatId, audioBytes) {
   if (!res.ok) {
     throw new Error(`sendAudio antwortete mit ${res.status}: ${await res.text()}`);
   }
+  await trackSentTelegramMessage(env, chatId, (await res.json()).result?.message_id);
 }
 
 // Checks the connected Google Calendar for events starting within the next
