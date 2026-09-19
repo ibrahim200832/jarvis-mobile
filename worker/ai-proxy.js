@@ -376,6 +376,21 @@ const TELEGRAM_CALENDAR_TOOLS = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'delete_calendar_event',
+      description:
+        'Löscht einen anstehenden Termin im Google Kalender des Nutzers, gefunden über einen Teil seines Titels. Nur verwenden, wenn der Nutzer klar darum bittet, einen Termin zu löschen/abzusagen.',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string', description: 'Titel oder Teil des Titels des zu löschenden Termins, z. B. "Zahnarzt"' },
+        },
+        required: ['title'],
+      },
+    },
+  },
 ];
 const TELEGRAM_TOOLS = [...TOOLS.filter((t) => t.function.name === 'search_web'), ...TELEGRAM_CALENDAR_TOOLS];
 
@@ -393,6 +408,11 @@ const TELEGRAM_COMMANDS = [
   { cmd: 'bearbeiten', alias: /^\/bearbeiten\s+(.+)$/i, description: 'Bearbeitet das zuletzt geschickte Foto' },
   { cmd: 'termine', alias: /^\/termine$/i, description: 'Zeigt die nächsten Kalendertermine' },
   { cmd: 'termin', alias: /^\/termin\s+(.+)$/i, description: 'Legt einen Kalendertermin an, z. B. /termin Zahnarzt morgen um 10 Uhr' },
+  {
+    cmd: 'terminloeschen',
+    alias: /^\/terminloeschen\s+(.+)$/i,
+    description: 'Löscht einen anstehenden Termin, gefunden über den Titel, z. B. /terminloeschen Zahnarzt',
+  },
   { cmd: 'suche', alias: /^\/suche\s+(.+)$/i, description: 'Durchsucht sofort das Web, z. B. /suche wetter berlin' },
   { cmd: 'neu', alias: /^\/neu$/i, description: 'Startet ein frisches Gespräch (dauerhaftes Gedächtnis bleibt erhalten)' },
   {
@@ -807,6 +827,26 @@ async function createCalendarEvent(env, title, startIso) {
   if (!res.ok) throw new Error(`Google Kalender antwortete mit ${res.status}: ${await res.text()}`);
 }
 
+// Findet den nächsten anstehenden Termin, dessen Titel den Suchtext
+// enthält (z. B. "zahnarzt" findet "Zahnarzttermin"), und löscht ihn.
+// Sucht bewusst nur unter den nächsten Terminen (nicht der ganze
+// Kalender), damit z. B. "lösch den termin zahnarzt" nicht versehentlich
+// einen Termin von vor Monaten trifft.
+async function deleteCalendarEventByTitle(env, titleQuery) {
+  const events = await getUpcomingCalendarEvents(env);
+  const match = events.find((e) => (e.summary || '').toLowerCase().includes(titleQuery.toLowerCase()));
+  if (!match) throw new Error(`Ich habe keinen anstehenden Termin mit "${titleQuery}" im Titel gefunden.`);
+
+  const accessToken = await getGoogleAccessToken(env);
+  if (!accessToken) throw new Error("Google Kalender ist noch nicht verbunden. Öffne die JARVIS-App → Einstellungen → „Google Kalender verbinden\".");
+  const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${match.id}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok && res.status !== 410) throw new Error(`Google Kalender antwortete mit ${res.status}: ${await res.text()}`);
+  return match.summary || titleQuery;
+}
+
 async function handleCalendarDisconnect(request, env) {
   if (!env.JARVIS_KV) {
     return json({ error: 'Kein KV-Speicher an den Server gebunden.' }, 500);
@@ -1026,6 +1066,17 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
     return json({ ok: true });
   }
 
+  const deleteEventMatch = text.match(TELEGRAM_COMMANDS.find((c) => c.cmd === 'terminloeschen').alias);
+  if (deleteEventMatch) {
+    try {
+      const deletedTitle = await deleteCalendarEventByTitle(env, deleteEventMatch[1].trim());
+      await sendTelegramMessage(env, chatId, `🗑️ Termin "${deletedTitle}" wurde gelöscht.`);
+    } catch (err) {
+      await sendTelegramMessage(env, chatId, err.message || 'Ich konnte den Termin nicht löschen.');
+    }
+    return json({ ok: true });
+  }
+
   const searchMatch = text.match(TELEGRAM_COMMANDS.find((c) => c.cmd === 'suche').alias);
   if (searchMatch) {
     try {
@@ -1176,7 +1227,8 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
     `${SYSTEM_PROMPT} Du sprichst hier gerade über Telegram, nicht über die JARVIS-App — deshalb kannst du hier keine ` +
     'Anrufe/WhatsApp/Apps/Hue/Home-Connect auslösen, sondern nur in Worten antworten. Websuche steht dir hier ' +
     'trotzdem zur Verfügung, nutze sie wie gewohnt bei aktuellen oder unsicheren Fakten. Auch der Google Kalender des ' +
-    'Nutzers steht dir hier zur Verfügung (get_calendar_events zum Nachschauen, create_calendar_event zum Anlegen) — ' +
+    'Nutzers steht dir hier zur Verfügung (get_calendar_events zum Nachschauen, create_calendar_event zum Anlegen, ' +
+    'delete_calendar_event zum Löschen) — ' +
     `aktuelles Datum/Uhrzeit (UTC): ${new Date().toISOString()}, berechne relative Angaben wie "morgen" davon ausgehend. ` +
     'Jede deiner Antworten wird automatisch zusätzlich als gesprochene Sprachnachricht an den Nutzer geschickt — das ' +
     'übernimmt das System automatisch im Hintergrund, du musst (und kannst) dafür nichts extra tun oder ankündigen. ' +
@@ -1213,6 +1265,14 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
         replyText = `✅ Termin "${toolArgs.title}" wurde angelegt.`;
       } catch (err) {
         replyText = err.message || 'Ich konnte den Termin nicht anlegen.';
+      }
+    } else if (toolCall?.name === 'delete_calendar_event') {
+      try {
+        if (!toolArgs?.title) throw new Error('Titel fehlt, um den Termin zu löschen.');
+        const deletedTitle = await deleteCalendarEventByTitle(env, toolArgs.title);
+        replyText = `🗑️ Termin "${deletedTitle}" wurde gelöscht.`;
+      } catch (err) {
+        replyText = err.message || 'Ich konnte den Termin nicht löschen.';
       }
     } else {
       replyText = (data.response ?? data.result?.response ?? '').toString().trim();
