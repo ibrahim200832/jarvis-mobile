@@ -395,6 +395,11 @@ const TELEGRAM_COMMANDS = [
   { cmd: 'termin', alias: /^\/termin\s+(.+)$/i, description: 'Legt einen Kalendertermin an, z. B. /termin Zahnarzt morgen um 10 Uhr' },
   { cmd: 'suche', alias: /^\/suche\s+(.+)$/i, description: 'Durchsucht sofort das Web, z. B. /suche wetter berlin' },
   { cmd: 'neu', alias: /^\/neu$/i, description: 'Startet ein frisches Gespräch (dauerhaftes Gedächtnis bleibt erhalten)' },
+  {
+    cmd: 'reset',
+    alias: /^\/reset$/i,
+    description: 'Löscht Gesprächsverlauf UND dauerhaftes Gedächtnis komplett — nicht rückgängig machbar',
+  },
   { cmd: 'status', alias: /^\/status$/i, description: 'Zeigt, was verbunden ist (Kalender, Sprachausgabe)' },
   { cmd: 'witz', alias: /^\/witz$/i, description: 'Erzählt einen zufälligen Witz' },
   { cmd: 'nachrichten', alias: /^\/nachrichten$/i, description: 'Zeigt aktuelle Schlagzeilen' },
@@ -1043,6 +1048,17 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
   if (TELEGRAM_COMMANDS.find((c) => c.cmd === 'neu').alias.test(text.trim())) {
     if (env.JARVIS_KV) await env.JARVIS_KV.delete(`telegram_history_${chatId}`);
     await sendTelegramMessage(env, chatId, '🆕 Neues Gespräch gestartet. Dein dauerhaftes Gedächtnis bleibt natürlich erhalten.');
+    return json({ ok: true });
+  }
+
+  if (TELEGRAM_COMMANDS.find((c) => c.cmd === 'reset').alias.test(text.trim())) {
+    if (env.JARVIS_KV) await env.JARVIS_KV.delete(`telegram_history_${chatId}`);
+    await clearTelegramMemory(env);
+    await sendTelegramMessage(
+      env,
+      chatId,
+      '🔄 Alles zurückgesetzt: Gesprächsverlauf und dauerhaftes Gedächtnis sind komplett gelöscht — das lässt sich nicht rückgängig machen.',
+    );
     return json({ ok: true });
   }
 

@@ -5,6 +5,7 @@ wird beim Deploy automatisch in den "Update verfügbar"-Dialog der App
 übernommen (siehe `.github/workflows/deploy-web.yml`).
 
 ## Aktuell
+- Neu: `/reset` in Telegram löscht Gesprächsverlauf und dauerhaftes Gedächtnis komplett auf einen Schlag (nicht rückgängig machbar).
 - Neu: JARVIS' Telegram-Bot kann jetzt Nachrichten an andere Personen weiterleiten ("schick Mama: bin gleich da"), sobald diese dem Bot selbst schon mal geschrieben haben — echtes Kaltanschreiben ist bei Telegram-Bots aus Anti-Spam-Gründen nicht möglich.
 - Neu: JARVIS' Telegram-Bot antwortet jetzt automatisch mit einem passenden GIF, wenn man ihm einen Sticker oder ein GIF schickt (optional, kostenloser Tenor-API-Key nötig, siehe README).
 - Neu: Weckwort "Jarvis" (nur Android) — sag einfach "Jarvis", auch bei geschlossener App, und JARVIS hört automatisch zu, wie "Ok Google". Braucht einen kostenlosen Picovoice-AccessKey, siehe README.
