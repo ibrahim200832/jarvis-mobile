@@ -398,6 +398,11 @@ const TELEGRAM_COMMANDS = [
   { cmd: 'status', alias: /^\/status$/i, description: 'Zeigt, was verbunden ist (Kalender, Sprachausgabe)' },
   { cmd: 'witz', alias: /^\/witz$/i, description: 'Erzählt einen zufälligen Witz' },
   { cmd: 'nachrichten', alias: /^\/nachrichten$/i, description: 'Zeigt aktuelle Schlagzeilen' },
+  {
+    cmd: 'schick',
+    alias: /^\/schick\s+(\S+)\s*:\s*(.+)$/i,
+    description: 'Leitet eine Nachricht an eine Person weiter, die dem Bot schon mal geschrieben hat, z. B. /schick Mama: bin gleich da',
+  },
 ];
 
 // Gleiche lokale Witz-Sammlung wie lib/services/joke_service.dart (kein
@@ -921,7 +926,18 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
   reportChatId(chatId);
 
   const ownerChatId = await env.JARVIS_KV.get('telegram_owner_chat_id');
-  if (!ownerChatId || chatId !== ownerChatId) return json({ ok: true });
+  if (!ownerChatId || chatId !== ownerChatId) {
+    // Fremde bekommen weiterhin keine Antwort, aber Name+ChatId merken wir
+    // uns — das ist, was /schick später zum Weiterleiten braucht. Ein
+    // Bot darf laut Telegram nie zuerst schreiben, deshalb geht "echtes"
+    // Kaltanschreiben nicht; das hier funktioniert nur bei Personen, die
+    // dem Bot schon mal selbst geschrieben haben.
+    const contactName = message.chat.first_name || message.chat.username;
+    if (env.JARVIS_KV && contactName) {
+      await env.JARVIS_KV.put(`telegram_contact_${contactName.toLowerCase()}`, chatId);
+    }
+    return json({ ok: true });
+  }
 
   let text = message.text;
   const voice = message.voice || message.audio;
@@ -967,6 +983,25 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
   }
 
   if (!text) return json({ ok: true });
+
+  const forwardMatch =
+    text.match(/^(?:schick|schicke)\s+(\S+)\s*:\s*(.+)$/i) ||
+    text.match(TELEGRAM_COMMANDS.find((c) => c.cmd === 'schick').alias);
+  if (forwardMatch) {
+    const [, name, forwardText] = forwardMatch;
+    const contactChatId = env.JARVIS_KV ? await env.JARVIS_KV.get(`telegram_contact_${name.toLowerCase()}`) : null;
+    if (!contactChatId) {
+      await sendTelegramMessage(env, chatId, `Ich kenne "${name}" nicht — die Person muss dem Bot erst einmal selbst geschrieben haben.`);
+    } else {
+      try {
+        await sendTelegramMessage(env, contactChatId, forwardText.trim());
+        await sendTelegramMessage(env, chatId, `✅ An ${name} geschickt.`);
+      } catch (err) {
+        await sendTelegramMessage(env, chatId, err.message || `Konnte die Nachricht nicht an ${name} schicken.`);
+      }
+    }
+    return json({ ok: true });
+  }
 
   if (TELEGRAM_COMMANDS[0].alias.test(text.trim())) {
     const helpText = `🤖 Verfügbare Befehle:\n${TELEGRAM_COMMANDS.map((c) => `/${c.cmd} — ${c.description}`).join('\n')}`;
