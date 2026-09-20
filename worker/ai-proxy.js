@@ -1385,10 +1385,23 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
       const audioBytes = await synthesizeTelegramVoice(env, replyText);
       await sendTelegramAudio(env, chatId, audioBytes);
     } catch (err) {
-      // Bleibt kosmetisch (blockiert nie die Textantwort), aber landet
-      // sichtbar im Log, damit sich ein ElevenLabs-Problem diagnostizieren
-      // lässt (siehe Cloudflare → Observability → Logs).
+      // Bleibt kosmetisch für den Absender (blockiert nie die
+      // Textantwort), aber der Besitzer bekommt eine Meldung — sonst
+      // wirkt es wie ein Berechtigungsproblem bei anderen Nutzern, obwohl
+      // es z.B. am aufgebrauchten ElevenLabs-Kontingent liegen kann, das
+      // sich alle Nutzer teilen.
       console.error('ElevenLabs-Sprachnachricht fehlgeschlagen:', String(err));
+      if (ownerChatId && chatId !== ownerChatId) {
+        try {
+          await sendTelegramMessage(
+            env,
+            ownerChatId,
+            `⚠️ Sprachantwort für ${message.chat.first_name || message.chat.username || 'jemanden'} fehlgeschlagen: ${err.message || err}`
+          );
+        } catch (_) {
+          // Meldung ist ein Zusatz-Feature, darf den Ablauf nicht stören.
+        }
+      }
     }
   }
 
