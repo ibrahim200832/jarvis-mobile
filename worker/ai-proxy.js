@@ -431,7 +431,7 @@ const TELEGRAM_COMMANDS = [
   {
     cmd: 'gruppe',
     alias: /^\/gruppe$/i,
-    description: 'Schaltet diese Gruppe frei, damit ich hier antworte (nur vom Besitzer, in der Gruppe selbst nutzbar)',
+    description: 'Schaltet diese Gruppe frei, damit ich hier antworte (passiert inzwischen auch automatisch bei der ersten Nachricht)',
   },
 ];
 
@@ -992,21 +992,23 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
   const isGroupChat = message.chat.type === 'group' || message.chat.type === 'supergroup';
   const senderIsOwner = ownerChatId && String(message.from?.id) === ownerChatId;
 
-  // Gruppen-Freischaltung: Nur der Besitzer kann eine Gruppe freischalten,
-  // indem er "/gruppe" direkt in dieser Gruppe schickt (dafür muss der
-  // Bot in der Gruppe sein und BotFather → /setprivacy → Disable gesetzt
-  // sein, siehe README, sonst sieht der Bot normale Nachrichten in
-  // Gruppen gar nicht erst, nur Befehle).
-  if (isGroupChat && senderIsOwner && /^\/gruppe$/i.test((message.text || '').trim())) {
-    const groups = new Set(JSON.parse((await env.JARVIS_KV.get('telegram_authorized_groups')) || '[]'));
+  const authorizedGroups = isGroupChat ? JSON.parse((await env.JARVIS_KV.get('telegram_authorized_groups')) || '[]') : [];
+  const isAuthorizedGroup = isGroupChat && authorizedGroups.includes(chatId);
+
+  // Gruppen-Freischaltung: Genau wie bei privaten Chats (siehe unten
+  // "volle Freischaltung schon bei erster Nachricht") schaltet sich eine
+  // Gruppe automatisch frei, sobald der Bot dort überhaupt eine Nachricht
+  // zu sehen bekommt (z.B. "/gruppe", ein anderer Befehl, oder eine
+  // @Erwähnung) — ohne aktives BotFather → /setprivacy → Disable kämen
+  // sonst ohnehin nur Befehle/Erwähnungen beim Bot an, das ist also schon
+  // der Beweis, dass jemand ihn ansprechen wollte (siehe README).
+  if (isGroupChat && !isAuthorizedGroup) {
+    const groups = new Set(authorizedGroups);
     groups.add(chatId);
     await env.JARVIS_KV.put('telegram_authorized_groups', JSON.stringify([...groups]));
     await sendTelegramMessage(env, chatId, '✅ Diese Gruppe ist jetzt freigeschaltet. Ich antworte hier ab jetzt auf Nachrichten und Befehle.');
     return json({ ok: true });
   }
-
-  const authorizedGroups = isGroupChat ? JSON.parse((await env.JARVIS_KV.get('telegram_authorized_groups')) || '[]') : [];
-  const isAuthorizedGroup = isGroupChat && authorizedGroups.includes(chatId);
 
   const authorizedUsers = !isGroupChat ? JSON.parse((await env.JARVIS_KV.get('telegram_authorized_users')) || '[]') : [];
   let isAuthorizedUser = !isGroupChat && authorizedUsers.includes(chatId);
@@ -1033,13 +1035,6 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
       await sendTelegramMessage(env, chatId, 'Hi! Ich bin JARVIS. Schreib mir einfach ganz normal, ich helfe dir gerne weiter.');
       return json({ ok: true });
     }
-  }
-
-  // Private Chats sind ab hier immer entweder der Besitzer oder ein gerade
-  // (oben) freigeschalteter Nutzer — nur nicht freigeschaltete Gruppen
-  // werden noch ignoriert.
-  if (!isAuthorizedGroup && isGroupChat) {
-    return json({ ok: true });
   }
 
   let text = message.text;

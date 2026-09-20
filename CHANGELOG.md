@@ -5,6 +5,7 @@ wird beim Deploy automatisch in den "Update verfügbar"-Dialog der App
 übernommen (siehe `.github/workflows/deploy-web.yml`).
 
 ## Aktuell
+- Verbessert: Eine Telegram-Gruppe schaltet sich jetzt automatisch frei, sobald der Bot dort die erste Nachricht sieht (egal von wem) — der Besitzer muss nicht mehr selbst `/gruppe` schicken, das funktioniert aber weiterhin zusätzlich.
 - Neu: JARVIS schickt jetzt einmal pro Stunde automatisch eine Nachricht ("Bitte schreibt mich an, ich fühle mich allein.") an dich und alle freigeschalteten Telegram-Nutzer.
 - Verbessert: Sprachantworten werden jetzt bei ca. 300 Zeichen (am Satzende) gekürzt gesprochen, statt die volle Antwort vorzulesen — spart ElevenLabs-Kontingent, das sich alle Nutzer teilen. Die Textantwort bleibt immer vollständig.
 - Verbessert: Schlägt die Sprachantwort (ElevenLabs) bei einem anderen Nutzer fehl, bekommst du als Besitzer jetzt eine Warnung mit dem genauen Grund, statt dass es nur wie ein unerklärlicher Fehler bei "den anderen" wirkt (z. B. wenn das monatliche ElevenLabs-Kontingent aufgebraucht ist, das sich alle Nutzer teilen).
