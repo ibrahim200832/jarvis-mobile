@@ -1007,29 +1007,32 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
   const authorizedGroups = isGroupChat ? JSON.parse((await env.JARVIS_KV.get('telegram_authorized_groups')) || '[]') : [];
   const isAuthorizedGroup = isGroupChat && authorizedGroups.includes(chatId);
 
-  if (!isAuthorizedGroup && (!ownerChatId || chatId !== ownerChatId)) {
-    // Fremde (und nicht freigeschaltete Gruppen) bekommen weiterhin keine
-    // Antwort, aber Name+ChatId merken wir uns bei Einzelchats — das ist,
-    // was /schick später zum Weiterleiten braucht. Ein Bot darf laut
-    // Telegram nie zuerst schreiben, deshalb geht "echtes" Kaltanschreiben
-    // nicht; das hier funktioniert nur bei Personen, die dem Bot schon mal
-    // selbst geschrieben haben.
+  // "/start" schaltet JEDEN privaten Chat für die volle Bot-Funktion frei
+  // (genau wie beim Besitzer, inkl. Kalender/Anrufe/Smart-Home) — bewusste
+  // Nutzerentscheidung: jeder, der den Bot findet und anschreibt, kann ihn
+  // danach vollständig nutzen. Telegram schickt "/start" automatisch beim
+  // allerersten Kontakt mit dem Bot.
+  if (!isGroupChat && !senderIsOwner && /^\/start\b/i.test((message.text || '').trim())) {
+    const users = new Set(JSON.parse((await env.JARVIS_KV.get('telegram_authorized_users')) || '[]'));
+    users.add(chatId);
+    await env.JARVIS_KV.put('telegram_authorized_users', JSON.stringify([...users]));
+    await sendTelegramMessage(env, chatId, 'Hi! Ich bin JARVIS. Schreib mir einfach ganz normal, ich helfe dir gerne weiter.');
+    return json({ ok: true });
+  }
+
+  const authorizedUsers = !isGroupChat ? JSON.parse((await env.JARVIS_KV.get('telegram_authorized_users')) || '[]') : [];
+  const isAuthorizedUser = !isGroupChat && authorizedUsers.includes(chatId);
+
+  if (!isAuthorizedGroup && !isAuthorizedUser && (!ownerChatId || chatId !== ownerChatId)) {
+    // Noch nicht freigeschaltete Fremde (und nicht freigeschaltete Gruppen)
+    // bekommen weiterhin keine KI-Antwort, aber Name+ChatId merken wir uns
+    // bei Einzelchats — das ist, was /schick später zum Weiterleiten
+    // braucht. Ein Bot darf laut Telegram nie zuerst schreiben, deshalb
+    // geht "echtes" Kaltanschreiben nicht; das hier funktioniert nur bei
+    // Personen, die dem Bot schon mal selbst geschrieben haben.
     const contactName = message.chat.first_name || message.chat.username;
     if (env.JARVIS_KV && contactName && !isGroupChat) {
       await env.JARVIS_KV.put(`telegram_contact_${contactName.toLowerCase()}`, chatId);
-    }
-    // Neue Fremde, die den Bot per "/start" anschreiben (das schickt
-    // Telegram automatisch beim ersten Kontakt), bekommen einmalig eine
-    // Begrüßung statt gar keiner Antwort — sonst wirkt der Bot für sie
-    // kaputt. Danach bleibt es beim bisherigen Verhalten: keine KI-Antwort,
-    // nur Weiterleitung an den Besitzer.
-    if (!isGroupChat && /^\/start\b/i.test((message.text || '').trim())) {
-      await sendTelegramMessage(
-        env,
-        chatId,
-        'Hi! Ich bin JARVIS, der persönliche Assistent meines Besitzers — ich beantworte hier keine Nachrichten selbst, leite sie aber an ihn weiter.'
-      );
-      return json({ ok: true });
     }
     // Antworten bekannter Kontakte automatisch an den Besitzer weiterleiten
     // (Zwei-Wege-Vermittlung zu /schick) — der Kontakt selbst bekommt

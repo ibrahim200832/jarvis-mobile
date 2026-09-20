@@ -5,6 +5,7 @@ wird beim Deploy automatisch in den "Update verfügbar"-Dialog der App
 übernommen (siehe `.github/workflows/deploy-web.yml`).
 
 ## Aktuell
+- Neu: Schreibt jemand den Telegram-Bot zum ersten Mal an (`/start`), ist er ab sofort vollständig freigeschaltet — genau wie der Besitzer, inklusive Kalender, Anrufen und Smart Home. ⚠️ Wichtig: Das gibt jedem, der deinen Bot findet, vollen Zugriff, siehe README.
 - Fix: Schreibt eine neue Person den Telegram-Bot zum ersten Mal an (`/start`), bekommt sie jetzt eine kurze Begrüßung statt gar keiner Antwort.
 - Neu: Schreibt ein bekannter Kontakt dem Telegram-Bot zurück (nachdem du ihm über `/schick` etwas geschickt hast), bekommst du diese Antwort jetzt automatisch als Telegram-Nachricht weitergeleitet.
 - Neu: JARVIS' Telegram-Bot kann jetzt auch in einer Gruppe mitschreiben — Bot zur Gruppe hinzufügen, bei BotFather `/setprivacy` auf "Disable" stellen, dann als Besitzer `/gruppe` in der Gruppe schicken (siehe README).
