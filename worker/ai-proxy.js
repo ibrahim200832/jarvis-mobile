@@ -1265,8 +1265,24 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
     text.match(/^(?:merk(?:e)? dir|remember this|notiere dir)\s*:\s*(.+)$/i) ||
     text.match(TELEGRAM_COMMANDS.find((c) => c.cmd === 'merken').alias);
   if (rememberMatch) {
-    await addTelegramMemory(env, rememberMatch[1].trim());
-    await sendTelegramMessage(env, chatId, `🧠 Gemerkt: „${rememberMatch[1].trim()}"`);
+    const fact = rememberMatch[1].trim();
+    if (containsInsult(fact)) {
+      await sendTelegramMessage(env, chatId, 'Das speichere ich nicht.');
+      return json({ ok: true });
+    }
+    await addTelegramMemory(env, fact);
+    await sendTelegramMessage(env, chatId, `🧠 Gemerkt: „${fact}"`);
+    // Da das Gedächtnis geteilt ist (jeder freigeschaltete Nutzer nutzt
+    // dasselbe JARVIS-Gedächtnis), bekommt der Besitzer eine kurze
+    // Meldung, wenn jemand anderes JARVIS etwas beibringt.
+    if (ownerChatId && chatId !== ownerChatId) {
+      const contactName = message.chat.first_name || message.chat.username || 'Jemand';
+      try {
+        await sendTelegramMessage(env, ownerChatId, `🧠 ${contactName} hat JARVIS etwas beigebracht: „${fact}"`);
+      } catch (_) {
+        // Meldung ist ein Zusatz-Feature, darf den Ablauf nicht stören.
+      }
+    }
     return json({ ok: true });
   }
   if (
@@ -1423,6 +1439,21 @@ async function transcribeTelegramVoice(env, fileId) {
   const text = (result.text || '').trim();
   if (!text) throw new Error('Whisper hat keinen Text erkannt.');
   return text;
+}
+
+// Einfacher Grobfilter für "merk dir: ..." — verhindert, dass Beleidigungen
+// im (geteilten) dauerhaften Gedächtnis landen oder an den Besitzer
+// gemeldet werden. Kein Anspruch auf Vollständigkeit, nur eine grobe
+// Bremse gegen offensichtlichen Missbrauch.
+const INSULT_WORDS = [
+  'arschloch', 'wichser', 'hurensohn', 'hure', 'schlampe', 'fotze',
+  'missgeburt', 'behindert', 'spast', 'idiot', 'trottel', 'bastard',
+  'fuck', 'fucker', 'bitch', 'asshole', 'motherfucker', 'cunt', 'whore',
+  'retard', 'nigger', 'nazi',
+];
+function containsInsult(text) {
+  const normalized = text.toLowerCase();
+  return INSULT_WORDS.some((word) => normalized.includes(word));
 }
 
 const TELEGRAM_MEMORY_KEY = 'telegram_memory';
