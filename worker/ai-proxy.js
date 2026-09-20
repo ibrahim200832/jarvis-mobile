@@ -430,6 +430,16 @@ const TELEGRAM_COMMANDS = [
   },
 ];
 
+// Erkennt einen Bildbearbeitungswunsch — als eigener Text ("bearbeite das
+// bild: ...", "/bearbeiten ...") genauso wie als Bildunterschrift zu einem
+// gerade geschickten Foto.
+function matchEditRequest(text) {
+  return (
+    text.match(/^(?:bearbeite|editier(?:e)?|ändere)\s+(?:das\s+bild\s*[:,]?\s*)?(.+)$/i) ||
+    text.match(TELEGRAM_COMMANDS.find((c) => c.cmd === 'bearbeiten').alias)
+  );
+}
+
 // Gleiche lokale Witz-Sammlung wie lib/services/joke_service.dart (kein
 // Netzwerk/API-Schlüssel nötig, funktioniert immer).
 const TELEGRAM_JOKES = [
@@ -1006,6 +1016,23 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
     // ist, ohne dass der Nutzer es noch einmal mitschicken muss.
     await env.JARVIS_KV.put(`telegram_last_photo_${chatId}`, photo[photo.length - 1].file_id, { expirationTtl: 3600 });
   }
+  // Schickt der Nutzer ein Foto UND einen Bearbeitungswunsch in derselben
+  // Nachricht (als Bildunterschrift), soll das Foto direkt bearbeitet
+  // werden — nicht als Frage zum Bild missverstanden werden (das war der
+  // eigentliche Bug: eine Bildunterschrift ging bisher immer an die
+  // Bildbeschreibung, nie an die Bildbearbeitung).
+  const captionEditMatch = photo && photo.length > 0 && message.caption ? matchEditRequest(message.caption.trim()) : null;
+  if (captionEditMatch) {
+    try {
+      const photoBytes = await downloadTelegramFile(env, photo[photo.length - 1].file_id);
+      const editedBytes = await editTelegramImage(env, photoBytes, captionEditMatch[1].trim());
+      await sendTelegramPhoto(env, chatId, editedBytes, `🖌️ „${captionEditMatch[1].trim()}"`);
+    } catch (err) {
+      await sendTelegramMessage(env, chatId, err.message || 'Ich konnte das Bild leider nicht bearbeiten.');
+    }
+    return json({ ok: true });
+  }
+
   if (!text && photo && photo.length > 0) {
     try {
       text = await describeTelegramPhoto(env, photo[photo.length - 1].file_id, message.caption);
@@ -1157,15 +1184,13 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
     try {
       const imageBytes = await generateTelegramImage(env, imageMatch[1].trim());
       await sendTelegramPhoto(env, chatId, imageBytes, `🎨 „${imageMatch[1].trim()}"`);
-    } catch (_) {
-      await sendTelegramMessage(env, chatId, 'Ich konnte das Bild leider nicht erstellen.');
+    } catch (err) {
+      await sendTelegramMessage(env, chatId, err.message || 'Ich konnte das Bild leider nicht erstellen.');
     }
     return json({ ok: true });
   }
 
-  const editMatch =
-    text.match(/^(?:bearbeite|editier(?:e)?|ändere)\s+(?:das\s+bild\s*[:,]?\s*)?(.+)$/i) ||
-    text.match(TELEGRAM_COMMANDS.find((c) => c.cmd === 'bearbeiten').alias);
+  const editMatch = matchEditRequest(text);
   if (editMatch) {
     const lastPhotoFileId = env.JARVIS_KV ? await env.JARVIS_KV.get(`telegram_last_photo_${chatId}`) : null;
     if (!lastPhotoFileId) {
@@ -1176,8 +1201,8 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
       const photoBytes = await downloadTelegramFile(env, lastPhotoFileId);
       const editedBytes = await editTelegramImage(env, photoBytes, editMatch[1].trim());
       await sendTelegramPhoto(env, chatId, editedBytes, `🖌️ „${editMatch[1].trim()}"`);
-    } catch (_) {
-      await sendTelegramMessage(env, chatId, 'Ich konnte das Bild leider nicht bearbeiten.');
+    } catch (err) {
+      await sendTelegramMessage(env, chatId, err.message || 'Ich konnte das Bild leider nicht bearbeiten.');
     }
     return json({ ok: true });
   }
