@@ -1018,6 +1018,16 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
     if (env.JARVIS_KV && contactName && !isGroupChat) {
       await env.JARVIS_KV.put(`telegram_contact_${contactName.toLowerCase()}`, chatId);
     }
+    // Antworten bekannter Kontakte automatisch an den Besitzer weiterleiten
+    // (Zwei-Wege-Vermittlung zu /schick) — der Kontakt selbst bekommt
+    // weiterhin keine KI-Antwort, nur der Besitzer erfährt davon.
+    if (ownerChatId && !isGroupChat && message.text) {
+      try {
+        await sendTelegramMessage(env, ownerChatId, `📨 ${contactName || 'Jemand'} hat geschrieben: ${message.text}`);
+      } catch (_) {
+        // Weiterleitung ist ein Zusatz-Feature, darf den Ablauf nicht stören.
+      }
+    }
     return json({ ok: true });
   }
 
