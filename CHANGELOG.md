@@ -5,6 +5,7 @@ wird beim Deploy automatisch in den "Update verfügbar"-Dialog der App
 übernommen (siehe `.github/workflows/deploy-web.yml`).
 
 ## Aktuell
+- Neu: Schreibt ein bekannter Kontakt dem Telegram-Bot zurück (nachdem du ihm über `/schick` etwas geschickt hast), bekommst du diese Antwort jetzt automatisch als Telegram-Nachricht weitergeleitet.
 - Neu: JARVIS' Telegram-Bot kann jetzt auch in einer Gruppe mitschreiben — Bot zur Gruppe hinzufügen, bei BotFather `/setprivacy` auf "Disable" stellen, dann als Besitzer `/gruppe` in der Gruppe schicken (siehe README).
 - Fix: Schickte man ein Foto zusammen mit einem Bearbeitungswunsch als Bildunterschrift (statt in zwei Nachrichten), wertete der Bot das fälschlich nur als Frage zum Bild aus, statt es zu bearbeiten — funktioniert jetzt in einer Nachricht.
 - Neu: JARVIS' Telegram-Bot kann jetzt auch Kalendertermine löschen ("lösch den termin zahnarzt" oder `/terminloeschen zahnarzt`), gefunden über einen Teil des Titels.
