@@ -428,6 +428,11 @@ const TELEGRAM_COMMANDS = [
     alias: /^\/schick\s+(\S+)\s*:\s*(.+)$/i,
     description: 'Leitet eine Nachricht an eine Person weiter, die dem Bot schon mal geschrieben hat, z. B. /schick Mama: bin gleich da',
   },
+  {
+    cmd: 'gruppe',
+    alias: /^\/gruppe$/i,
+    description: 'Schaltet diese Gruppe frei, damit ich hier antworte (nur vom Besitzer, in der Gruppe selbst nutzbar)',
+  },
 ];
 
 // Erkennt einen Bildbearbeitungswunsch — als eigener Text ("bearbeite das
@@ -983,14 +988,34 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
   reportChatId(chatId);
 
   const ownerChatId = await env.JARVIS_KV.get('telegram_owner_chat_id');
-  if (!ownerChatId || chatId !== ownerChatId) {
-    // Fremde bekommen weiterhin keine Antwort, aber Name+ChatId merken wir
-    // uns — das ist, was /schick später zum Weiterleiten braucht. Ein
-    // Bot darf laut Telegram nie zuerst schreiben, deshalb geht "echtes"
-    // Kaltanschreiben nicht; das hier funktioniert nur bei Personen, die
-    // dem Bot schon mal selbst geschrieben haben.
+  const isGroupChat = message.chat.type === 'group' || message.chat.type === 'supergroup';
+  const senderIsOwner = ownerChatId && String(message.from?.id) === ownerChatId;
+
+  // Gruppen-Freischaltung: Nur der Besitzer kann eine Gruppe freischalten,
+  // indem er "/gruppe" direkt in dieser Gruppe schickt (dafür muss der
+  // Bot in der Gruppe sein und BotFather → /setprivacy → Disable gesetzt
+  // sein, siehe README, sonst sieht der Bot normale Nachrichten in
+  // Gruppen gar nicht erst, nur Befehle).
+  if (isGroupChat && senderIsOwner && /^\/gruppe$/i.test((message.text || '').trim())) {
+    const groups = new Set(JSON.parse((await env.JARVIS_KV.get('telegram_authorized_groups')) || '[]'));
+    groups.add(chatId);
+    await env.JARVIS_KV.put('telegram_authorized_groups', JSON.stringify([...groups]));
+    await sendTelegramMessage(env, chatId, '✅ Diese Gruppe ist jetzt freigeschaltet. Ich antworte hier ab jetzt auf Nachrichten und Befehle.');
+    return json({ ok: true });
+  }
+
+  const authorizedGroups = isGroupChat ? JSON.parse((await env.JARVIS_KV.get('telegram_authorized_groups')) || '[]') : [];
+  const isAuthorizedGroup = isGroupChat && authorizedGroups.includes(chatId);
+
+  if (!isAuthorizedGroup && (!ownerChatId || chatId !== ownerChatId)) {
+    // Fremde (und nicht freigeschaltete Gruppen) bekommen weiterhin keine
+    // Antwort, aber Name+ChatId merken wir uns bei Einzelchats — das ist,
+    // was /schick später zum Weiterleiten braucht. Ein Bot darf laut
+    // Telegram nie zuerst schreiben, deshalb geht "echtes" Kaltanschreiben
+    // nicht; das hier funktioniert nur bei Personen, die dem Bot schon mal
+    // selbst geschrieben haben.
     const contactName = message.chat.first_name || message.chat.username;
-    if (env.JARVIS_KV && contactName) {
+    if (env.JARVIS_KV && contactName && !isGroupChat) {
       await env.JARVIS_KV.put(`telegram_contact_${contactName.toLowerCase()}`, chatId);
     }
     return json({ ok: true });
