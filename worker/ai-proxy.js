@@ -1006,8 +1006,21 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
     const groups = new Set(authorizedGroups);
     groups.add(chatId);
     await env.JARVIS_KV.put('telegram_authorized_groups', JSON.stringify([...groups]));
-    await sendTelegramMessage(env, chatId, '✅ Diese Gruppe ist jetzt freigeschaltet. Ich antworte hier ab jetzt auf Nachrichten und Befehle.');
+    await sendTelegramMessage(env, chatId, '✅ Diese Gruppe ist jetzt freigeschaltet. Ich antworte hier ab jetzt, wenn du mich mit @Erwähnung ansprichst.');
     return json({ ok: true });
+  }
+
+  // In einer freigeschalteten Gruppe soll der Bot NICHT auf jede Nachricht
+  // antworten (sonst mischt er sich in jedes Gespräch ein) — nur wenn er
+  // per @Erwähnung direkt angesprochen oder auf seine eigene Nachricht
+  // geantwortet wird. Private Chats sind davon nicht betroffen.
+  if (isGroupChat) {
+    const botInfo = await getTelegramBotInfo(env);
+    const mentionsBot = botInfo?.username && (message.text || '').toLowerCase().includes(`@${botInfo.username.toLowerCase()}`);
+    const repliesToBot = botInfo?.id && message.reply_to_message?.from?.id === botInfo.id;
+    if (!mentionsBot && !repliesToBot) {
+      return json({ ok: true });
+    }
   }
 
   const authorizedUsers = !isGroupChat ? JSON.parse((await env.JARVIS_KV.get('telegram_authorized_users')) || '[]') : [];
@@ -1526,6 +1539,22 @@ async function reactToTelegramMessage(env, chatId, messageId, emoji) {
   if (!res.ok) {
     throw new Error(`setMessageReaction antwortete mit ${res.status}: ${await res.text()}`);
   }
+}
+
+// Holt die eigene Bot-ID/den eigenen Usernamen (für die @Erwähnungs-Prüfung
+// in Gruppen) per Telegram-getMe und cacht sie in KV (ändert sich praktisch
+// nie), damit nicht bei jeder Nachricht ein zusätzlicher API-Aufruf nötig ist.
+async function getTelegramBotInfo(env) {
+  if (!env.JARVIS_KV) return null;
+  const cached = await env.JARVIS_KV.get('telegram_bot_info');
+  if (cached) return JSON.parse(cached);
+  const res = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/getMe`);
+  if (!res.ok) return null;
+  const data = await res.json();
+  if (!data.ok) return null;
+  const info = { id: data.result.id, username: data.result.username };
+  await env.JARVIS_KV.put('telegram_bot_info', JSON.stringify(info));
+  return info;
 }
 
 async function sendTelegramMessage(env, chatId, message) {
