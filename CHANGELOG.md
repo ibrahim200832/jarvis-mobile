@@ -5,6 +5,7 @@ wird beim Deploy automatisch in den "Update verfügbar"-Dialog der App
 übernommen (siehe `.github/workflows/deploy-web.yml`).
 
 ## Aktuell
+- Verbessert: Schlägt die Sprachantwort (ElevenLabs) bei einem anderen Nutzer fehl, bekommst du als Besitzer jetzt eine Warnung mit dem genauen Grund, statt dass es nur wie ein unerklärlicher Fehler bei "den anderen" wirkt (z. B. wenn das monatliche ElevenLabs-Kontingent aufgebraucht ist, das sich alle Nutzer teilen).
 - Neu: Bringt ein anderer freigeschalteter Telegram-Nutzer JARVIS über "merk dir: ..." etwas bei, bekommst du als Besitzer jetzt eine kurze Meldung darüber (Beleidigungen werden dabei weder gespeichert noch gemeldet, sondern herausgefiltert).
 - Fix: Websuche-Ergebnisse zeigten manchmal rohe HTML-Codes wie `&#x27;` statt eines Apostrophs in JARVIS' Antwort — wird jetzt korrekt umgewandelt.
 - Verbessert: Die volle Freischaltung für neue Telegram-Nutzer greift jetzt schon bei der allerersten Nachricht (egal ob `/start`, Text oder direkt eine Sprachnachricht), nicht mehr nur bei `/start` — inklusive Sprachnachrichten senden/empfangen mit derselben vollen Funktion wie beim Besitzer.
