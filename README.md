@@ -273,7 +273,7 @@ Zusätzlich gibt es ein **dauerhaftes Gedächtnis** (kein Zeitlimit, anders als 
 Der Bot kann außerdem mit **Bildern** umgehen, komplett über die gleiche kostenlose Cloudflare-KI (keine Weitergabe an Drittanbieter wie die Websuche):
 - **Fotos ansehen**: Schick dem Bot ein Foto (mit oder ohne Bildunterschrift/Frage dazu) — er beschreibt bzw. beantwortet es auf Deutsch.
 - **Bilder erstellen**: Sag z. B. „erstelle mir ein bild von einer katze im weltraum" oder „mal mir einen sonnenuntergang" — der Bot generiert ein passendes Bild und schickt es zurück.
-- **Bilder bearbeiten**: Schick zuerst ein Foto, dann sag z. B. „bearbeite das bild: mach den himmel rot" — der Bot merkt sich das zuletzt geschickte Foto eine Stunde lang und schickt eine bearbeitete Version zurück.
+- **Bilder bearbeiten**: Entweder ein Foto schicken und danach separat „bearbeite das bild: mach den himmel rot" sagen (der Bot merkt sich das zuletzt geschickte Foto eine Stunde lang), oder gleich **in einer Nachricht** ein Foto mit „bearbeite das bild: ..." als Bildunterschrift schicken — beides funktioniert.
 
 #### GIF-Antworten einrichten (optional)
 

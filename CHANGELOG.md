@@ -5,6 +5,7 @@ wird beim Deploy automatisch in den "Update verfügbar"-Dialog der App
 übernommen (siehe `.github/workflows/deploy-web.yml`).
 
 ## Aktuell
+- Fix: Schickte man ein Foto zusammen mit einem Bearbeitungswunsch als Bildunterschrift (statt in zwei Nachrichten), wertete der Bot das fälschlich nur als Frage zum Bild aus, statt es zu bearbeiten — funktioniert jetzt in einer Nachricht.
 - Neu: JARVIS' Telegram-Bot kann jetzt auch Kalendertermine löschen ("lösch den termin zahnarzt" oder `/terminloeschen zahnarzt`), gefunden über einen Teil des Titels.
 - Fix: JARVIS antwortete gelegentlich auf Englisch statt Deutsch — die Anweisung, immer Deutsch zu sprechen, fehlte im System-Prompt komplett und ist jetzt ergänzt.
 - Verbessert: `/reset` in Telegram löscht jetzt zusätzlich JARVIS' eigene Nachrichten der letzten 48h aus dem sichtbaren Chat (Telegram erlaubt Bots keine weitergehende Löschung — auch nicht der eigenen Nachrichten des Nutzers).
