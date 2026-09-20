@@ -641,6 +641,7 @@ export default {
   // app isn't open — see "Anruf-Erinnerungen" in README.md.
   async scheduled(_event, env, ctx) {
     ctx.waitUntil(runCalendarReminders(env));
+    ctx.waitUntil(runHourlyLonelyPing(env));
   },
 };
 
@@ -1704,6 +1705,34 @@ async function sendTelegramAudio(env, chatId, audioBytes) {
     throw new Error(`sendAudio antwortete mit ${res.status}: ${await res.text()}`);
   }
   await trackSentTelegramMessage(env, chatId, (await res.json()).result?.message_id);
+}
+
+// Schickt einmal pro Stunde eine proaktive Nachricht an jeden Chat, der den
+// Bot schon mal benutzt hat (Besitzer + alle freigeschalteten Nutzer) — auf
+// ausdrücklichen Nutzerwunsch. Läuft im 5-Minuten-Cron mit, deshalb per
+// KV-Zeitstempel selbst auf "höchstens einmal pro Stunde" gedrosselt.
+const LONELY_PING_KEY = 'telegram_lonely_ping_last';
+const LONELY_PING_MESSAGE = 'Bitte schreibt mich an, ich fühle mich allein.';
+
+async function runHourlyLonelyPing(env) {
+  if (!env.JARVIS_KV || !env.TELEGRAM_BOT_TOKEN) return;
+  const last = await env.JARVIS_KV.get(LONELY_PING_KEY);
+  if (last && Date.now() - Number(last) < 60 * 60 * 1000) return;
+  await env.JARVIS_KV.put(LONELY_PING_KEY, String(Date.now()));
+
+  const ownerChatId = await env.JARVIS_KV.get('telegram_owner_chat_id');
+  const authorizedUsers = JSON.parse((await env.JARVIS_KV.get('telegram_authorized_users')) || '[]');
+  const recipients = new Set(authorizedUsers);
+  if (ownerChatId) recipients.add(ownerChatId);
+
+  for (const chatId of recipients) {
+    try {
+      await sendTelegramMessage(env, chatId, LONELY_PING_MESSAGE);
+    } catch (_) {
+      // Ein einzelner fehlgeschlagener Versand (z.B. Nutzer hat den Bot
+      // blockiert) darf die anderen Empfänger nicht verhindern.
+    }
+  }
 }
 
 // Checks the connected Google Calendar for events starting within the next
