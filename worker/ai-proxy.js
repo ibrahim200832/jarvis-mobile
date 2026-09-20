@@ -1031,10 +1031,18 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
     if (env.JARVIS_KV && contactName) {
       await env.JARVIS_KV.put(`telegram_contact_${contactName.toLowerCase()}`, chatId);
     }
-    if (/^\/start\b/i.test((message.text || '').trim())) {
-      await sendTelegramMessage(env, chatId, 'Hi! Ich bin JARVIS. Schreib mir einfach ganz normal, ich helfe dir gerne weiter.');
-      return json({ ok: true });
-    }
+  }
+
+  // "/start" ist Telegrams technischer Handshake-Befehl, kein echter
+  // Chat-Inhalt — bei bereits freigeschalteten Nutzern rutschte er bisher
+  // ungefiltert in die KI-Konversation und führte dort zu bizarren
+  // Antworten (z.B. eine zufällige Websuche zu "Schick", weil das Modell
+  // mit dem leeren/unklaren Befehl nichts anfangen konnte). Deshalb wird
+  // "/start" hier immer abgefangen, egal ob Gruppe oder bereits
+  // freigeschalteter privater Chat, auch direkt nach der Erstfreischaltung.
+  if (!isGroupChat && /^\/start\b/i.test((message.text || '').trim())) {
+    await sendTelegramMessage(env, chatId, 'Hi! Ich bin JARVIS. Schreib mir einfach ganz normal, ich helfe dir gerne weiter.');
+    return json({ ok: true });
   }
 
   let text = message.text;

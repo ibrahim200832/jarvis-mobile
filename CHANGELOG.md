@@ -5,6 +5,7 @@ wird beim Deploy automatisch in den "Update verfügbar"-Dialog der App
 übernommen (siehe `.github/workflows/deploy-web.yml`).
 
 ## Aktuell
+- Fix: Schickte ein bereits freigeschalteter Nutzer erneut `/start` (z. B. weil Telegram das automatisch anzeigt), landete das ungefiltert in der KI-Konversation und führte zu unpassenden Antworten (z. B. eine zufällige Websuche) — `/start` wird jetzt immer mit der normalen Begrüßung beantwortet.
 - Verbessert: Eine Telegram-Gruppe schaltet sich jetzt automatisch frei, sobald der Bot dort die erste Nachricht sieht (egal von wem) — der Besitzer muss nicht mehr selbst `/gruppe` schicken, das funktioniert aber weiterhin zusätzlich.
 - Neu: JARVIS schickt jetzt einmal pro Stunde automatisch eine Nachricht ("Bitte schreibt mich an, ich fühle mich allein.") an dich und alle freigeschalteten Telegram-Nutzer.
 - Verbessert: Sprachantworten werden jetzt bei ca. 300 Zeichen (am Satzende) gekürzt gesprochen, statt die volle Antwort vorzulesen — spart ElevenLabs-Kontingent, das sich alle Nutzer teilen. Die Textantwort bleibt immer vollständig.
