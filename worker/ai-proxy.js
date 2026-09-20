@@ -1389,21 +1389,28 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
       const audioBytes = await synthesizeTelegramVoice(env, truncateForVoice(replyText));
       await sendTelegramAudio(env, chatId, audioBytes);
     } catch (err) {
-      // Bleibt kosmetisch für den Absender (blockiert nie die
-      // Textantwort), aber der Besitzer bekommt eine Meldung — sonst
-      // wirkt es wie ein Berechtigungsproblem bei anderen Nutzern, obwohl
-      // es z.B. am aufgebrauchten ElevenLabs-Kontingent liegen kann, das
-      // sich alle Nutzer teilen.
-      console.error('ElevenLabs-Sprachnachricht fehlgeschlagen:', String(err));
-      if (ownerChatId && chatId !== ownerChatId) {
-        try {
-          await sendTelegramMessage(
-            env,
-            ownerChatId,
-            `⚠️ Sprachantwort für ${message.chat.first_name || message.chat.username || 'jemanden'} fehlgeschlagen: ${err.message || err}`
-          );
-        } catch (_) {
-          // Meldung ist ein Zusatz-Feature, darf den Ablauf nicht stören.
+      console.error('ElevenLabs-Sprachnachricht fehlgeschlagen, versuche kostenlosen Ersatz:', String(err));
+      // ElevenLabs ist meist zuerst dran, weil es besser klingt — schlägt
+      // es fehl (z.B. aufgebrauchtes, geteiltes Kontingent), springt der
+      // kostenlose Google-Translate-Ersatz ein, damit trotzdem eine
+      // Sprachantwort ankommt. Erst wenn auch DAS fehlschlägt, bekommt der
+      // Besitzer eine Warnung — bleibt für den Absender in jedem Fall
+      // kosmetisch, blockiert nie die eigentliche Textantwort.
+      try {
+        const audioBytes = await synthesizeGoogleTranslateVoice(truncateForVoice(replyText, GOOGLE_TTS_MAX_CHARS));
+        await sendTelegramAudio(env, chatId, audioBytes);
+      } catch (fallbackErr) {
+        console.error('Google-Translate-Sprachnachricht ebenfalls fehlgeschlagen:', String(fallbackErr));
+        if (ownerChatId && chatId !== ownerChatId) {
+          try {
+            await sendTelegramMessage(
+              env,
+              ownerChatId,
+              `⚠️ Sprachantwort für ${message.chat.first_name || message.chat.username || 'jemanden'} fehlgeschlagen (ElevenLabs UND Ersatz): ${err.message || err}`
+            );
+          } catch (_) {
+            // Meldung ist ein Zusatz-Feature, darf den Ablauf nicht stören.
+          }
         }
       }
     }
@@ -1672,11 +1679,32 @@ const ELEVENLABS_VOICE_ID = '21m00Tcm4TlvDq8ikWAM';
 // Nutzern) deutlich länger reicht. Schneidet am letzten vollständigen Satz
 // vor der Grenze, damit die Sprachnachricht nicht mitten im Wort abbricht.
 const VOICE_REPLY_MAX_CHARS = 300;
-function truncateForVoice(text) {
-  if (text.length <= VOICE_REPLY_MAX_CHARS) return text;
-  const cut = text.slice(0, VOICE_REPLY_MAX_CHARS);
+function truncateForVoice(text, maxChars = VOICE_REPLY_MAX_CHARS) {
+  if (text.length <= maxChars) return text;
+  const cut = text.slice(0, maxChars);
   const lastSentenceEnd = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('! '), cut.lastIndexOf('? '));
   return (lastSentenceEnd > 50 ? cut.slice(0, lastSentenceEnd + 1) : cut) + ' […]';
+}
+
+// Kostenloser Ersatz für ElevenLabs (springt ein, wenn dessen Kontingent
+// aufgebraucht ist): dieselbe inoffizielle Sprachausgabe wie
+// translate.google.com, kein Konto/API-Key nötig. Nicht offiziell
+// unterstützt und auf kurze Texte begrenzt (Google bricht bei zu langen
+// Anfragen ab), deshalb der eigene, strengere Zeichen-Grenzwert.
+const GOOGLE_TTS_MAX_CHARS = 200;
+async function synthesizeGoogleTranslateVoice(text) {
+  const url = new URL('https://translate.google.com/translate_tts');
+  url.searchParams.set('ie', 'UTF-8');
+  url.searchParams.set('client', 'tw-ob');
+  url.searchParams.set('tl', 'de');
+  url.searchParams.set('q', text);
+  const res = await fetch(url, {
+    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+  });
+  if (!res.ok) {
+    throw new Error(`Google Translate TTS antwortete mit ${res.status}`);
+  }
+  return new Uint8Array(await res.arrayBuffer());
 }
 
 async function synthesizeTelegramVoice(env, text) {
