@@ -1007,43 +1007,37 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
   const authorizedGroups = isGroupChat ? JSON.parse((await env.JARVIS_KV.get('telegram_authorized_groups')) || '[]') : [];
   const isAuthorizedGroup = isGroupChat && authorizedGroups.includes(chatId);
 
-  // "/start" schaltet JEDEN privaten Chat für die volle Bot-Funktion frei
-  // (genau wie beim Besitzer, inkl. Kalender/Anrufe/Smart-Home) — bewusste
+  const authorizedUsers = !isGroupChat ? JSON.parse((await env.JARVIS_KV.get('telegram_authorized_users')) || '[]') : [];
+  let isAuthorizedUser = !isGroupChat && authorizedUsers.includes(chatId);
+
+  // JEDER private Chat wird beim allerersten Kontakt für die volle
+  // Bot-Funktion freigeschaltet — genau wie beim Besitzer, inklusive
+  // Kalender/Anrufe/Smart-Home — egal ob die erste Nachricht "/start",
+  // normaler Text oder direkt eine Sprachnachricht ist. Bewusste
   // Nutzerentscheidung: jeder, der den Bot findet und anschreibt, kann ihn
-  // danach vollständig nutzen. Telegram schickt "/start" automatisch beim
-  // allerersten Kontakt mit dem Bot.
-  if (!isGroupChat && !senderIsOwner && /^\/start\b/i.test((message.text || '').trim())) {
-    const users = new Set(JSON.parse((await env.JARVIS_KV.get('telegram_authorized_users')) || '[]'));
+  // sofort vollständig nutzen, ohne vorher extra "/start" schicken zu
+  // müssen.
+  if (!isGroupChat && !senderIsOwner && !isAuthorizedUser) {
+    const users = new Set(authorizedUsers);
     users.add(chatId);
     await env.JARVIS_KV.put('telegram_authorized_users', JSON.stringify([...users]));
-    await sendTelegramMessage(env, chatId, 'Hi! Ich bin JARVIS. Schreib mir einfach ganz normal, ich helfe dir gerne weiter.');
-    return json({ ok: true });
-  }
-
-  const authorizedUsers = !isGroupChat ? JSON.parse((await env.JARVIS_KV.get('telegram_authorized_users')) || '[]') : [];
-  const isAuthorizedUser = !isGroupChat && authorizedUsers.includes(chatId);
-
-  if (!isAuthorizedGroup && !isAuthorizedUser && (!ownerChatId || chatId !== ownerChatId)) {
-    // Noch nicht freigeschaltete Fremde (und nicht freigeschaltete Gruppen)
-    // bekommen weiterhin keine KI-Antwort, aber Name+ChatId merken wir uns
-    // bei Einzelchats — das ist, was /schick später zum Weiterleiten
-    // braucht. Ein Bot darf laut Telegram nie zuerst schreiben, deshalb
-    // geht "echtes" Kaltanschreiben nicht; das hier funktioniert nur bei
-    // Personen, die dem Bot schon mal selbst geschrieben haben.
+    isAuthorizedUser = true;
+    // Namen weiterhin merken, damit /schick diese Person auch weiterhin
+    // per Namen finden kann.
     const contactName = message.chat.first_name || message.chat.username;
-    if (env.JARVIS_KV && contactName && !isGroupChat) {
+    if (env.JARVIS_KV && contactName) {
       await env.JARVIS_KV.put(`telegram_contact_${contactName.toLowerCase()}`, chatId);
     }
-    // Antworten bekannter Kontakte automatisch an den Besitzer weiterleiten
-    // (Zwei-Wege-Vermittlung zu /schick) — der Kontakt selbst bekommt
-    // weiterhin keine KI-Antwort, nur der Besitzer erfährt davon.
-    if (ownerChatId && !isGroupChat && message.text) {
-      try {
-        await sendTelegramMessage(env, ownerChatId, `📨 ${contactName || 'Jemand'} hat geschrieben: ${message.text}`);
-      } catch (_) {
-        // Weiterleitung ist ein Zusatz-Feature, darf den Ablauf nicht stören.
-      }
+    if (/^\/start\b/i.test((message.text || '').trim())) {
+      await sendTelegramMessage(env, chatId, 'Hi! Ich bin JARVIS. Schreib mir einfach ganz normal, ich helfe dir gerne weiter.');
+      return json({ ok: true });
     }
+  }
+
+  // Private Chats sind ab hier immer entweder der Besitzer oder ein gerade
+  // (oben) freigeschalteter Nutzer — nur nicht freigeschaltete Gruppen
+  // werden noch ignoriert.
+  if (!isAuthorizedGroup && isGroupChat) {
     return json({ ok: true });
   }
 
