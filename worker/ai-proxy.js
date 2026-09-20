@@ -1018,6 +1018,19 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
     if (env.JARVIS_KV && contactName && !isGroupChat) {
       await env.JARVIS_KV.put(`telegram_contact_${contactName.toLowerCase()}`, chatId);
     }
+    // Neue Fremde, die den Bot per "/start" anschreiben (das schickt
+    // Telegram automatisch beim ersten Kontakt), bekommen einmalig eine
+    // Begrüßung statt gar keiner Antwort — sonst wirkt der Bot für sie
+    // kaputt. Danach bleibt es beim bisherigen Verhalten: keine KI-Antwort,
+    // nur Weiterleitung an den Besitzer.
+    if (!isGroupChat && /^\/start\b/i.test((message.text || '').trim())) {
+      await sendTelegramMessage(
+        env,
+        chatId,
+        'Hi! Ich bin JARVIS, der persönliche Assistent meines Besitzers — ich beantworte hier keine Nachrichten selbst, leite sie aber an ihn weiter.'
+      );
+      return json({ ok: true });
+    }
     // Antworten bekannter Kontakte automatisch an den Besitzer weiterleiten
     // (Zwei-Wege-Vermittlung zu /schick) — der Kontakt selbst bekommt
     // weiterhin keine KI-Antwort, nur der Besitzer erfährt davon.
