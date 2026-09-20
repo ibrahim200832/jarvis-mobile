@@ -1743,6 +1743,22 @@ function runModel(env, messages, tools) {
 // instead of shipping it inside the app, where anyone could extract it from
 // the APK/web bundle and drain the quota. Shared by the app's /search
 // endpoint and the Telegram bot's own search_web tool call.
+// Brave liefert Titel/Beschreibung HTML-kodiert (z.B. "&#x27;" für "'",
+// dazu <strong>-Tags um Treffer) — muss dekodiert werden, sonst landen
+// rohe HTML-Escapes wie "&#x27;" sichtbar in JARVIS' Antworten.
+function decodeHtmlEntities(str) {
+  return str
+    .replace(/<[^>]*>/g, '')
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)))
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&nbsp;/g, ' ');
+}
+
 async function braveSearch(query, env) {
   if (!env.BRAVE_API_KEY) {
     throw new Error('Kein Brave-Schlüssel auf dem Server hinterlegt.');
@@ -1759,8 +1775,8 @@ async function braveSearch(query, env) {
   }
   const data = await res.json();
   return (data.web?.results ?? []).slice(0, 3).map((r) => ({
-    title: r.title ?? '',
-    description: (r.description ?? '').replace(/<[^>]*>/g, ''), // Brave highlights matches with <strong> tags
+    title: decodeHtmlEntities(r.title ?? ''),
+    description: decodeHtmlEntities(r.description ?? ''),
   }));
 }
 
