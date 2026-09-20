@@ -1382,7 +1382,7 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
   // Textantwort nie aufhalten oder abbrechen.
   if (env.ELEVENLABS_API_KEY) {
     try {
-      const audioBytes = await synthesizeTelegramVoice(env, replyText);
+      const audioBytes = await synthesizeTelegramVoice(env, truncateForVoice(replyText));
       await sendTelegramAudio(env, chatId, audioBytes);
     } catch (err) {
       // Bleibt kosmetisch für den Absender (blockiert nie die
@@ -1662,6 +1662,18 @@ async function searchAndSendTenorGif(env, chatId, query) {
 // premade voice, available on every account, speaks German fine with the
 // multilingual model.
 const ELEVENLABS_VOICE_ID = '21m00Tcm4TlvDq8ikWAM';
+
+// Kürzt lange Antworten für die Sprachnachricht (nicht für den Text!), damit
+// das ElevenLabs-Kontingent (pro Zeichen abgerechnet, geteilt zwischen allen
+// Nutzern) deutlich länger reicht. Schneidet am letzten vollständigen Satz
+// vor der Grenze, damit die Sprachnachricht nicht mitten im Wort abbricht.
+const VOICE_REPLY_MAX_CHARS = 300;
+function truncateForVoice(text) {
+  if (text.length <= VOICE_REPLY_MAX_CHARS) return text;
+  const cut = text.slice(0, VOICE_REPLY_MAX_CHARS);
+  const lastSentenceEnd = Math.max(cut.lastIndexOf('. '), cut.lastIndexOf('! '), cut.lastIndexOf('? '));
+  return (lastSentenceEnd > 50 ? cut.slice(0, lastSentenceEnd + 1) : cut) + ' […]';
+}
 
 async function synthesizeTelegramVoice(env, text) {
   const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${env.ELEVENLABS_VOICE_ID || ELEVENLABS_VOICE_ID}`, {
