@@ -5,6 +5,7 @@ wird beim Deploy automatisch in den "Update verfügbar"-Dialog der App
 übernommen (siehe `.github/workflows/deploy-web.yml`).
 
 ## Aktuell
+- Neu: Websuche-Ergebnisse in Telegram (egal ob `/suche`, `/nachrichten` oder normale Frage, für dich und alle anderen Nutzer gleichermaßen) werden jetzt gefiltert — jugendgefährdende/explizite Inhalte über Braves eigenen Sicherheitsfilter, dazu ein zusätzlicher Grobfilter gegen Glücksspiel-/Wett-Links.
 - Fix: `/suche` und `/nachrichten` schickten noch keinen Link zur Quelle mit — der Link-Zusatz aus dem letzten Update griff nur bei der Websuche im normalen Gespräch, nicht bei diesen beiden eigenen Befehlen. Jetzt überall dabei.
 - Fix: Slash-Befehle (z. B. `/suche`, `/termine`, `/hilfe`) funktionierten in Telegram-Gruppen nicht mehr, wenn der Bot nicht extra per `@Erwähnung` angesprochen wurde — Befehle gelten jetzt auch ohne Erwähnung als direkte Ansprache.
 - Neu: Löst eine Frage in Telegram eine Websuche aus, schickt JARVIS jetzt auch den Link zur Quelle mit, nicht nur die Beschreibung.
