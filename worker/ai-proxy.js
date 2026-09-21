@@ -1184,7 +1184,9 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
   if (searchMatch) {
     try {
       const results = await braveSearch(searchMatch[1].trim(), env);
-      const reply = results.length > 0 ? results.slice(0, 2).map((r) => r.description).join(' ') : 'Ich konnte dazu nichts im Web finden.';
+      const reply = results.length > 0
+        ? results.slice(0, 2).map((r) => `${r.description}${r.url ? ` (${r.url})` : ''}`).join('\n')
+        : 'Ich konnte dazu nichts im Web finden.';
       await sendTelegramMessage(env, chatId, reply);
     } catch (err) {
       await sendTelegramMessage(env, chatId, err.message || 'Die Websuche ist fehlgeschlagen.');
@@ -1244,7 +1246,7 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
       const results = await braveSearch('aktuelle nachrichten deutschland', env);
       const reply =
         results.length > 0
-          ? `📰 Aktuelle Schlagzeilen:\n${results.map((r) => `• ${r.title}`).join('\n')}`
+          ? `📰 Aktuelle Schlagzeilen:\n${results.map((r) => `• ${r.title}${r.url ? ` (${r.url})` : ''}`).join('\n')}`
           : 'Ich konnte gerade keine Nachrichten finden.';
       await sendTelegramMessage(env, chatId, reply);
     } catch (err) {
