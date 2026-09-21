@@ -1013,12 +1013,23 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
   // In einer freigeschalteten Gruppe soll der Bot NICHT auf jede Nachricht
   // antworten (sonst mischt er sich in jedes Gespräch ein) — nur wenn er
   // per @Erwähnung direkt angesprochen oder auf seine eigene Nachricht
-  // geantwortet wird. Private Chats sind davon nicht betroffen.
+  // geantwortet wird. Ein Slash-Befehl (z.B. /suche, /termine, /hilfe)
+  // zählt ebenfalls als direkte Ansprache — genau dafür sind Befehle da —
+  // und funktioniert deshalb in Gruppen auch ohne zusätzliche @Erwähnung.
+  // Private Chats sind von alldem nicht betroffen.
   if (isGroupChat) {
+    const groupText = (message.text || '').trim();
     const botInfo = await getTelegramBotInfo(env);
-    const mentionsBot = botInfo?.username && (message.text || '').toLowerCase().includes(`@${botInfo.username.toLowerCase()}`);
+    const mentionsBot = botInfo?.username && groupText.toLowerCase().includes(`@${botInfo.username.toLowerCase()}`);
     const repliesToBot = botInfo?.id && message.reply_to_message?.from?.id === botInfo.id;
-    if (!mentionsBot && !repliesToBot) {
+    // Telegram hängt bei mehreren Bots in derselben Gruppe automatisch
+    // "@BotName" an einen Befehl an, um ihn an einen bestimmten Bot zu
+    // richten (z.B. "/suche@AndererBot") — richtet sich ein solcher
+    // Befehl klar an einen anderen Bot, soll JARVIS nicht mit antworten.
+    const commandTargetMatch = groupText.match(/^\/\w+@(\S+)/);
+    const isCommandForOtherBot = commandTargetMatch && commandTargetMatch[1].toLowerCase() !== botInfo?.username?.toLowerCase();
+    const isCommand = groupText.startsWith('/') && !isCommandForOtherBot;
+    if (!mentionsBot && !repliesToBot && !isCommand) {
       return json({ ok: true });
     }
   }
@@ -1058,7 +1069,10 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
     return json({ ok: true });
   }
 
-  let text = message.text;
+  // "/befehl@BotName ..." (Telegrams Schreibweise für einen Befehl an
+  // einen bestimmten Bot in Gruppen mit mehreren Bots) auf "/befehl ..."
+  // normalisieren, damit die Befehls-Erkennung unten unverändert greift.
+  let text = message.text?.replace(/^(\/\w+)@\S+/, '$1');
   const voice = message.voice || message.audio;
   if (!text && voice) {
     try {
