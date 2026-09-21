@@ -5,6 +5,7 @@ wird beim Deploy automatisch in den "Update verfügbar"-Dialog der App
 übernommen (siehe `.github/workflows/deploy-web.yml`).
 
 ## Aktuell
+- Fix: JARVIS antwortete in Telegram oft unnötig kurz (1-2 Sätze) — das war eigentlich nur für Telefonate gedacht. In Telegram (egal ob privater Chat oder Gruppe) antwortet er jetzt so ausführlich wie die Frage es braucht.
 - Verbessert: In einer Telegram-Gruppe antwortet der Bot jetzt nur noch, wenn er per `@BotName` erwähnt oder direkt beantwortet wird, statt auf jede Nachricht zu reagieren.
 - Neu: Ist das (geteilte) ElevenLabs-Sprachkontingent mal aufgebraucht, springt jetzt automatisch ein kostenloser Ersatz ein (dieselbe Sprachausgabe wie translate.google.com), damit trotzdem eine Sprachantwort ankommt — klingt etwas roboterhafter, aber gratis.
 - Fix: Schickte ein bereits freigeschalteter Nutzer erneut `/start` (z. B. weil Telegram das automatisch anzeigt), landete das ungefiltert in der KI-Konversation und führte zu unpassenden Antworten (z. B. eine zufällige Websuche) — `/start` wird jetzt immer mit der normalen Begrüßung beantwortet.

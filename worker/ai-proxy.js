@@ -1328,7 +1328,10 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
 
   let systemPrompt =
     `${SYSTEM_PROMPT} Du sprichst hier gerade über Telegram, nicht über die JARVIS-App — deshalb kannst du hier keine ` +
-    'Anrufe/WhatsApp/Apps/Hue/Home-Connect auslösen, sondern nur in Worten antworten. Websuche steht dir hier ' +
+    'Anrufe/WhatsApp/Apps/Hue/Home-Connect auslösen, sondern nur in Worten antworten. Wichtig: Die Anweisung oben, ' +
+    'dich auf 1-2 Sätze zu beschränken, gilt hier NICHT — das war für Telefonate gedacht. Hier in Telegram ist es ein ' +
+    'geschriebener Chat, antworte also so ausführlich, wie die Frage es braucht, ganz normal wie in einem echten ' +
+    'Gespräch, auch mit mehreren Sätzen oder Absätzen, wenn das der Frage gerecht wird. Websuche steht dir hier ' +
     'trotzdem zur Verfügung, nutze sie wie gewohnt bei aktuellen oder unsicheren Fakten. Auch der Google Kalender des ' +
     'Nutzers steht dir hier zur Verfügung (get_calendar_events zum Nachschauen, create_calendar_event zum Anlegen, ' +
     'delete_calendar_event zum Löschen) — ' +
