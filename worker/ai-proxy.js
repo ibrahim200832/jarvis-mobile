@@ -1925,13 +1925,29 @@ function decodeHtmlEntities(str) {
     .replace(/&nbsp;/g, ' ');
 }
 
+// Zusätzlicher Grobfilter für Websuche-Ergebnisse — neben Braves eigenem
+// "safesearch=strict" (unten) eine zweite, einfache Bremse gegen Links zu
+// z.B. Glücksspiel/Wetten, die Brave nicht unbedingt als "unsicher"
+// einstuft. Kein Anspruch auf Vollständigkeit, nur eine grobe Filterung,
+// analog zu containsInsult() beim dauerhaften Gedächtnis.
+const BLOCKED_LINK_KEYWORDS = [
+  'porn', 'xxx', 'sex', 'onlyfans', 'bet365', 'casino', 'gambling', 'wetten.de',
+];
+function isBlockedSearchResult(result) {
+  const haystack = `${result.title} ${result.description} ${result.url}`.toLowerCase();
+  return BLOCKED_LINK_KEYWORDS.some((word) => haystack.includes(word));
+}
+
 async function braveSearch(query, env) {
   if (!env.BRAVE_API_KEY) {
     throw new Error('Kein Brave-Schlüssel auf dem Server hinterlegt.');
   }
   const braveUrl = new URL('https://api.search.brave.com/res/v1/web/search');
   braveUrl.searchParams.set('q', query);
-  braveUrl.searchParams.set('count', '3');
+  braveUrl.searchParams.set('count', '8');
+  // Lässt Brave selbst schon jugendgefährdende/explizite Inhalte
+  // herausfiltern, bevor unser eigener Grobfilter überhaupt greifen muss.
+  braveUrl.searchParams.set('safesearch', 'strict');
 
   const res = await fetch(braveUrl, {
     headers: { Accept: 'application/json', 'X-Subscription-Token': env.BRAVE_API_KEY },
@@ -1940,11 +1956,14 @@ async function braveSearch(query, env) {
     throw new Error(`Websuche fehlgeschlagen (${res.status})`);
   }
   const data = await res.json();
-  return (data.web?.results ?? []).slice(0, 3).map((r) => ({
-    title: decodeHtmlEntities(r.title ?? ''),
-    description: decodeHtmlEntities(r.description ?? ''),
-    url: r.url ?? '',
-  }));
+  return (data.web?.results ?? [])
+    .map((r) => ({
+      title: decodeHtmlEntities(r.title ?? ''),
+      description: decodeHtmlEntities(r.description ?? ''),
+      url: r.url ?? '',
+    }))
+    .filter((r) => !isBlockedSearchResult(r))
+    .slice(0, 3);
 }
 
 async function handleSearch(url, env) {
