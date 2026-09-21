@@ -1353,7 +1353,9 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
     if (toolCall?.name === 'search_web') {
       try {
         const results = toolArgs?.query ? await braveSearch(toolArgs.query, env) : [];
-        replyText = results.length > 0 ? results.slice(0, 2).map((r) => r.description).join(' ') : 'Ich konnte dazu nichts im Web finden.';
+        replyText = results.length > 0
+          ? results.slice(0, 2).map((r) => `${r.description}${r.url ? ` (${r.url})` : ''}`).join('\n')
+          : 'Ich konnte dazu nichts im Web finden.';
       } catch (err) {
         replyText = err.message || 'Die Websuche ist fehlgeschlagen.';
       }
@@ -1925,6 +1927,7 @@ async function braveSearch(query, env) {
   return (data.web?.results ?? []).slice(0, 3).map((r) => ({
     title: decodeHtmlEntities(r.title ?? ''),
     description: decodeHtmlEntities(r.description ?? ''),
+    url: r.url ?? '',
   }));
 }
 
