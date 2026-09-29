@@ -57,6 +57,23 @@ jobs:
           fi
 
       - run: flutter pub get
+
+      # porcupine_flutter (wake-word plugin) AND its own dependency
+      # flutter_voice_processor both hardcode compileSdkVersion 31 in
+      # their android/build.gradle, regardless of this app's compileSdk,
+      # which fails AGP's AAR metadata check against newer androidx deps
+      # pulled in by other plugins ("X is currently compiled against
+      # android-31"). Overriding it from our own Gradle scripts turned out
+      # to be unworkable (AGP reads/locks compileSdk mid-evaluation,
+      # before any of the usual Kotlin-DSL override hooks fire), so both
+      # are patched directly in the resolved pub cache instead.
+      - name: Patch outdated compileSdk in Picovoice wake-word plugins
+        run: |
+          for pkg in porcupine_flutter flutter_voice_processor; do
+            file=$(find "$PUB_CACHE/hosted/pub.dev" -maxdepth 1 -name "$pkg-*" -print -quit)/android/build.gradle
+            sed -i 's/compileSdkVersion 31/compileSdkVersion 36/' "$file"
+          done
+
       - run: flutter analyze
       - run: flutter build apk --release --build-name=1.0.${{ env.BUILD_NUMBER }} --build-number=${{ env.BUILD_NUMBER }}
 
