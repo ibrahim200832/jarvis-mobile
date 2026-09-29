@@ -28,19 +28,28 @@ subprojects {
 // but :porcupine_flutter is currently compiled against android-31."
 // Forcing every library subproject to the same, sufficiently new
 // compileSdk sidesteps that mismatch without needing to patch or fork
-// the plugin itself. Uses plugins.withId (fires as soon as the plugin is
-// applied, during configuration) rather than afterEvaluate, since the
-// evaluationDependsOn(":app") above means some subprojects are already
-// evaluated by the time a later afterEvaluate would run, which Gradle
-// rejects. Uses the Kotlin-DSL-native reified `extensions.configure<T>`
-// (not the Java-style `configure(Class, Action)` overload, which Kotlin
-// cannot type-infer here) against the modern, non-deprecated
-// com.android.build.api.dsl.LibraryExtension.
-subprojects {
-    plugins.withId("com.android.library") {
-        extensions.configure<com.android.build.api.dsl.LibraryExtension> {
-            if ((compileSdk ?: 0) < 36) {
-                compileSdk = 36
+// the plugin itself.
+//
+// Timing here is delicate: a plain `subprojects { afterEvaluate { ... } }`
+// fails with "Cannot run Project.afterEvaluate(Action) when the project
+// is already evaluated", because `evaluationDependsOn(":app")` above
+// forces some subprojects to finish evaluating before that block even
+// runs. A `plugins.withId("com.android.library") { ... }` override fires
+// too *early* instead — right when `apply plugin: 'com.android.library'`
+// runs in porcupine_flutter's own build.gradle, which is the first line
+// of that script; the `compileSdkVersion 31` statement further down in
+// that same script then runs afterwards and clobbers our override back
+// down to 31. `gradle.projectsEvaluated` sidesteps both problems: it's a
+// Gradle-wide (not per-project) callback that only fires once every
+// project's build script — :app, :porcupine_flutter, all of them — has
+// fully finished evaluating, so there's nothing left to overwrite our
+// value afterwards, and no per-project afterEvaluate registration to
+// reject as "already evaluated".
+gradle.projectsEvaluated {
+    subprojects {
+        extensions.findByType(com.android.build.api.dsl.LibraryExtension::class.java)?.let { library ->
+            if ((library.compileSdk ?: 0) < 36) {
+                library.compileSdk = 36
             }
         }
     }
