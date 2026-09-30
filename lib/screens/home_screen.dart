@@ -357,7 +357,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     setState(() {
       _processing = false;
-      _messages.add(ChatMessage(result.reply, fromUser: false));
+      _messages.add(ChatMessage(result.reply, fromUser: false, imageBase64: result.imageBase64));
     });
     _scrollToBottom();
 
