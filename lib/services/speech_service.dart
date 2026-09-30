@@ -16,6 +16,7 @@ class SpeechService {
 
   Future<void> listen({
     required void Function(String text, bool isFinal) onResult,
+    void Function(double level)? onSoundLevelChange,
     String localeId = 'de_DE',
   }) async {
     if (!_available) {
@@ -27,6 +28,7 @@ class SpeechService {
       onResult: (result) {
         onResult(result.recognizedWords, result.finalResult);
       },
+      onSoundLevelChange: onSoundLevelChange,
     );
   }
 
