@@ -312,16 +312,14 @@ Sag „hue Wohnzimmer an", „licht Küche aus" oder „hue Wohnzimmer auf 40 pr
 
 ## Weckwort "Jarvis" einrichten (optional, nur Android)
 
-Sag einfach "Jarvis", egal ob die App gerade offen ist oder nicht — JARVIS hört automatisch zu und startet die Sprachaufnahme, genau wie "Ok Google" oder "Hey Siri". Das läuft über [Picovoice Porcupine](https://picovoice.ai/), eine spezialisierte, sparsame Weckwort-Erkennung (kein Dauer-Streaming, anders als normale Spracherkennung) — "Jarvis" ist eines ihrer fertigen Weckwörter, du musst nichts trainieren.
+Sag einfach "Jarvis", egal ob die App gerade offen ist oder nicht — JARVIS hört automatisch zu und startet die Sprachaufnahme, genau wie "Ok Google" oder "Hey Siri". Das läuft über [Vosk](https://alphacephei.com/vosk/), eine quelloffene, kostenlose Spracherkennung ohne Konto — ein grammatik-eingeschränkter Erkenner sucht nur nach "jarvis", das hält es sparsam, ähnlich einem dedizierten Weckwort-Detektor.
 
 Damit das auch bei geschlossener App funktioniert, läuft im Hintergrund ein dauerhafter Dienst mit eigener Benachrichtigung ("JARVIS hört zu") — das ist eine Voraussetzung von Android für jede App, die im Hintergrund das Mikrofon offen hält, keine Fehlfunktion. Auf iOS ist das nicht möglich (Apple erlaubt keinen dauerhaften Mikrofonzugriff im Hintergrund für Drittanbieter-Apps).
 
-1. **Kostenloses Picovoice-Konto erstellen**: Auf [console.picovoice.ai](https://console.picovoice.ai) registrieren.
-2. **AccessKey kopieren**: Steht direkt auf der Startseite der Console nach dem Login.
-3. **In der App eintragen**: JARVIS-App → Einstellungen → Feld **"Picovoice-AccessKey"** → einfügen → **Speichern**.
-4. **Aktivieren**: Den Schalter **"Weckwort 'Jarvis'"** umlegen. Die App fragt dabei nach der Benachrichtigungs-Erlaubnis und bittet darum, JARVIS von der Akku-Optimierung auszunehmen (sonst würde Android den Hintergrunddienst nach einiger Zeit selbst beenden) — beides bitte zulassen.
+1. **Aktivieren**: JARVIS-App → Einstellungen → Schalter **"Weckwort 'Jarvis'"** umlegen. Die App fragt dabei nach der Benachrichtigungs-Erlaubnis und bittet darum, JARVIS von der Akku-Optimierung auszunehmen (sonst würde Android den Hintergrunddienst nach einiger Zeit selbst beenden) — beides bitte zulassen.
+2. **Einmaliger Download**: Beim ersten Aktivieren lädt die App automatisch ein ca. 45 MB großes deutsches Sprachmodell herunter (WLAN empfohlen, dauert je nach Verbindung einen Moment). Danach funktioniert die Erkennung komplett offline.
 
-> **Hinweis:** Das kostenlose Picovoice-Kontingent reicht für den persönlichen Gebrauch (ein Nutzer, eine App) völlig aus.
+Kein Konto, kein API-Key, keine Kosten — anders als bei Picovoice (dessen kostenloser Tarif für Privatnutzer inzwischen eingestellt wurde) ist hier nichts weiter einzurichten.
 
 ## Bosch/Siemens Home Connect einrichten (optional)
 

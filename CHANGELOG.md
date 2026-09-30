@@ -5,6 +5,7 @@ wird beim Deploy automatisch in den "Update verfügbar"-Dialog der App
 übernommen (siehe `.github/workflows/deploy-web.yml`).
 
 ## Aktuell
+- Geändert: Die Weckwort-Erkennung ("Jarvis" sagen) läuft jetzt über Vosk (quelloffen, kostenlos, kein Konto) statt über Picovoice — Picovoice hat seinen kostenlosen Tarif für Privatnutzer eingestellt. Kein AccessKey mehr nötig, stattdessen lädt die App beim ersten Aktivieren einmalig ein deutsches Sprachmodell herunter, siehe README.
 - Neu: Die App-KI kann jetzt (mit eigenem KI-Server) auch Bilder aus einer Beschreibung erstellen und sich Dinge dauerhaft merken — geteilt mit dem Telegram-Bot, falls eingerichtet.
 - Neu: Websuche-Ergebnisse in Telegram (egal ob `/suche`, `/nachrichten` oder normale Frage, für dich und alle anderen Nutzer gleichermaßen) werden jetzt gefiltert — jugendgefährdende/explizite Inhalte über Braves eigenen Sicherheitsfilter, dazu ein zusätzlicher Grobfilter gegen Glücksspiel-/Wett-Links.
 - Fix: `/suche` und `/nachrichten` schickten noch keinen Link zur Quelle mit — der Link-Zusatz aus dem letzten Update griff nur bei der Websuche im normalen Gespräch, nicht bei diesen beiden eigenen Befehlen. Jetzt überall dabei.

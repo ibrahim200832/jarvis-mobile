@@ -136,8 +136,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   /// Starts the always-on "Jarvis"-Weckwort-Hintergrunddienst, wenn der
-  /// Nutzer das in den Einstellungen aktiviert und einen Picovoice-Key
-  /// hinterlegt hat (siehe README, Abschnitt "Weckwort 'Jarvis'").
+  /// Nutzer das in den Einstellungen aktiviert hat (siehe README, Abschnitt
+  /// "Weckwort 'Jarvis'").
   Future<void> _initWakeWordIfEnabled() async {
     final enabled = await _settings.getWakeWordEnabled();
     if (!enabled) return;

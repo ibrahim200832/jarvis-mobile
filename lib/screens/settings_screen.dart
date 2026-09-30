@@ -51,7 +51,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _reminderPhoneCtrl = TextEditingController();
   final _hueBridgeIpCtrl = TextEditingController();
   final _boschClientIdCtrl = TextEditingController();
-  final _picovoiceAccessKeyCtrl = TextEditingController();
   List<Contact> _contacts = [];
   String _appVersion = '';
   String _aiModel = 'openai';
@@ -96,7 +95,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _reminderPhoneCtrl.text = await widget.settings.getReminderPhone() ?? '';
     _hueBridgeIpCtrl.text = await widget.hue.getBridgeIp() ?? '';
     _boschClientIdCtrl.text = await widget.bosch.getClientId() ?? '';
-    _picovoiceAccessKeyCtrl.text = await widget.settings.getPicovoiceAccessKey() ?? '';
     _wakeWordEnabled = await widget.settings.getWakeWordEnabled();
     _aiModel = await widget.settings.getAiModel();
     _contacts = await widget.contacts.all();
@@ -124,24 +122,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await widget.settings.setTiktokClientKey(_tiktokClientKeyCtrl.text.trim());
     await widget.settings.setCallSharedSecret(_callSecretCtrl.text.trim());
     await widget.settings.setReminderPhone(_reminderPhoneCtrl.text.trim());
-    await widget.settings.setPicovoiceAccessKey(_picovoiceAccessKeyCtrl.text.trim());
     await widget.settings.setAiModel(_aiModel);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gespeichert.')));
   }
 
-  /// Schaltet den "Jarvis"-Weckwort-Hintergrunddienst an/aus — startet ihn
-  /// nur, wenn vorher ein Picovoice-AccessKey eingetragen und gespeichert
-  /// wurde (siehe README, Abschnitt "Weckwort 'Jarvis'").
+  /// Schaltet den "Jarvis"-Weckwort-Hintergrunddienst an/aus (siehe README,
+  /// Abschnitt "Weckwort 'Jarvis'").
   Future<void> _toggleWakeWord(bool value) async {
-    if (value && _picovoiceAccessKeyCtrl.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Bitte zuerst einen Picovoice-AccessKey eintragen und speichern.')),
-      );
-      return;
-    }
     setState(() => _togglingWakeWord = true);
-    await widget.settings.setPicovoiceAccessKey(_picovoiceAccessKeyCtrl.text.trim());
     await widget.settings.setWakeWordEnabled(value);
     String? error;
     if (value) {
@@ -517,19 +506,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           if (!kIsWeb) ...[
             const SizedBox(height: 16),
-            TextField(
-              controller: _picovoiceAccessKeyCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Picovoice-AccessKey (für Weckwort "Jarvis")',
-                helperText: 'Kostenloses Konto auf console.picovoice.ai, siehe README',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 8),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('Weckwort "Jarvis" (auch bei geschlossener App)'),
-              subtitle: const Text('Sag einfach "Jarvis", JARVIS hört dann automatisch zu — nur Android'),
+              subtitle: const Text(
+                'Sag einfach "Jarvis", JARVIS hört dann automatisch zu — nur Android. '
+                'Beim ersten Aktivieren wird einmalig ein Sprachmodell heruntergeladen.',
+              ),
               value: _wakeWordEnabled,
               onChanged: _togglingWakeWord ? null : _toggleWakeWord,
             ),
