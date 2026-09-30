@@ -1,6 +1,5 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'wake_word_service.dart';
 
@@ -21,10 +20,7 @@ class WakeWordTaskHandler extends TaskHandler {
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
     WidgetsFlutterBinding.ensureInitialized();
-    final prefs = await SharedPreferences.getInstance();
-    final accessKey = prefs.getString('picovoice_access_key') ?? '';
     await _wakeWordService.start(
-      accessKey: accessKey,
       onWakeWord: () {
         FlutterForegroundTask.sendDataToMain('wake_word_detected');
         FlutterForegroundTask.launchApp('/');
