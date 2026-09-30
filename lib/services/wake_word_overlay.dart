@@ -73,9 +73,9 @@ class _WakeWordOverlayAppState extends State<WakeWordOverlayApp> {
               border: Border.all(color: const Color(0xFF0891B2), width: 1.4),
               boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 16, offset: Offset(0, 6))],
             ),
-            child: Row(
+            child: const Row(
               mainAxisSize: MainAxisSize.min,
-              children: const [
+              children: [
                 Icon(Icons.auto_awesome, color: Color(0xFF0891B2), size: 20),
                 SizedBox(width: 10),
                 Text(

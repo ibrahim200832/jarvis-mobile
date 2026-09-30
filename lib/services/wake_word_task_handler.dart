@@ -3,7 +3,6 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'wake_word_overlay.dart';
 import 'wake_word_service.dart';
 
 /// Runs the "Jarvis" wake-word detection ([WakeWordService]) inside an
