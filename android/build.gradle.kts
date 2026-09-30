@@ -23,20 +23,34 @@ subprojects {
 // which no longer satisfies a transitively-pulled androidx.core version that
 // requires compileSdk >= 34 (Gradle's checkReleaseAarMetadata fails
 // otherwise) — patched here since we can't edit the published package's
-// source directly. Flutter's plugin loader adds plugin subprojects
-// dynamically while :app itself is being evaluated, so an afterEvaluate
-// hook here can race with a subproject that's already finished evaluating
-// by the time it's registered ("Cannot run Project.afterEvaluate(Action)
-// when the project is already evaluated"); plugins.withId fires immediately
-// if the plugin is already applied, so it isn't subject to that race.
+// source directly.
+//
+// This needs to run AFTER vosk_flutter_fixed's own build.gradle has set
+// compileSdk = 33, otherwise that statement runs later in the same script
+// and silently overwrites our override back to 33 again (this is exactly
+// what happened with a plain plugins.withId hook, which fires as soon as
+// the android plugin is applied — i.e. before the subproject's own
+// "android { compileSdk 33 }" block further down its script has run).
+// But afterEvaluate alone can also fail: Flutter's plugin loader adds
+// plugin subprojects dynamically while :app itself is being evaluated, and
+// depending on timing a subproject can already be fully evaluated by the
+// time this block gets to register the hook for it ("Cannot run
+// Project.afterEvaluate(Action) when the project is already evaluated").
+// Checking state.executed picks the right one of the two for whichever
+// order Gradle happens to process this in.
 // withGroovyBuilder avoids needing the AGP classes on this root script's
 // own classpath.
 subprojects {
-    plugins.withId("com.android.library") {
-        if (project.name == "vosk_flutter_fixed") {
+    if (project.name == "vosk_flutter_fixed") {
+        val patchCompileSdk = {
             project.extensions.findByName("android")?.withGroovyBuilder {
                 setProperty("compileSdk", 34)
             }
+        }
+        if (project.state.executed) {
+            patchCompileSdk()
+        } else {
+            afterEvaluate { patchCompileSdk() }
         }
     }
 }
