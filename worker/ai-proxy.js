@@ -479,6 +479,9 @@ const SYSTEM_PROMPT =
   'YouTube-Video-Upload öffnen (mit Sichtbarkeit/Zeitplanung), den Nutzer selbst anrufen, einen Kontakt anrufen ' +
   'und ihm dabei eine Nachricht ausrichten lassen, einen Termin im Google Kalender anlegen, eine Telegram-Nachricht ' +
   'schicken, Philips-Hue-Lichter steuern und den Status von Bosch/Siemens-Hausgeräten (Home Connect) abfragen. ' +
+  'Außerdem kannst du auf Zuruf ("erstelle mir ein Bild von...", "mal mir...") ein Bild aus einer Beschreibung ' +
+  'erstellen, und dir Dinge dauerhaft merken ("merk dir: ...") sowie dich später daran erinnern oder sie wieder ' +
+  'vergessen — das läuft automatisch, ohne dass du dafür ein Werkzeug aufrufen musst. ' +
   'Nutze ein Werkzeug ausschließlich dann, wenn der Nutzer eine konkrete, eindeutige Handlungsaufforderung ' +
   'ausspricht (z.B. "ruf Mama an", "schreib eine E-Mail an..."). Nutze niemals ein Werkzeug bei einer ' +
   'bloßen Erwähnung, Frage über die Vergangenheit oder einem Gedanken laut — z.B. bei "ich sollte mal ' +
@@ -596,10 +599,50 @@ export default {
       .slice(-MAX_HISTORY_MESSAGES)
       .map((m) => ({ role: m.role, content: m.content }));
 
+    // Bild erstellen, merken/abrufen/vergessen laufen komplett serverseitig
+    // (wie bei Telegram) und geben ihre Antwort direkt zurück, statt über
+    // den AI-Tool-Mechanismus zu laufen — das funktioniert so zuverlässig
+    // auch dann, wenn das Modell die Anfrage nicht selbst als
+    // Werkzeugaufruf erkennt (siehe Telegram-Webhook-Logik oben).
+    const imageMatch = message.match(
+      /^(?:erstell(?:e)? (?:mir )?ein bild von|mal(?:e)? mir|zeichne mir)\s+(.+)$/i,
+    );
+    if (imageMatch) {
+      try {
+        const imageBase64 = await generateImageBase64(env, imageMatch[1].trim());
+        return json({ reply: `🎨 „${imageMatch[1].trim()}"`, imageBase64 });
+      } catch (err) {
+        return json({ reply: err.message || 'Ich konnte das Bild leider nicht erstellen.' });
+      }
+    }
+
+    const rememberMatch = message.match(/^(?:merk(?:e)? dir|remember this|notiere dir)\s*:\s*(.+)$/i);
+    if (rememberMatch) {
+      const fact = rememberMatch[1].trim();
+      if (containsInsult(fact)) return json({ reply: 'Das speichere ich nicht.' });
+      await addMemory(env, fact);
+      return json({ reply: `🧠 Gemerkt: „${fact}"` });
+    }
+    if (/^(was weißt du über mich\??|meine erinnerungen|was hast du dir gemerkt\??)$/i.test(message.trim())) {
+      const memory = await getMemory(env);
+      const reply = memory.length === 0
+        ? 'Ich habe mir noch nichts gemerkt. Sag z. B. "merk dir: ich mag keinen Kaffee".'
+        : `🧠 Das habe ich mir gemerkt:\n${memory.map((m) => `• ${m.text}`).join('\n')}`;
+      return json({ reply });
+    }
+    if (/^(vergiss alles|lösche (meine|alle) erinnerungen)$/i.test(message.trim())) {
+      await clearMemory(env);
+      return json({ reply: '🧠 Erledigt, ich habe alles vergessen.' });
+    }
+
     // The model has no built-in notion of "now", so tools that need to
     // resolve relative times (e.g. open_youtube_upload's publish_at from
     // "morgen um 18 Uhr") need the current time handed to it explicitly.
-    const systemPrompt = `${SYSTEM_PROMPT} Aktuelles Datum/Uhrzeit (UTC): ${new Date().toISOString()}.`;
+    let systemPrompt = `${SYSTEM_PROMPT} Aktuelles Datum/Uhrzeit (UTC): ${new Date().toISOString()}.`;
+    const memory = await getMemory(env);
+    if (memory.length > 0) {
+      systemPrompt += ` Bekannte Fakten über den Nutzer, die er dir zu merken gebeten hat: ${memory.map((m) => m.text).join('; ')}.`;
+    }
     const messages = [{ role: 'system', content: systemPrompt }, ...cleanHistory, { role: 'user', content: message }];
 
     let data;
@@ -1211,7 +1254,7 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
 
   if (TELEGRAM_COMMANDS.find((c) => c.cmd === 'reset').alias.test(text.trim())) {
     if (env.JARVIS_KV) await env.JARVIS_KV.delete(`telegram_history_${chatId}`);
-    await clearTelegramMemory(env);
+    await clearMemory(env);
     // Löscht JARVIS' eigene Nachrichten der letzten 48h aus dem sichtbaren
     // Chat — mehr erlaubt Telegram Bots nicht (eigene Nachrichten der
     // Nutzerin/des Nutzers können Bots grundsätzlich nie löschen).
@@ -1260,7 +1303,7 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
     text.match(TELEGRAM_COMMANDS.find((c) => c.cmd === 'bild').alias);
   if (imageMatch) {
     try {
-      const imageBytes = await generateTelegramImage(env, imageMatch[1].trim());
+      const imageBytes = await generateImage(env, imageMatch[1].trim());
       await sendTelegramPhoto(env, chatId, imageBytes, `🎨 „${imageMatch[1].trim()}"`);
     } catch (err) {
       await sendTelegramMessage(env, chatId, err.message || 'Ich konnte das Bild leider nicht erstellen.');
@@ -1303,7 +1346,7 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
       await sendTelegramMessage(env, chatId, 'Das speichere ich nicht.');
       return json({ ok: true });
     }
-    await addTelegramMemory(env, fact);
+    await addMemory(env, fact);
     await sendTelegramMessage(env, chatId, `🧠 Gemerkt: „${fact}"`);
     // Da das Gedächtnis geteilt ist (jeder freigeschaltete Nutzer nutzt
     // dasselbe JARVIS-Gedächtnis), bekommt der Besitzer eine kurze
@@ -1322,7 +1365,7 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
     /^(was weißt du über mich\??|meine erinnerungen|was hast du dir gemerkt\??)$/i.test(text.trim()) ||
     TELEGRAM_COMMANDS.find((c) => c.cmd === 'erinnerungen').alias.test(text.trim())
   ) {
-    const memory = await getTelegramMemory(env);
+    const memory = await getMemory(env);
     const reply = memory.length === 0
       ? 'Ich habe mir noch nichts gemerkt. Sag z. B. "merk dir: ich mag keinen Kaffee".'
       : `🧠 Das habe ich mir gemerkt:\n${memory.map((m) => `• ${m.text}`).join('\n')}`;
@@ -1333,14 +1376,14 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
     /^(vergiss alles|lösche (meine|alle) erinnerungen)$/i.test(text.trim()) ||
     TELEGRAM_COMMANDS.find((c) => c.cmd === 'vergessen').alias.test(text.trim())
   ) {
-    await clearTelegramMemory(env);
+    await clearMemory(env);
     await sendTelegramMessage(env, chatId, '🧠 Erledigt, ich habe alles vergessen.');
     return json({ ok: true });
   }
 
   const historyKey = `telegram_history_${chatId}`;
   const history = JSON.parse((await env.JARVIS_KV.get(historyKey)) || '[]');
-  const memory = await getTelegramMemory(env);
+  const memory = await getMemory(env);
 
   let systemPrompt =
     `${SYSTEM_PROMPT} Du sprichst hier gerade über Telegram, nicht über die JARVIS-App — deshalb kannst du hier keine ` +
@@ -1514,24 +1557,27 @@ function containsInsult(text) {
   return INSULT_WORDS.some((word) => normalized.includes(word));
 }
 
-const TELEGRAM_MEMORY_KEY = 'telegram_memory';
-const TELEGRAM_MEMORY_LIMIT = 50;
+// Geteiltes dauerhaftes Gedächtnis — genutzt sowohl von Telegram als auch
+// vom allgemeinen App-Endpunkt (`/`), damit "merk dir: ..." unabhängig
+// davon funktioniert, über welchen Kanal JARVIS angesprochen wird.
+const MEMORY_KEY = 'telegram_memory';
+const MEMORY_LIMIT = 50;
 
-async function getTelegramMemory(env) {
+async function getMemory(env) {
   if (!env.JARVIS_KV) return [];
-  return JSON.parse((await env.JARVIS_KV.get(TELEGRAM_MEMORY_KEY)) || '[]');
+  return JSON.parse((await env.JARVIS_KV.get(MEMORY_KEY)) || '[]');
 }
 
-async function addTelegramMemory(env, text) {
+async function addMemory(env, text) {
   if (!env.JARVIS_KV || !text) return;
-  const memory = await getTelegramMemory(env);
+  const memory = await getMemory(env);
   memory.push({ text, at: new Date().toISOString() });
-  await env.JARVIS_KV.put(TELEGRAM_MEMORY_KEY, JSON.stringify(memory.slice(-TELEGRAM_MEMORY_LIMIT)));
+  await env.JARVIS_KV.put(MEMORY_KEY, JSON.stringify(memory.slice(-MEMORY_LIMIT)));
 }
 
-async function clearTelegramMemory(env) {
+async function clearMemory(env) {
   if (!env.JARVIS_KV) return;
-  await env.JARVIS_KV.delete(TELEGRAM_MEMORY_KEY);
+  await env.JARVIS_KV.delete(MEMORY_KEY);
 }
 
 // Simple keyword heuristic — Telegram only allows a fixed set of reaction
@@ -1649,10 +1695,17 @@ async function describeTelegramPhoto(env, fileId, caption) {
 
 // Generates an image from a text prompt via Cloudflare Workers AI — stays
 // entirely within the same "AI" binding, nothing is sent to a third party.
-async function generateTelegramImage(env, prompt) {
+// Shared by Telegram and the general App endpoint (`/`). Returns the raw
+// base64 the model already produces (see generateImage below for callers
+// that need decoded bytes instead, e.g. Telegram's Blob upload).
+async function generateImageBase64(env, prompt) {
   const result = await env.AI.run('@cf/black-forest-labs/flux-1-schnell', { prompt });
-  const base64 = result.image;
-  if (!base64) throw new Error('Kein Bild erhalten.');
+  if (!result.image) throw new Error('Kein Bild erhalten.');
+  return result.image;
+}
+
+async function generateImage(env, prompt) {
+  const base64 = await generateImageBase64(env, prompt);
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);

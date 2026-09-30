@@ -39,6 +39,7 @@ class CommandResult {
   final String? youtubePrivacy;
   final DateTime? youtubePublishAt;
   final bool openTiktokUpload;
+  final String? imageBase64;
 
   CommandResult(
     this.reply, {
@@ -48,6 +49,7 @@ class CommandResult {
     this.youtubePrivacy,
     this.youtubePublishAt,
     this.openTiktokUpload = false,
+    this.imageBase64,
   });
 }
 
@@ -498,7 +500,7 @@ Das kann ich für dich tun:
   Future<CommandResult> _handleAiResult(AiChatResult aiResult) async {
     final action = aiResult.action;
     if (action == null) {
-      return CommandResult(aiResult.reply);
+      return CommandResult(aiResult.reply, imageBase64: aiResult.imageBase64);
     }
 
     switch (action.type) {

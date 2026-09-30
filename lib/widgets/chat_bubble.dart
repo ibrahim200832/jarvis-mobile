@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -7,8 +9,9 @@ class ChatMessage {
   final String text;
   final bool fromUser;
   final DateTime time;
+  final String? imageBase64;
 
-  ChatMessage(this.text, {required this.fromUser, DateTime? time}) : time = time ?? DateTime.now();
+  ChatMessage(this.text, {required this.fromUser, DateTime? time, this.imageBase64}) : time = time ?? DateTime.now();
 }
 
 class ChatBubble extends StatelessWidget {
@@ -38,6 +41,22 @@ class ChatBubble extends StatelessWidget {
       ),
     );
 
+    final imageBase64 = message.imageBase64;
+    final content = imageBase64 == null
+        ? text
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: Image.memory(base64Decode(imageBase64), fit: BoxFit.cover),
+              ),
+              const SizedBox(height: 8),
+              text,
+            ],
+          );
+
     final bubble = ConstrainedBox(
       constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * (isUser ? 0.78 : 0.85)),
       child: isUser
@@ -58,7 +77,7 @@ class ChatBubble extends StatelessWidget {
               boxShadow: [
                 BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 20, offset: const Offset(0, 6)),
               ],
-              child: text,
+              child: content,
             ),
     );
 

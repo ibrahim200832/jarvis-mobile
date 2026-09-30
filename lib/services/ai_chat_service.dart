@@ -15,8 +15,9 @@ class AiAction {
 class AiChatResult {
   final String reply;
   final AiAction? action;
+  final String? imageBase64;
 
-  AiChatResult({required this.reply, this.action});
+  AiChatResult({required this.reply, this.action, this.imageBase64});
 }
 
 /// One turn of a past exchange with the AI, kept by the caller (see
@@ -67,7 +68,7 @@ class AiChatService {
             headers: {'content-type': 'application/json'},
             body: jsonEncode({'message': message, 'history': history.map((t) => t.toJson()).toList()}),
           )
-          .timeout(const Duration(seconds: 25));
+          .timeout(const Duration(seconds: 45));
       if (res.statusCode != 200) {
         return AiChatResult(reply: 'Die KI-Anfrage ist fehlgeschlagen (Code ${res.statusCode}).');
       }
@@ -83,6 +84,7 @@ class AiChatService {
       return AiChatResult(
         reply: (reply == null || reply.isEmpty) ? 'Ich habe keine Antwort erhalten.' : reply,
         action: action,
+        imageBase64: data['imageBase64'] as String?,
       );
     } catch (_) {
       return AiChatResult(

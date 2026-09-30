@@ -143,7 +143,7 @@ Alles, was JARVIS nicht als festen Befehl erkennt (z. B. „wikipedia …“, �
 
 Wer zuverlässigere Antworten möchte, oder will, dass die KI im Gespräch selbst Anrufe/WhatsApp-Nachrichten/Apps auslösen kann (Function-Calling) statt es nur zu beschreiben, kann optional einen eigenen KI-Server einrichten: ein kleiner Proxy-Worker (`worker/ai-proxy.js`, für [Cloudflare Workers](https://workers.cloudflare.com)).
 
-Als KI kommt dabei **Cloudflare Workers AI** zum Einsatz — ein offenes Modell (Metas Llama 3.3 70B), das direkt bei Cloudflare läuft, im selben Account wie der Worker selbst. Kein Google, kein separater KI-Anbieter, kein API-Schlüssel, der irgendwo verwaltet werden müsste. JARVIS merkt sich dabei auch den bisherigen Gesprächsverlauf und kann neben Anrufen/WhatsApp/Apps auch Timer stellen, Notizen speichern, das Wetter abrufen und die Kamera öffnen.
+Als KI kommt dabei **Cloudflare Workers AI** zum Einsatz — ein offenes Modell (Metas Llama 3.3 70B), das direkt bei Cloudflare läuft, im selben Account wie der Worker selbst. Kein Google, kein separater KI-Anbieter, kein API-Schlüssel, der irgendwo verwaltet werden müsste. JARVIS merkt sich dabei auch den bisherigen Gesprächsverlauf und kann neben Anrufen/WhatsApp/Apps auch Timer stellen, Notizen speichern, das Wetter abrufen und die Kamera öffnen. Außerdem kann JARVIS auf Zuruf ein Bild aus einer Beschreibung erstellen ("erstelle mir ein Bild von...", "mal mir...") und sich Dinge dauerhaft merken ("merk dir: ..." / "meine erinnerungen" / "vergiss alles") — dieses Gedächtnis ist dasselbe wie beim Telegram-Bot (siehe unten), ist also auch dort bekannt, falls beides eingerichtet ist.
 
 **Einmalige Einrichtung (kein Terminal nötig, alles über den Browser):**
 
