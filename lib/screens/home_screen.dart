@@ -288,10 +288,12 @@ class _HomeScreenState extends State<HomeScreen> {
       });
       await _speech.stop();
       await _tts.stop();
-      if (_listening) setState(() {
-        _listening = false;
-        _soundLevel = 0;
-      });
+      if (_listening) {
+        setState(() {
+          _listening = false;
+          _soundLevel = 0;
+        });
+      }
       return;
     }
     final micStatus = await Permission.microphone.request();
