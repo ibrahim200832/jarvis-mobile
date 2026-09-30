@@ -5,6 +5,7 @@ wird beim Deploy automatisch in den "Update verfügbar"-Dialog der App
 übernommen (siehe `.github/workflows/deploy-web.yml`).
 
 ## Aktuell
+- Neu: Die Eingabeleiste zeigt beim Zuhören jetzt eine Wellenform statt nur "Ich höre zu…", der Mikrofon-Knopf ist größer, und ein neuer "+"-Knopf öffnet direkt die Kamera.
 - Neu: Die App-KI kann jetzt (mit eigenem KI-Server) auch Bilder aus einer Beschreibung erstellen und sich Dinge dauerhaft merken — geteilt mit dem Telegram-Bot, falls eingerichtet.
 - Neu: Websuche-Ergebnisse in Telegram (egal ob `/suche`, `/nachrichten` oder normale Frage, für dich und alle anderen Nutzer gleichermaßen) werden jetzt gefiltert — jugendgefährdende/explizite Inhalte über Braves eigenen Sicherheitsfilter, dazu ein zusätzlicher Grobfilter gegen Glücksspiel-/Wett-Links.
 - Fix: `/suche` und `/nachrichten` schickten noch keinen Link zur Quelle mit — der Link-Zusatz aus dem letzten Update griff nur bei der Websuche im normalen Gespräch, nicht bei diesen beiden eigenen Befehlen. Jetzt überall dabei.

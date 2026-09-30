@@ -92,6 +92,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _speaking = false;
   bool _muted = false;
   String _partialText = '';
+  double _soundLevel = 0;
 
   @override
   void initState() {
@@ -248,6 +249,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _listening = true;
       _partialText = '';
+      _soundLevel = 0;
     });
     await _speech.listen(
       onResult: (text, isFinal) {
@@ -256,13 +258,17 @@ class _HomeScreenState extends State<HomeScreen> {
           _submit(text);
         }
       },
+      onSoundLevelChange: (level) => setState(() => _soundLevel = level),
     );
   }
 
   Future<void> _toggleListening() async {
     if (_listening) {
       await _speech.stop();
-      setState(() => _listening = false);
+      setState(() {
+        _listening = false;
+        _soundLevel = 0;
+      });
       return;
     }
     final micStatus = await Permission.microphone.request();
@@ -282,7 +288,12 @@ class _HomeScreenState extends State<HomeScreen> {
       });
       await _speech.stop();
       await _tts.stop();
-      if (_listening) setState(() => _listening = false);
+      if (_listening) {
+        setState(() {
+          _listening = false;
+          _soundLevel = 0;
+        });
+      }
       return;
     }
     final micStatus = await Permission.microphone.request();
@@ -307,7 +318,10 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _muted = true);
     if (_listening) {
       await _speech.stop();
-      setState(() => _listening = false);
+      setState(() {
+        _listening = false;
+        _soundLevel = 0;
+      });
     }
   }
 
@@ -330,9 +344,9 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  /// Opens the camera on top of the call screen — the call keeps running in
-  /// the background and resumes once the camera is closed.
-  Future<void> _openCameraDuringCall() async {
+  /// Opens the camera — also usable on top of the call screen, where the
+  /// call keeps running in the background and resumes once closed.
+  Future<void> _openCamera() async {
     final status = await Permission.camera.request();
     if (status.isGranted && mounted) {
       Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CameraScreen()));
@@ -462,7 +476,7 @@ class _HomeScreenState extends State<HomeScreen> {
           onToggleMute: _toggleMute,
           onEndCall: _toggleCall,
           onReset: _resetCall,
-          onOpenCamera: _openCameraDuringCall,
+          onOpenCamera: _openCamera,
         ),
       );
     }
@@ -661,6 +675,12 @@ class _HomeScreenState extends State<HomeScreen> {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 _GlassIconButton(
+                  icon: Icons.add,
+                  tooltip: 'Kamera öffnen',
+                  onTap: _openCamera,
+                ),
+                const SizedBox(width: 8),
+                _GlassIconButton(
                   icon: Icons.call,
                   tooltip: 'Gespräch mit JARVIS starten',
                   onTap: _toggleCall,
@@ -680,26 +700,30 @@ class _HomeScreenState extends State<HomeScreen> {
                           icon: _listening ? Icons.mic : Icons.mic_none,
                           active: _listening,
                           onTap: _toggleListening,
+                          size: 52,
+                          iconSize: 24,
                         ),
                         Expanded(
-                          child: TextField(
-                            controller: _textCtrl,
-                            enabled: !_processing,
-                            style: TextStyle(color: colorScheme.onSurface, fontSize: 15),
-                            decoration: InputDecoration(
-                              hintText: _listening ? 'Ich höre zu…' : 'Nachricht an JARVIS…',
-                              hintStyle: TextStyle(color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
-                              border: InputBorder.none,
-                              isDense: true,
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-                            ),
-                            onSubmitted: _processing ? null : _submit,
-                          ),
+                          child: _listening
+                              ? _VoiceWaveform(level: _soundLevel)
+                              : TextField(
+                                  controller: _textCtrl,
+                                  enabled: !_processing,
+                                  style: TextStyle(color: colorScheme.onSurface, fontSize: 15),
+                                  decoration: InputDecoration(
+                                    hintText: 'Nachricht an JARVIS…',
+                                    hintStyle: TextStyle(color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7)),
+                                    border: InputBorder.none,
+                                    isDense: true,
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                                  ),
+                                  onSubmitted: _processing ? null : _submit,
+                                ),
                         ),
                         _RoundActionButton(
                           icon: Icons.arrow_upward,
                           filled: true,
-                          onTap: _processing ? null : () => _submit(_textCtrl.text),
+                          onTap: (_processing || _listening) ? null : () => _submit(_textCtrl.text),
                         ),
                       ],
                     ),
@@ -750,12 +774,21 @@ class _GlassIconButton extends StatelessWidget {
 }
 
 class _RoundActionButton extends StatelessWidget {
-  const _RoundActionButton({required this.icon, required this.onTap, this.active = false, this.filled = false});
+  const _RoundActionButton({
+    required this.icon,
+    required this.onTap,
+    this.active = false,
+    this.filled = false,
+    this.size = 40,
+    this.iconSize = 18,
+  });
 
   final IconData icon;
   final VoidCallback? onTap;
   final bool active;
   final bool filled;
+  final double size;
+  final double iconSize;
 
   @override
   Widget build(BuildContext context) {
@@ -768,16 +801,55 @@ class _RoundActionButton extends StatelessWidget {
         customBorder: const CircleBorder(),
         onTap: onTap,
         child: SizedBox(
-          width: 40,
-          height: 40,
+          width: size,
+          height: size,
           child: Icon(
             icon,
-            size: 18,
+            size: iconSize,
             color: highlighted
                 ? colorScheme.onPrimary
                 : (onTap == null ? colorScheme.onSurfaceVariant.withValues(alpha: 0.4) : colorScheme.onSurfaceVariant),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Small animated bar-waveform shown in the input bar while listening,
+/// driven by the microphone's live sound level (see SpeechService.listen's
+/// onSoundLevelChange) — a lightweight stand-in for a real audio
+/// visualization, not an exact amplitude readout.
+class _VoiceWaveform extends StatelessWidget {
+  const _VoiceWaveform({required this.level});
+
+  /// Raw dB level from speech_to_text (roughly -160 silence to ~10 loud).
+  final double level;
+
+  // Per-bar weights give the bars an organic, uneven look instead of all
+  // moving in lockstep with the same height.
+  static const _barWeights = [0.5, 0.85, 1.0, 0.7, 0.9, 0.55, 0.8, 0.65, 1.0, 0.6];
+
+  @override
+  Widget build(BuildContext context) {
+    final normalized = ((level + 20) / 30).clamp(0.05, 1.0);
+    final color = Theme.of(context).colorScheme.primary;
+    return SizedBox(
+      height: 24,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          for (final weight in _barWeights)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 120),
+                width: 3,
+                height: (4 + normalized * weight * 20).clamp(4, 24).toDouble(),
+                decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2)),
+              ),
+            ),
+        ],
       ),
     );
   }
