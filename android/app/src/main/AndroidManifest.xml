@@ -15,6 +15,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
+    <!-- Für das kleine "Ja, Meister"-Popup, das beim Weckwort über anderen
+         Apps erscheint (siehe wake_word_overlay.dart). -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <uses-feature android:name="android.hardware.microphone" android:required="false"/>
     <application
@@ -55,6 +59,16 @@
                 <data android:scheme="jarvismobile"/>
             </intent-filter>
         </activity>
+        <!-- Zeigt das "Ja, Meister"-Popup über anderen Apps (siehe
+             wake_word_overlay.dart, flutter_overlay_window). -->
+        <service
+            android:name="flutter.overlay.window.flutter_overlay_window.OverlayService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Zeigt JARVIS' Antwort auf das Weckwort auch über anderen Apps an" />
+        </service>
     </application>
     <queries>
         <intent>

@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'wake_word_service.dart';
@@ -25,9 +26,23 @@ class WakeWordTaskHandler extends TaskHandler {
     final accessKey = prefs.getString('picovoice_access_key') ?? '';
     await _wakeWordService.start(
       accessKey: accessKey,
-      onWakeWord: () {
+      onWakeWord: () async {
         FlutterForegroundTask.sendDataToMain('wake_word_detected');
-        FlutterForegroundTask.launchApp('/');
+        // Ist die App schon offen, reicht die stille "wake_word_detected"-
+        // Meldung oben — das kleine Popup ist nur für den Fall gedacht, dass
+        // die App gerade geschlossen/im Hintergrund ist.
+        if (!await FlutterOverlayWindow.isActive() && await FlutterOverlayWindow.isPermissionGranted()) {
+          await FlutterOverlayWindow.showOverlay(
+            height: 70,
+            width: 220,
+            alignment: OverlayAlignment.topCenter,
+            startPosition: const OverlayPosition(0, 80),
+            flag: OverlayFlag.defaultFlag,
+            positionGravity: PositionGravity.auto,
+            overlayTitle: 'JARVIS',
+            overlayContent: 'Ja, Meister?',
+          );
+        }
       },
     );
   }

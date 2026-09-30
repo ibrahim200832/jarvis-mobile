@@ -1,4 +1,5 @@
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 
 import 'wake_word_task_handler.dart';
 
@@ -39,6 +40,12 @@ class WakeWordManager {
     }
     if (!await FlutterForegroundTask.isIgnoringBatteryOptimizations) {
       await FlutterForegroundTask.requestIgnoreBatteryOptimization();
+    }
+    // Für das kleine "Ja, Meister"-Popup beim Weckwort (wake_word_overlay.dart)
+    // — ohne diese Berechtigung funktioniert das Weckwort trotzdem, nur ohne
+    // das Popup (siehe wake_word_task_handler.dart, das dann still bleibt).
+    if (!await FlutterOverlayWindow.isPermissionGranted()) {
+      await FlutterOverlayWindow.requestPermission();
     }
 
     try {

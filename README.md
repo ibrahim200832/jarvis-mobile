@@ -316,10 +316,12 @@ Sag einfach "Jarvis", egal ob die App gerade offen ist oder nicht — JARVIS hö
 
 Damit das auch bei geschlossener App funktioniert, läuft im Hintergrund ein dauerhafter Dienst mit eigener Benachrichtigung ("JARVIS hört zu") — das ist eine Voraussetzung von Android für jede App, die im Hintergrund das Mikrofon offen hält, keine Fehlfunktion. Auf iOS ist das nicht möglich (Apple erlaubt keinen dauerhaften Mikrofonzugriff im Hintergrund für Drittanbieter-Apps).
 
+Ist die App gerade geschlossen oder im Hintergrund, erscheint beim Weckwort außerdem ein kleines Popup ("Ja, Meister?") über anderen Apps, das JARVIS auch laut ausspricht — man muss die App also nicht erst öffnen, um zu sehen, dass er zugehört hat. Das Popup verschwindet nach ein paar Sekunden von selbst; antippt man es, öffnet sich die volle App für das eigentliche Gespräch.
+
 1. **Kostenloses Picovoice-Konto erstellen**: Auf [console.picovoice.ai](https://console.picovoice.ai) registrieren.
 2. **AccessKey kopieren**: Steht direkt auf der Startseite der Console nach dem Login.
 3. **In der App eintragen**: JARVIS-App → Einstellungen → Feld **"Picovoice-AccessKey"** → einfügen → **Speichern**.
-4. **Aktivieren**: Den Schalter **"Weckwort 'Jarvis'"** umlegen. Die App fragt dabei nach der Benachrichtigungs-Erlaubnis und bittet darum, JARVIS von der Akku-Optimierung auszunehmen (sonst würde Android den Hintergrunddienst nach einiger Zeit selbst beenden) — beides bitte zulassen.
+4. **Aktivieren**: Den Schalter **"Weckwort 'Jarvis'"** umlegen. Die App fragt dabei nach der Benachrichtigungs-Erlaubnis, bittet darum, JARVIS von der Akku-Optimierung auszunehmen (sonst würde Android den Hintergrunddienst nach einiger Zeit selbst beenden), und fragt nach der Erlaubnis "Über anderen Apps anzeigen" (für das Popup oben) — bitte alle drei zulassen. Ohne die letzte Erlaubnis funktioniert das Weckwort trotzdem, nur ohne das Popup.
 
 > **Hinweis:** Das kostenlose Picovoice-Kontingent reicht für den persönlichen Gebrauch (ein Nutzer, eine App) völlig aus.
 
