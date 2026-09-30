@@ -23,10 +23,16 @@ subprojects {
 // which no longer satisfies a transitively-pulled androidx.core version that
 // requires compileSdk >= 34 (Gradle's checkReleaseAarMetadata fails
 // otherwise) — patched here since we can't edit the published package's
-// source directly. withGroovyBuilder avoids needing the AGP classes on this
-// root script's own classpath.
+// source directly. Flutter's plugin loader adds plugin subprojects
+// dynamically while :app itself is being evaluated, so an afterEvaluate
+// hook here can race with a subproject that's already finished evaluating
+// by the time it's registered ("Cannot run Project.afterEvaluate(Action)
+// when the project is already evaluated"); plugins.withId fires immediately
+// if the plugin is already applied, so it isn't subject to that race.
+// withGroovyBuilder avoids needing the AGP classes on this root script's
+// own classpath.
 subprojects {
-    afterEvaluate {
+    plugins.withId("com.android.library") {
         if (project.name == "vosk_flutter_fixed") {
             project.extensions.findByName("android")?.withGroovyBuilder {
                 setProperty("compileSdk", 34)
