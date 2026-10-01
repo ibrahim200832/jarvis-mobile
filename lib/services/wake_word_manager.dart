@@ -1,4 +1,5 @@
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import 'wake_word_task_handler.dart';
 
@@ -33,6 +34,11 @@ class WakeWordManager {
   /// permission) — permissions are requested first if not yet granted.
   static Future<String?> start() async {
     _ensureInit();
+
+    final micStatus = await Permission.microphone.request();
+    if (!micStatus.isGranted) {
+      return 'Mikrofon-Berechtigung wird benötigt, damit das Weckwort funktioniert.';
+    }
 
     if (await FlutterForegroundTask.checkNotificationPermission() != NotificationPermission.granted) {
       await FlutterForegroundTask.requestNotificationPermission();
