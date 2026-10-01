@@ -20,12 +20,23 @@ class WakeWordTaskHandler extends TaskHandler {
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
     WidgetsFlutterBinding.ensureInitialized();
-    await _wakeWordService.start(
+    final error = await _wakeWordService.start(
       onWakeWord: () {
         FlutterForegroundTask.sendDataToMain('wake_word_detected');
         FlutterForegroundTask.launchApp('/');
       },
     );
+    // Starting the foreground service itself (see WakeWordManager) always
+    // succeeds — this is the only place that knows whether Vosk actually
+    // came up inside this isolate, so it's the only place that can surface
+    // a failure instead of leaving a misleading "JARVIS hört zu" notification.
+    if (error != null) {
+      await FlutterForegroundTask.updateService(
+        notificationTitle: 'JARVIS: Weckwort-Fehler',
+        notificationText: error,
+      );
+      FlutterForegroundTask.sendDataToMain({'wake_word_error': error});
+    }
   }
 
   @override

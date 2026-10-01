@@ -5,6 +5,7 @@ wird beim Deploy automatisch in den "Update verfügbar"-Dialog der App
 übernommen (siehe `.github/workflows/deploy-web.yml`).
 
 ## Aktuell
+- Fix: Das Weckwort "Jarvis" reagierte bei manchen Nutzern gar nicht, ohne jede Fehlermeldung — die Mikrofon-Berechtigung wurde dafür nie angefragt, und Fehler aus dem Hintergrunddienst gingen bisher spurlos verloren. Beides behoben: Die Berechtigung wird jetzt beim Aktivieren mit abgefragt, und ein Fehler erscheint jetzt sowohl in der Benachrichtigung als auch als Meldung in der App.
 - Geändert: Die Weckwort-Erkennung ("Jarvis" sagen) läuft jetzt über Vosk (quelloffen, kostenlos, kein Konto) statt über Picovoice — Picovoice hat seinen kostenlosen Tarif für Privatnutzer eingestellt. Kein AccessKey mehr nötig, stattdessen lädt die App beim ersten Aktivieren einmalig ein deutsches Sprachmodell herunter, siehe README.
 - Neu: Die App-KI kann jetzt (mit eigenem KI-Server) auch Bilder aus einer Beschreibung erstellen und sich Dinge dauerhaft merken — geteilt mit dem Telegram-Bot, falls eingerichtet.
 - Neu: Websuche-Ergebnisse in Telegram (egal ob `/suche`, `/nachrichten` oder normale Frage, für dich und alle anderen Nutzer gleichermaßen) werden jetzt gefiltert — jugendgefährdende/explizite Inhalte über Braves eigenen Sicherheitsfilter, dazu ein zusätzlicher Grobfilter gegen Glücksspiel-/Wett-Links.

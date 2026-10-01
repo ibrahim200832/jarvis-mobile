@@ -151,6 +151,8 @@ class _HomeScreenState extends State<HomeScreen> {
   void _onWakeWordTaskData(Object data) {
     if (data == 'wake_word_detected' && mounted && !_listening && !_processing) {
       unawaited(_startListening());
+    } else if (data is Map && data['wake_word_error'] is String && mounted) {
+      _showSnack(data['wake_word_error'] as String);
     }
   }
 
