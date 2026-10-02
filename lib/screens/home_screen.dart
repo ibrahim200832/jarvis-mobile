@@ -149,7 +149,7 @@ class _HomeScreenState extends State<HomeScreen> {
   /// erledigt) und startet direkt das Zuhören, wie ein Tippen auf das
   /// Mikrofon-Symbol.
   void _onWakeWordTaskData(Object data) {
-    if (data == 'wake_word_detected' && mounted && !_listening && !_processing) {
+    if (data == 'wake_word_detected' && mounted && !_listening && !_processing && !_speaking) {
       unawaited(_startListening());
     } else if (data is Map && data['wake_word_error'] is String && mounted) {
       _showSnack(data['wake_word_error'] as String);
@@ -371,7 +371,12 @@ class _HomeScreenState extends State<HomeScreen> {
         await _startListening();
       }
     } else {
-      unawaited(_tts.speak(result.reply));
+      setState(() => _speaking = true);
+      unawaited(
+        _tts.speakAndWait(result.reply).then((_) {
+          if (mounted) setState(() => _speaking = false);
+        }),
+      );
     }
 
     if (result.openCamera) {
