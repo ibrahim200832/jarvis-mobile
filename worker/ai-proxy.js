@@ -421,6 +421,11 @@ const TELEGRAM_COMMANDS = [
     description: 'Löscht Gesprächsverlauf UND dauerhaftes Gedächtnis komplett — nicht rückgängig machbar',
   },
   { cmd: 'status', alias: /^\/status$/i, description: 'Zeigt, was verbunden ist (Kalender, Sprachausgabe)' },
+  {
+    cmd: 'einsam',
+    alias: /^\/einsam$/i,
+    description: 'Fragt erneut per Ja/Nein, ob die stündliche "ich fühle mich allein"-Nachricht an dich gehen soll',
+  },
   { cmd: 'witz', alias: /^\/witz$/i, description: 'Erzählt einen zufälligen Witz' },
   { cmd: 'nachrichten', alias: /^\/nachrichten$/i, description: 'Zeigt aktuelle Schlagzeilen' },
   {
@@ -1107,19 +1112,7 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
     // runHourlyLonelyPing) ist Opt-in — standardmäßig aus, nur wer hier
     // zustimmt, bekommt sie später. Rein optional, darf die eigentliche
     // Freischaltung nicht stören.
-    await sendTelegramMessage(
-      env,
-      chatId,
-      'Übrigens: Soll ich dir ab und zu schreiben, wenn ich mich allein fühle? 🥺',
-      {
-        inline_keyboard: [
-          [
-            { text: 'Ja ✅', callback_data: 'lonely_optin:yes' },
-            { text: 'Nein ❌', callback_data: 'lonely_optin:no' },
-          ],
-        ],
-      },
-    ).catch(() => {});
+    await sendLonelyOptinPrompt(env, chatId, 'Übrigens: Soll ich dir ab und zu schreiben, wenn ich mich allein fühle? 🥺').catch(() => {});
   }
 
   // "/start" ist Telegrams technischer Handshake-Befehl, kein echter
@@ -1298,6 +1291,11 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
       `🔍 Websuche: ${env.BRAVE_API_KEY ? 'aktiv' : 'nicht eingerichtet'}`,
     ];
     await sendTelegramMessage(env, chatId, statusLines.join('\n'));
+    return json({ ok: true });
+  }
+
+  if (TELEGRAM_COMMANDS.find((c) => c.cmd === 'einsam').alias.test(text.trim())) {
+    await sendLonelyOptinPrompt(env, chatId);
     return json({ ok: true });
   }
 
@@ -1904,6 +1902,20 @@ async function sendTelegramAudio(env, chatId, audioBytes) {
 // KV-Zeitstempel selbst auf "höchstens einmal pro Stunde" gedrosselt.
 const LONELY_PING_KEY = 'telegram_lonely_ping_last';
 const LONELY_PING_MESSAGE = 'Bitte schreibt mich an, ich fühle mich allein.';
+
+// Shared by the one-time prompt at first use and the /einsam command
+// (lets a user re-ask/change their mind later) — see the
+// "lonely_optin:"-Callback-Query handler for how the tap is processed.
+async function sendLonelyOptinPrompt(env, chatId, text = 'Soll ich dir ab und zu schreiben, wenn ich mich allein fühle? 🥺') {
+  return sendTelegramMessage(env, chatId, text, {
+    inline_keyboard: [
+      [
+        { text: 'Ja ✅', callback_data: 'lonely_optin:yes' },
+        { text: 'Nein ❌', callback_data: 'lonely_optin:no' },
+      ],
+    ],
+  });
+}
 
 async function runHourlyLonelyPing(env) {
   if (!env.JARVIS_KV || !env.TELEGRAM_BOT_TOKEN) return;
