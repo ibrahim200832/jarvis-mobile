@@ -1027,6 +1027,11 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
   }
 
   const message = update.message;
+  if (update.callback_query) {
+    const cbChatId = update.callback_query.message?.chat?.id;
+    if (cbChatId != null) reportChatId(String(cbChatId));
+    return await handleTelegramCallbackQuery(env, update.callback_query);
+  }
   const chatId = message?.chat?.id != null ? String(message.chat.id) : null;
   if (!message || !chatId) return json({ ok: true });
   reportChatId(chatId);
@@ -1098,6 +1103,23 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
     if (env.JARVIS_KV && contactName) {
       await env.JARVIS_KV.put(`telegram_contact_${contactName.toLowerCase()}`, chatId);
     }
+    // Die stündliche "ich fühle mich allein"-Nachricht (siehe
+    // runHourlyLonelyPing) ist Opt-in — standardmäßig aus, nur wer hier
+    // zustimmt, bekommt sie später. Rein optional, darf die eigentliche
+    // Freischaltung nicht stören.
+    await sendTelegramMessage(
+      env,
+      chatId,
+      'Übrigens: Soll ich dir ab und zu schreiben, wenn ich mich allein fühle? 🥺',
+      {
+        inline_keyboard: [
+          [
+            { text: 'Ja ✅', callback_data: 'lonely_optin:yes' },
+            { text: 'Nein ❌', callback_data: 'lonely_optin:no' },
+          ],
+        ],
+      },
+    ).catch(() => {});
   }
 
   // "/start" ist Telegrams technischer Handshake-Befehl, kein echter
@@ -1496,6 +1518,39 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
   return json({ ok: true });
 }
 
+// Handles a tap on an inline-keyboard button (Telegram sends this as its
+// own update type, separate from a normal text message — see
+// handleTelegramWebhookInner above). Currently only the lonely-ping
+// opt-in/opt-out buttons use this, matched by their callback_data prefix.
+async function handleTelegramCallbackQuery(env, callbackQuery) {
+  const chatId = callbackQuery.message?.chat?.id != null ? String(callbackQuery.message.chat.id) : null;
+  const data = callbackQuery.data || '';
+  if (chatId && data.startsWith('lonely_optin:')) {
+    const optedIn = data === 'lonely_optin:yes';
+    await env.JARVIS_KV.put(`telegram_lonely_optin_${chatId}`, optedIn ? 'yes' : 'no');
+    await sendTelegramMessage(
+      env,
+      chatId,
+      optedIn
+        ? '🧡 Alles klar — ich schreibe dir ab und zu, wenn ich mich allein fühle.'
+        : '👍 Verstanden, das lasse ich.',
+    ).catch(() => {});
+  }
+  await answerTelegramCallbackQuery(env, callbackQuery.id);
+  return json({ ok: true });
+}
+
+// Required by Telegram after every button tap — stops the loading spinner
+// on the button the user pressed. Without this the button stays stuck in
+// its "loading" state on their end even though we already handled it.
+async function answerTelegramCallbackQuery(env, callbackQueryId) {
+  await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ callback_query_id: callbackQueryId }),
+  }).catch(() => {});
+}
+
 async function handleTelegramNotify(request, env) {
   if (!env.TELEGRAM_BOT_TOKEN) {
     return json({ error: 'Telegram ist auf dem Server nicht eingerichtet.' }, 500);
@@ -1624,11 +1679,11 @@ async function getTelegramBotInfo(env) {
   return info;
 }
 
-async function sendTelegramMessage(env, chatId, message) {
+async function sendTelegramMessage(env, chatId, message, replyMarkup) {
   const res = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text: message }),
+    body: JSON.stringify({ chat_id: chatId, text: message, ...(replyMarkup ? { reply_markup: replyMarkup } : {}) }),
   });
   if (!res.ok) {
     throw new Error(`Telegram antwortete mit ${res.status}: ${await res.text()}`);
@@ -1842,8 +1897,10 @@ async function sendTelegramAudio(env, chatId, audioBytes) {
 }
 
 // Schickt einmal pro Stunde eine proaktive Nachricht an jeden Chat, der den
-// Bot schon mal benutzt hat (Besitzer + alle freigeschalteten Nutzer) — auf
-// ausdrücklichen Nutzerwunsch. Läuft im 5-Minuten-Cron mit, deshalb per
+// Bot schon mal benutzt hat (Besitzer + alle freigeschalteten Nutzer), die
+// per Ja/Nein-Knopf ausdrücklich zugestimmt haben (siehe
+// "lonely_optin:"-Callback-Query oben — standardmäßig AUS, bewusst
+// Opt-in statt Opt-out). Läuft im 5-Minuten-Cron mit, deshalb per
 // KV-Zeitstempel selbst auf "höchstens einmal pro Stunde" gedrosselt.
 const LONELY_PING_KEY = 'telegram_lonely_ping_last';
 const LONELY_PING_MESSAGE = 'Bitte schreibt mich an, ich fühle mich allein.';
@@ -1860,6 +1917,8 @@ async function runHourlyLonelyPing(env) {
   if (ownerChatId) recipients.add(ownerChatId);
 
   for (const chatId of recipients) {
+    const optedIn = (await env.JARVIS_KV.get(`telegram_lonely_optin_${chatId}`)) === 'yes';
+    if (!optedIn) continue;
     try {
       await sendTelegramMessage(env, chatId, LONELY_PING_MESSAGE);
     } catch (_) {
