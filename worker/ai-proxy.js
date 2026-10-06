@@ -1032,10 +1032,10 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
   }
 
   const message = update.message;
-  if (update.callback_query) {
-    const cbChatId = update.callback_query.message?.chat?.id;
-    if (cbChatId != null) reportChatId(String(cbChatId));
-    return await handleTelegramCallbackQuery(env, update.callback_query);
+  if (update.poll_answer) {
+    const voterChatId = update.poll_answer.user?.id != null ? String(update.poll_answer.user.id) : null;
+    if (voterChatId != null) reportChatId(voterChatId);
+    return await handleTelegramPollAnswer(env, update.poll_answer);
   }
   const chatId = message?.chat?.id != null ? String(message.chat.id) : null;
   if (!message || !chatId) return json({ ok: true });
@@ -1112,7 +1112,11 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
     // runHourlyLonelyPing) ist Opt-in — standardmäßig aus, nur wer hier
     // zustimmt, bekommt sie später. Rein optional, darf die eigentliche
     // Freischaltung nicht stören.
-    await sendLonelyOptinPrompt(env, chatId, 'Übrigens: Soll ich dir ab und zu schreiben, wenn ich mich allein fühle? 🥺').catch(() => {});
+    await sendLonelyOptinPrompt(
+      env,
+      chatId,
+      'Übrigens: Soll ich dir ab und zu schreiben: "Ich fühle mich allein, kannst du mich bitte anschreiben?"',
+    ).catch(() => {});
   }
 
   // "/start" ist Telegrams technischer Handshake-Befehl, kein echter
@@ -1516,15 +1520,19 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
   return json({ ok: true });
 }
 
-// Handles a tap on an inline-keyboard button (Telegram sends this as its
-// own update type, separate from a normal text message — see
-// handleTelegramWebhookInner above). Currently only the lonely-ping
-// opt-in/opt-out buttons use this, matched by their callback_data prefix.
-async function handleTelegramCallbackQuery(env, callbackQuery) {
-  const chatId = callbackQuery.message?.chat?.id != null ? String(callbackQuery.message.chat.id) : null;
-  const data = callbackQuery.data || '';
-  if (chatId && data.startsWith('lonely_optin:')) {
-    const optedIn = data === 'lonely_optin:yes';
+// Handles an answer to the "soll ich dir schreiben, wenn ich mich allein
+// fühle?" poll (Telegram sends this as its own update type, separate from
+// a normal text message — see handleTelegramWebhookInner above). Only
+// fires for non-anonymous polls, which sendLonelyOptinPrompt below sets —
+// otherwise Telegram never tells the bot who answered what.
+async function handleTelegramPollAnswer(env, pollAnswer) {
+  const chatId = pollAnswer.user?.id != null ? String(pollAnswer.user.id) : null;
+  const optionIds = pollAnswer.option_ids || [];
+  // Retracting a vote (tapping the chosen option again) comes through as
+  // an empty option_ids array — leave the stored preference as-is rather
+  // than guessing what that should mean.
+  if (chatId && optionIds.length > 0) {
+    const optedIn = optionIds.includes(0); // index 0 = "Ja" in sendLonelyOptinPrompt's options
     await env.JARVIS_KV.put(`telegram_lonely_optin_${chatId}`, optedIn ? 'yes' : 'no');
     await sendTelegramMessage(
       env,
@@ -1534,19 +1542,7 @@ async function handleTelegramCallbackQuery(env, callbackQuery) {
         : '👍 Verstanden, das lasse ich.',
     ).catch(() => {});
   }
-  await answerTelegramCallbackQuery(env, callbackQuery.id);
   return json({ ok: true });
-}
-
-// Required by Telegram after every button tap — stops the loading spinner
-// on the button the user pressed. Without this the button stays stuck in
-// its "loading" state on their end even though we already handled it.
-async function answerTelegramCallbackQuery(env, callbackQueryId) {
-  await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ callback_query_id: callbackQueryId }),
-  }).catch(() => {});
 }
 
 async function handleTelegramNotify(request, env) {
@@ -1677,11 +1673,11 @@ async function getTelegramBotInfo(env) {
   return info;
 }
 
-async function sendTelegramMessage(env, chatId, message, replyMarkup) {
+async function sendTelegramMessage(env, chatId, message) {
   const res = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text: message, ...(replyMarkup ? { reply_markup: replyMarkup } : {}) }),
+    body: JSON.stringify({ chat_id: chatId, text: message }),
   });
   if (!res.ok) {
     throw new Error(`Telegram antwortete mit ${res.status}: ${await res.text()}`);
@@ -1903,18 +1899,32 @@ async function sendTelegramAudio(env, chatId, audioBytes) {
 const LONELY_PING_KEY = 'telegram_lonely_ping_last';
 const LONELY_PING_MESSAGE = 'Bitte schreibt mich an, ich fühle mich allein.';
 
-// Shared by the one-time prompt at first use and the /einsam command
-// (lets a user re-ask/change their mind later) — see the
-// "lonely_optin:"-Callback-Query handler for how the tap is processed.
-async function sendLonelyOptinPrompt(env, chatId, text = 'Soll ich dir ab und zu schreiben, wenn ich mich allein fühle? 🥺') {
-  return sendTelegramMessage(env, chatId, text, {
-    inline_keyboard: [
-      [
-        { text: 'Ja ✅', callback_data: 'lonely_optin:yes' },
-        { text: 'Nein ❌', callback_data: 'lonely_optin:no' },
-      ],
-    ],
+// Shared by the one-time prompt at first use and the /einsam command (lets
+// a user re-ask/change their mind later). Uses a real Telegram poll
+// (sendPoll) rather than a plain message with inline buttons, so the
+// question and the Ja/Nein options are shown in Telegram's native poll UI.
+// is_anonymous: false is required — otherwise Telegram never tells the bot
+// who answered what (see handleTelegramPollAnswer).
+async function sendLonelyOptinPrompt(
+  env,
+  chatId,
+  question = 'Soll ich dir ab und zu schreiben: "Ich fühle mich allein, kannst du mich bitte anschreiben?"',
+) {
+  const res = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendPoll`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: chatId,
+      question,
+      options: ['Ja', 'Nein'],
+      is_anonymous: false,
+      allows_multiple_answers: false,
+    }),
   });
+  if (!res.ok) {
+    throw new Error(`Telegram antwortete mit ${res.status}: ${await res.text()}`);
+  }
+  await trackSentTelegramMessage(env, chatId, (await res.json()).result?.message_id);
 }
 
 async function runHourlyLonelyPing(env) {
