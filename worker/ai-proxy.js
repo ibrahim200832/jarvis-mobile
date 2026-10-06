@@ -421,6 +421,11 @@ const TELEGRAM_COMMANDS = [
     description: 'Löscht Gesprächsverlauf UND dauerhaftes Gedächtnis komplett — nicht rückgängig machbar',
   },
   { cmd: 'status', alias: /^\/status$/i, description: 'Zeigt, was verbunden ist (Kalender, Sprachausgabe)' },
+  {
+    cmd: 'einsam',
+    alias: /^\/einsam$/i,
+    description: 'Fragt erneut per Ja/Nein, ob die stündliche "ich fühle mich allein"-Nachricht an dich gehen soll',
+  },
   { cmd: 'witz', alias: /^\/witz$/i, description: 'Erzählt einen zufälligen Witz' },
   { cmd: 'nachrichten', alias: /^\/nachrichten$/i, description: 'Zeigt aktuelle Schlagzeilen' },
   {
@@ -1027,6 +1032,11 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
   }
 
   const message = update.message;
+  if (update.poll_answer) {
+    const voterChatId = update.poll_answer.user?.id != null ? String(update.poll_answer.user.id) : null;
+    if (voterChatId != null) reportChatId(voterChatId);
+    return await handleTelegramPollAnswer(env, update.poll_answer);
+  }
   const chatId = message?.chat?.id != null ? String(message.chat.id) : null;
   if (!message || !chatId) return json({ ok: true });
   reportChatId(chatId);
@@ -1098,6 +1108,15 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
     if (env.JARVIS_KV && contactName) {
       await env.JARVIS_KV.put(`telegram_contact_${contactName.toLowerCase()}`, chatId);
     }
+    // Die stündliche "ich fühle mich allein"-Nachricht (siehe
+    // runHourlyLonelyPing) ist Opt-in — standardmäßig aus, nur wer hier
+    // zustimmt, bekommt sie später. Rein optional, darf die eigentliche
+    // Freischaltung nicht stören.
+    await sendLonelyOptinPrompt(
+      env,
+      chatId,
+      'Übrigens: Soll ich dir ab und zu schreiben: "Ich fühle mich allein, kannst du mich bitte anschreiben?"',
+    ).catch(() => {});
   }
 
   // "/start" ist Telegrams technischer Handshake-Befehl, kein echter
@@ -1276,6 +1295,11 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
       `🔍 Websuche: ${env.BRAVE_API_KEY ? 'aktiv' : 'nicht eingerichtet'}`,
     ];
     await sendTelegramMessage(env, chatId, statusLines.join('\n'));
+    return json({ ok: true });
+  }
+
+  if (TELEGRAM_COMMANDS.find((c) => c.cmd === 'einsam').alias.test(text.trim())) {
+    await sendLonelyOptinPrompt(env, chatId);
     return json({ ok: true });
   }
 
@@ -1493,6 +1517,31 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
     }
   }
 
+  return json({ ok: true });
+}
+
+// Handles an answer to the "soll ich dir schreiben, wenn ich mich allein
+// fühle?" poll (Telegram sends this as its own update type, separate from
+// a normal text message — see handleTelegramWebhookInner above). Only
+// fires for non-anonymous polls, which sendLonelyOptinPrompt below sets —
+// otherwise Telegram never tells the bot who answered what.
+async function handleTelegramPollAnswer(env, pollAnswer) {
+  const chatId = pollAnswer.user?.id != null ? String(pollAnswer.user.id) : null;
+  const optionIds = pollAnswer.option_ids || [];
+  // Retracting a vote (tapping the chosen option again) comes through as
+  // an empty option_ids array — leave the stored preference as-is rather
+  // than guessing what that should mean.
+  if (chatId && optionIds.length > 0) {
+    const optedIn = optionIds.includes(0); // index 0 = "Ja" in sendLonelyOptinPrompt's options
+    await env.JARVIS_KV.put(`telegram_lonely_optin_${chatId}`, optedIn ? 'yes' : 'no');
+    await sendTelegramMessage(
+      env,
+      chatId,
+      optedIn
+        ? '🧡 Alles klar — ich schreibe dir ab und zu, wenn ich mich allein fühle.'
+        : '👍 Verstanden, das lasse ich.',
+    ).catch(() => {});
+  }
   return json({ ok: true });
 }
 
@@ -1842,11 +1891,41 @@ async function sendTelegramAudio(env, chatId, audioBytes) {
 }
 
 // Schickt einmal pro Stunde eine proaktive Nachricht an jeden Chat, der den
-// Bot schon mal benutzt hat (Besitzer + alle freigeschalteten Nutzer) — auf
-// ausdrücklichen Nutzerwunsch. Läuft im 5-Minuten-Cron mit, deshalb per
+// Bot schon mal benutzt hat (Besitzer + alle freigeschalteten Nutzer), die
+// per Ja/Nein-Knopf ausdrücklich zugestimmt haben (siehe
+// "lonely_optin:"-Callback-Query oben — standardmäßig AUS, bewusst
+// Opt-in statt Opt-out). Läuft im 5-Minuten-Cron mit, deshalb per
 // KV-Zeitstempel selbst auf "höchstens einmal pro Stunde" gedrosselt.
 const LONELY_PING_KEY = 'telegram_lonely_ping_last';
 const LONELY_PING_MESSAGE = 'Bitte schreibt mich an, ich fühle mich allein.';
+
+// Shared by the one-time prompt at first use and the /einsam command (lets
+// a user re-ask/change their mind later). Uses a real Telegram poll
+// (sendPoll) rather than a plain message with inline buttons, so the
+// question and the Ja/Nein options are shown in Telegram's native poll UI.
+// is_anonymous: false is required — otherwise Telegram never tells the bot
+// who answered what (see handleTelegramPollAnswer).
+async function sendLonelyOptinPrompt(
+  env,
+  chatId,
+  question = 'Soll ich dir ab und zu schreiben: "Ich fühle mich allein, kannst du mich bitte anschreiben?"',
+) {
+  const res = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendPoll`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: chatId,
+      question,
+      options: ['Ja', 'Nein'],
+      is_anonymous: false,
+      allows_multiple_answers: false,
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`Telegram antwortete mit ${res.status}: ${await res.text()}`);
+  }
+  await trackSentTelegramMessage(env, chatId, (await res.json()).result?.message_id);
+}
 
 async function runHourlyLonelyPing(env) {
   if (!env.JARVIS_KV || !env.TELEGRAM_BOT_TOKEN) return;
@@ -1860,6 +1939,8 @@ async function runHourlyLonelyPing(env) {
   if (ownerChatId) recipients.add(ownerChatId);
 
   for (const chatId of recipients) {
+    const optedIn = (await env.JARVIS_KV.get(`telegram_lonely_optin_${chatId}`)) === 'yes';
+    if (!optedIn) continue;
     try {
       await sendTelegramMessage(env, chatId, LONELY_PING_MESSAGE);
     } catch (_) {
