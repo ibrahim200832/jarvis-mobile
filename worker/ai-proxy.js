@@ -426,6 +426,16 @@ const TELEGRAM_COMMANDS = [
     alias: /^\/einsam$/i,
     description: 'Fragt erneut per Ja/Nein, ob die stündliche "ich fühle mich allein"-Nachricht an dich gehen soll',
   },
+  {
+    cmd: 'anruf',
+    alias: /^\/anruf(?:\s+(.+))?$/i,
+    description: 'Ruft dich auf deinem Handy an und liest dir eine Nachricht vor, z. B. /anruf ich hab dich vermisst (nur Besitzer)',
+  },
+  {
+    cmd: 'anrufnummer',
+    alias: /^\/anrufnummer\s+(\+\d{6,15})$/i,
+    description: 'Hinterlegt deine Rufnummer für /anruf, z. B. /anrufnummer +491701234567 (nur Besitzer)',
+  },
   { cmd: 'witz', alias: /^\/witz$/i, description: 'Erzählt einen zufälligen Witz' },
   { cmd: 'nachrichten', alias: /^\/nachrichten$/i, description: 'Zeigt aktuelle Schlagzeilen' },
   {
@@ -1303,6 +1313,54 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
     return json({ ok: true });
   }
 
+  // Echte Telegram-eigene Anrufe gibt es für Bots nicht (keine API dafür) —
+  // das hier löst stattdessen denselben Twilio-Anruf aus, den die App
+  // schon für "ruf mich an"/Kalender-Erinnerungen nutzt (placeTwilioCall
+  // unten). Die Rufnummer kommt entweder aus /anrufnummer (eigens für
+  // Telegram hinterlegt) oder, falls nicht gesetzt, aus
+  // calendar_reminder_config (schon vorhanden, wenn der Google Kalender in
+  // der App verbunden wurde) — so brauchen Nutzer, die nur Twilio ohne
+  // Kalender eingerichtet haben, trotzdem keine Kalender-Verbindung extra
+  // dafür. Nur der Besitzer darf beides auslösen, nicht jeder
+  // freigeschaltete Nutzer — ein echter Anruf ist eingreifender als ein
+  // reiner Chat-Befehl.
+  const callPhoneMatch = text.match(TELEGRAM_COMMANDS.find((c) => c.cmd === 'anrufnummer').alias);
+  if (callPhoneMatch) {
+    if (!senderIsOwner) {
+      await sendTelegramMessage(env, chatId, 'Das kann nur der Besitzer einstellen.');
+      return json({ ok: true });
+    }
+    await env.JARVIS_KV.put(TELEGRAM_CALL_PHONE_KEY, callPhoneMatch[1]);
+    await sendTelegramMessage(env, chatId, `📞 Rufnummer für Anrufe gespeichert: ${callPhoneMatch[1]}`);
+    return json({ ok: true });
+  }
+
+  const callMeMatch =
+    text.match(/^ruf mich an(?:\s*[:,]?\s*(.+))?$/i) ||
+    text.match(TELEGRAM_COMMANDS.find((c) => c.cmd === 'anruf').alias);
+  if (callMeMatch) {
+    if (!senderIsOwner) {
+      await sendTelegramMessage(env, chatId, 'Anrufe kann nur der Besitzer auslösen.');
+      return json({ ok: true });
+    }
+    const spokenMessage = (callMeMatch[1] || 'Hier ist JARVIS. Du wolltest, dass ich dich anrufe.').trim();
+    try {
+      const storedPhone = env.JARVIS_KV ? await env.JARVIS_KV.get(TELEGRAM_CALL_PHONE_KEY) : null;
+      const raw = !storedPhone && env.JARVIS_KV ? await env.JARVIS_KV.get('calendar_reminder_config') : null;
+      const phone = storedPhone || (raw ? JSON.parse(raw).phone : null);
+      if (!phone) {
+        throw new Error(
+          'Keine Telefonnummer hinterlegt. Schick mir "/anrufnummer +49..." mit deiner Nummer, oder verbinde den Google Kalender in der App.',
+        );
+      }
+      await placeTwilioCall(env, phone, spokenMessage);
+      await sendTelegramMessage(env, chatId, '📞 Ich rufe dich an …');
+    } catch (err) {
+      await sendTelegramMessage(env, chatId, err.message || 'Der Anruf ist fehlgeschlagen.');
+    }
+    return json({ ok: true });
+  }
+
   if (TELEGRAM_COMMANDS.find((c) => c.cmd === 'witz').alias.test(text.trim())) {
     await sendTelegramMessage(env, chatId, `😄 ${TELEGRAM_JOKES[Math.floor(Math.random() * TELEGRAM_JOKES.length)]}`);
     return json({ ok: true });
@@ -1411,7 +1469,9 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
 
   let systemPrompt =
     `${SYSTEM_PROMPT} Du sprichst hier gerade über Telegram, nicht über die JARVIS-App — deshalb kannst du hier keine ` +
-    'Anrufe/WhatsApp/Apps/Hue/Home-Connect auslösen, sondern nur in Worten antworten. Wichtig: Die Anweisung oben, ' +
+    'WhatsApp/Apps/Hue/Home-Connect auslösen, sondern nur in Worten antworten. Eine Ausnahme: Sagt der Besitzer "ruf ' +
+    'mich an" (oder nutzt /anruf), bekommt er einen echten Telefonanruf — das läuft aber über einen eigenen Befehl, ' +
+    'nicht über dich, erwähne es nur, wenn danach gefragt wird. Wichtig: Die Anweisung oben, ' +
     'dich auf 1-2 Sätze zu beschränken, gilt hier NICHT — das war für Telefonate gedacht. Hier in Telegram ist es ein ' +
     'geschriebener Chat, antworte also so ausführlich, wie die Frage es braucht, ganz normal wie in einem echten ' +
     'Gespräch, auch mit mehreren Sätzen oder Absätzen, wenn das der Frage gerecht wird. Websuche steht dir hier ' +
@@ -1611,6 +1671,12 @@ function containsInsult(text) {
 // davon funktioniert, über welchen Kanal JARVIS angesprochen wird.
 const MEMORY_KEY = 'telegram_memory';
 const MEMORY_LIMIT = 50;
+
+// Für /anrufnummer + "ruf mich an" in Telegram (siehe
+// handleTelegramWebhookInner) — eigens hinterlegte Rufnummer, damit auch
+// Nutzer ohne verbundenen Google Kalender (der sonst calendar_reminder_
+// config.phone setzt) echte Anrufe per Telegram auslösen können.
+const TELEGRAM_CALL_PHONE_KEY = 'telegram_call_phone';
 
 async function getMemory(env) {
   if (!env.JARVIS_KV) return [];

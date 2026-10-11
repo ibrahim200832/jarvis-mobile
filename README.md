@@ -224,6 +224,8 @@ Weil ein echter Telefonanruf über einen Telefonie-Anbieter läuft und dessen Zu
 6. **Deine eigene Handynummer eintragen**: In der JARVIS-App unter **Einstellungen → „Telefonnummer für Anrufe"** deine echte Handynummer im E.164-Format eintragen (die JARVIS anruft) → speichern.
 7. **Testen**: „ruf mich an" sagen — dein Telefon sollte innerhalb weniger Sekunden klingeln, mit einer gesprochenen Nachricht von JARVIS.
 
+**Auch per Telegram**: Ist Telegram eingerichtet (siehe unten), kann der Besitzer „ruf mich an" oder `/anruf <Nachricht>` auch direkt im Telegram-Chat schreiben — echte Telegram-Anrufe gibt es für Bots zwar nicht, aber genau derselbe Twilio-Anruf wie oben klingelt dann trotzdem durch. Ohne verbundenen Google Kalender (siehe unten) zuerst einmalig `/anrufnummer +49...` mit der eigenen Nummer schicken, damit JARVIS weiß, wen er anrufen soll.
+
 ### Kalender-Erinnerungsanrufe (zusätzlich, optional)
 
 Damit JARVIS automatisch vor Terminen anruft, auch ohne geöffnete App, braucht der Worker dauerhaften Zugriff auf deinen Google Kalender:
