@@ -433,8 +433,8 @@ const TELEGRAM_COMMANDS = [
   },
   {
     cmd: 'anrufnummer',
-    alias: /^\/anrufnummer\s+(\+\d{6,15})$/i,
-    description: 'Hinterlegt deine Rufnummer für /anruf, z. B. /anrufnummer +491701234567 (nur Besitzer)',
+    alias: /^\/anrufnummer\s+(\+[\d\s()-]{6,20})$/i,
+    description: 'Hinterlegt deine Rufnummer für /anruf, z. B. /anrufnummer +49 1520 8526545 (nur Besitzer)',
   },
   { cmd: 'witz', alias: /^\/witz$/i, description: 'Erzählt einen zufälligen Witz' },
   { cmd: 'nachrichten', alias: /^\/nachrichten$/i, description: 'Zeigt aktuelle Schlagzeilen' },
@@ -1330,8 +1330,12 @@ async function handleTelegramWebhookInner(request, env, reportChatId) {
       await sendTelegramMessage(env, chatId, 'Das kann nur der Besitzer einstellen.');
       return json({ ok: true });
     }
-    await env.JARVIS_KV.put(TELEGRAM_CALL_PHONE_KEY, callPhoneMatch[1]);
-    await sendTelegramMessage(env, chatId, `📞 Rufnummer für Anrufe gespeichert: ${callPhoneMatch[1]}`);
+    // Twilio braucht die Nummer im sauberen E.164-Format (nur "+" und
+    // Ziffern) — Leerzeichen/Klammern/Bindestriche, mit denen Nutzer
+    // Nummern natürlicherweise eintippen, werden hier entfernt.
+    const normalizedPhone = callPhoneMatch[1].replace(/[\s()-]/g, '');
+    await env.JARVIS_KV.put(TELEGRAM_CALL_PHONE_KEY, normalizedPhone);
+    await sendTelegramMessage(env, chatId, `📞 Rufnummer für Anrufe gespeichert: ${normalizedPhone}`);
     return json({ ok: true });
   }
 
